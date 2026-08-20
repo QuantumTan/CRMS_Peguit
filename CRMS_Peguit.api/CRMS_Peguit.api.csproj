@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CRMS_Peguit.domain\CRMS_Peguit.domain.csproj" />
+    <ProjectReference Include="..\CRMS_Peguit.infrastructure\CRMS_Peguit.infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="CRMS_Peguit.api/CRMS_Peguit.api.csproj" Id="fbd8093c-ffb7-4dfb-a925-ab8dfcd77e43" />
+  <Project Path="CRMS_Peguit.domain/CRMS_Peguit.domain.csproj" Id="e3fdca96-b508-474e-a9a9-5d9bfd40cda0" />
+  <Project Path="CRMS_Peguit.infrastructure/CRMS_Peguit.infrastructure.csproj" Id="8a094aa1-0631-4647-9979-4ce18f51c42c" />
+  <Project Path="CRMS_Peguit/CRMS_Peguit.winforms.csproj" />
+</Solution>
