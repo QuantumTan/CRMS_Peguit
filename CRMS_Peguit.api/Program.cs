@@ -1,4 +1,11 @@
+using Microsoft.EntityFrameworkCore;
+using CRMS_Peguit.infrastructure.data;
+
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddDbContext<MasterCrmsDbContext>(options =>
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("MasterCrms")));
 
 // Add services to the container.
 
