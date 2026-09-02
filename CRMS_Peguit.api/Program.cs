@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using CRMS_Peguit.infrastructure.data;
+using CRMS_Peguit.domain.entities;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,5 +27,13 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.MapPost("/companies", async (Company company, MasterCrmsDbContext db) =>
+{
+    db.Companies.Add(company);
+    await db.SaveChangesAsync();
+
+    return Results.Created($"/companies/{company.CompanyId}", company);
+});
 
 app.Run();
