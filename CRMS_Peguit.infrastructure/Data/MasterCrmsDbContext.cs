@@ -2,6 +2,7 @@
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.domain.Entities;
 
+
 namespace CRMS_Peguit.infrastructure.data
 {
     public class MasterCrmsDbContext : DbContext
@@ -73,6 +74,8 @@ namespace CRMS_Peguit.infrastructure.data
                     .HasForeignKey(x => x.CompanyId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
+
+            
         }
     }
 }
