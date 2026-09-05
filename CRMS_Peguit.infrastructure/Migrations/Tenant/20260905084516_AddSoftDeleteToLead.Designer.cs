@@ -4,6 +4,7 @@ using CRMS_Peguit.infrastructure.data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CRMS_Peguit.infrastructure.Migrations.Tenant
 {
     [DbContext(typeof(RealEstateDbContext))]
-    partial class RealEstateDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260905084516_AddSoftDeleteToLead")]
+    partial class AddSoftDeleteToLead
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -161,25 +164,16 @@ namespace CRMS_Peguit.infrastructure.Migrations.Tenant
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Email")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("FirstName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<string>("LastName")
+                    b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("MiddleName")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(50)
@@ -189,10 +183,6 @@ namespace CRMS_Peguit.infrastructure.Migrations.Tenant
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("Suffix")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
 
                     b.Property<int>("TenantId")
                         .HasColumnType("int");
@@ -205,12 +195,6 @@ namespace CRMS_Peguit.infrastructure.Migrations.Tenant
                     b.HasKey("CustomerId");
 
                     b.HasIndex("AssignedAgentId");
-
-                    b.HasIndex("IsDeleted");
-
-                    b.HasIndex("TenantId");
-
-                    b.HasIndex("TenantId", "LastName", "FirstName");
 
                     b.ToTable("Customers");
                 });
@@ -280,29 +264,14 @@ namespace CRMS_Peguit.infrastructure.Migrations.Tenant
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("datetime2");
-
                     b.Property<string>("Email")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
-                    b.Property<string>("FirstName")
+                    b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("LastName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("MiddleName")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(50)
@@ -317,10 +286,6 @@ namespace CRMS_Peguit.infrastructure.Migrations.Tenant
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<string>("Suffix")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
                     b.Property<int>("TenantId")
                         .HasColumnType("int");
 
@@ -331,12 +296,6 @@ namespace CRMS_Peguit.infrastructure.Migrations.Tenant
                     b.HasIndex("ConvertedCustomerId")
                         .IsUnique()
                         .HasFilter("[ConvertedCustomerId] IS NOT NULL");
-
-                    b.HasIndex("IsDeleted");
-
-                    b.HasIndex("TenantId");
-
-                    b.HasIndex("TenantId", "LastName", "FirstName");
 
                     b.ToTable("Leads");
                 });

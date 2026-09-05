@@ -372,36 +372,64 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-# Database context files (if they contain OnConfiguring with connection strings)
-**/*DbContext.cs
-**/*DbContextFactory.cs
-**/*MasterDbContext.cs
-**/*RealEstateDbContext.cs
+# ============================================
+# SECRETS & HARDCODED CONNECTION STRINGS
+# ============================================
 
-# Connection strings and sensitive configuration
-**/appsettings.Production.json
-**/appsettings.Staging.json
-**/web.Production.config
-**/web.Staging.config
-**/web.Debug.config
-**/web.Release.config
+# App settings with connection strings
+**/appsettings.json
+**/appsettings.*.json
+**/*.settings.json
+
+# Source files with hardcoded DB connections
+**/Program.cs
+**/ConnectionTester.cs
+**/*ConnectionTester.cs
+
+# Any file with "connection" or "secret" in the name
+**/*connection*.cs
+**/*secret*.cs
+**/*Connection*.cs
+**/*Secret*.cs
+
+# Configuration files with connection strings
+**/web.config
+**/app.config
 **/connectionstrings.config
 **/connections.config
-**/*.connectionstrings.config
-**/*.dbconnection.config
-**/secrets.*.json
-**/*.user.json
-**/*.private.json
-**/*.secret.*
-**/*.key.json
-**/*.edmx
-**/*.edmx.diagram
-**/*.edmx.sql
-**/*.sqlconnection.config
-**/*.mysqlconnection.config
-**/*.postgresqlconnection.config
-**/*.oracleconnection.config
-**/Web.Debug.config
-**/Web.Release.config
-**/Web.Staging.config
-**/Web.Production.config
+**/*.config
+
+# Environment variable files
+.env
+*.env
+.env.*
+!.env.example
+
+# User secrets
+**/secrets.json
+**/*.secrets.json
+
+# Backup files with sensitive data
+**/*.backup
+**/*.bak
+**/*.old
+
+# Connection string test files
+**/test-connection.*
+**/connection-test.*
+
+# ============================================
+# BUILD & TEMP FILES (Reinforced)
+# ============================================
+
+# Build output
+**/bin/
+**/obj/
+**/out/
+**/build/
+
+# Temp files
+*.tmp
+*.temp
+*.log
+*.cache

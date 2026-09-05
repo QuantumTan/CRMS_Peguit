@@ -1,31 +1,44 @@
 using Microsoft.EntityFrameworkCore;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.domain.entities;
+using CRMS_Peguit.api;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<MasterCrmsDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("MasterCrms")));
+var masterConnection =
+    Environment.GetEnvironmentVariable("CRMS_CONNECTION")
+    ?? builder.Configuration.GetConnectionString("MasterCrms");
 
-// Add services to the container.
+builder.Services.AddDbContext<MasterCrmsDbContext>(options =>
+    options.UseSqlServer(masterConnection));
+
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ITenantResolver, HttpTenantResolver>();
+
+builder.Services.AddScoped<RealEstateDbContext>(serviceProvider =>
+{
+    var tenantResolver = serviceProvider.GetRequiredService<ITenantResolver>();
+    var tenantId = tenantResolver.GetTenantId();
+
+    var options = new DbContextOptionsBuilder<RealEstateDbContext>()
+        .UseSqlServer(masterConnection)
+        .Options;
+
+    return new RealEstateDbContext(options, tenantId);
+});
 
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
 app.UseHttpsRedirection();
-
 app.UseAuthorization();
-
 app.MapControllers();
 
 app.MapPost("/companies", async (Company company, MasterCrmsDbContext db) =>

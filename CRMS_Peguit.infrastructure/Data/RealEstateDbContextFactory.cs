@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
 namespace CRMS_Peguit.infrastructure.data
@@ -14,9 +10,12 @@ namespace CRMS_Peguit.infrastructure.data
         {
             var optionsBuilder = new DbContextOptionsBuilder<RealEstateDbContext>();
 
-            optionsBuilder.UseSqlServer(
-                "Server=db66713.public.databaseasp.net; Database=db66713; User Id=db66713; Password=2Ni%Sz_9?J8m; Encrypt=True; TrustServerCertificate=True; MultipleActiveResultSets=True;"
-            );
+            var connectionString =
+                Environment.GetEnvironmentVariable("CRMS_CONNECTION")
+                ?? throw new InvalidOperationException(
+                    "CRMS_CONNECTION environment variable is not set.");
+
+            optionsBuilder.UseSqlServer(connectionString);
 
             return new RealEstateDbContext(optionsBuilder.Options);
         }

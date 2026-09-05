@@ -2,14 +2,13 @@
 using CRMS_Peguit.domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace CRMS_Peguit.infrastructure.data
 {
     public class RealEstateDbContext : DbContext
     {
-    private readonly int _tenantId;
+        private readonly int _tenantId;
+
         public DbSet<Role> Roles => Set<Role>();
         public DbSet<User> Users => Set<User>();
         public DbSet<LoginSession> LoginSessions => Set<LoginSession>();
@@ -27,7 +26,7 @@ namespace CRMS_Peguit.infrastructure.data
 
         public RealEstateDbContext(
             DbContextOptions<RealEstateDbContext> options,
-            int tenantId = 0 // added
+            int tenantId = 0
         ) : base(options)
         {
             _tenantId = tenantId;
@@ -40,33 +39,17 @@ namespace CRMS_Peguit.infrastructure.data
             builder.Entity<Role>(entity =>
             {
                 entity.HasKey(x => x.RoleId);
-
-                entity.Property(x => x.RoleName)
-                    .HasMaxLength(100)
-                    .IsRequired();
+                entity.Property(x => x.RoleName).HasMaxLength(100).IsRequired();
             });
 
             builder.Entity<User>(entity =>
             {
                 entity.HasKey(x => x.UserId);
-
-                entity.Property(x => x.FullName)
-                    .HasMaxLength(200)
-                    .IsRequired();
-
-                entity.Property(x => x.Email)
-                    .HasMaxLength(200)
-                    .IsRequired();
-
-                entity.HasIndex(x => x.Email)
-                    .IsUnique();
-
-                entity.Property(x => x.PasswordHash)
-                    .HasMaxLength(500)
-                    .IsRequired();
-
-                entity.Property(x => x.Status)
-                    .HasMaxLength(50);
+                entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
+                entity.Property(x => x.Email).HasMaxLength(200).IsRequired();
+                entity.HasIndex(x => x.Email).IsUnique();
+                entity.Property(x => x.PasswordHash).HasMaxLength(500).IsRequired();
+                entity.Property(x => x.Status).HasMaxLength(50);
 
                 entity.HasOne<Role>()
                     .WithMany()
@@ -77,9 +60,7 @@ namespace CRMS_Peguit.infrastructure.data
             builder.Entity<LoginSession>(entity =>
             {
                 entity.HasKey(x => x.SessionId);
-
-                entity.Property(x => x.IpAddress)
-                    .HasMaxLength(50);
+                entity.Property(x => x.IpAddress).HasMaxLength(50);
 
                 entity.HasOne<User>()
                     .WithMany()
@@ -91,21 +72,21 @@ namespace CRMS_Peguit.infrastructure.data
             {
                 entity.HasKey(x => x.CustomerId);
 
-                entity.Property(x => x.Name)
-                    .HasMaxLength(200)
-                    .IsRequired();
+                entity.Property(x => x.FirstName).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.MiddleName).HasMaxLength(100);
+                entity.Property(x => x.LastName).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.Suffix).HasMaxLength(20);
 
-                entity.Property(x => x.Phone)
-                    .HasMaxLength(50);
+                entity.Property(x => x.Phone).HasMaxLength(50);
+                entity.Property(x => x.Email).HasMaxLength(255);
+                entity.Property(x => x.Type).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
 
-                entity.Property(x => x.Email)
-                    .HasMaxLength(200);
+                entity.Ignore(x => x.FullName);
 
-                entity.Property(x => x.Type)
-                    .HasMaxLength(50);
-
-                entity.Property(x => x.Status)
-                    .HasMaxLength(50);
+                entity.HasIndex(x => x.TenantId);
+                entity.HasIndex(x => x.IsDeleted);
+                entity.HasIndex(x => new { x.TenantId, x.LastName, x.FirstName });
 
                 entity.HasOne<User>()
                     .WithMany()
@@ -116,15 +97,9 @@ namespace CRMS_Peguit.infrastructure.data
             builder.Entity<BuyerProfile>(entity =>
             {
                 entity.HasKey(x => x.CustomerId);
-
-                entity.Property(x => x.Budget)
-                    .HasColumnType("decimal(18,2)");
-
-                entity.Property(x => x.PreferredLocation)
-                    .HasMaxLength(200);
-
-                entity.Property(x => x.PreferredPropertyType)
-                    .HasMaxLength(100);
+                entity.Property(x => x.Budget).HasColumnType("decimal(18,2)");
+                entity.Property(x => x.PreferredLocation).HasMaxLength(200);
+                entity.Property(x => x.PreferredPropertyType).HasMaxLength(100);
 
                 entity.HasOne<Customer>()
                     .WithOne()
@@ -135,19 +110,10 @@ namespace CRMS_Peguit.infrastructure.data
             builder.Entity<Property>(entity =>
             {
                 entity.HasKey(x => x.PropertyId);
-
-                entity.Property(x => x.Address)
-                    .HasMaxLength(500)
-                    .IsRequired();
-
-                entity.Property(x => x.PropertyType)
-                    .HasMaxLength(100);
-
-                entity.Property(x => x.Price)
-                    .HasColumnType("decimal(18,2)");
-
-                entity.Property(x => x.Status)
-                    .HasMaxLength(50);
+                entity.Property(x => x.Address).HasMaxLength(500).IsRequired();
+                entity.Property(x => x.PropertyType).HasMaxLength(100);
+                entity.Property(x => x.Price).HasColumnType("decimal(18,2)");
+                entity.Property(x => x.Status).HasMaxLength(50);
 
                 entity.HasOne<Customer>()
                     .WithMany()
@@ -164,21 +130,21 @@ namespace CRMS_Peguit.infrastructure.data
             {
                 entity.HasKey(x => x.LeadId);
 
-                entity.Property(x => x.Name)
-                    .HasMaxLength(200)
-                    .IsRequired();
+                entity.Property(x => x.FirstName).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.MiddleName).HasMaxLength(100);
+                entity.Property(x => x.LastName).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.Suffix).HasMaxLength(20);
 
-                entity.Property(x => x.Phone)
-                    .HasMaxLength(50);
+                entity.Property(x => x.Phone).HasMaxLength(50);
+                entity.Property(x => x.Email).HasMaxLength(255);
+                entity.Property(x => x.Source).HasMaxLength(100);
+                entity.Property(x => x.Stage).HasMaxLength(50).IsRequired();
 
-                entity.Property(x => x.Email)
-                    .HasMaxLength(200);
+                entity.Ignore(x => x.FullName);
 
-                entity.Property(x => x.Source)
-                    .HasMaxLength(100);
-
-                entity.Property(x => x.Stage)
-                    .HasMaxLength(50);
+                entity.HasIndex(x => x.TenantId);
+                entity.HasIndex(x => x.IsDeleted);
+                entity.HasIndex(x => new { x.TenantId, x.LastName, x.FirstName });
 
                 entity.HasOne<User>()
                     .WithMany()
@@ -194,15 +160,9 @@ namespace CRMS_Peguit.infrastructure.data
             builder.Entity<Deal>(entity =>
             {
                 entity.HasKey(x => x.DealId);
-
-                entity.Property(x => x.Value)
-                    .HasColumnType("decimal(18,2)");
-
-                entity.Property(x => x.CommissionRate)
-                    .HasColumnType("decimal(5,2)");
-
-                entity.Property(x => x.Stage)
-                    .HasMaxLength(50);
+                entity.Property(x => x.Value).HasColumnType("decimal(18,2)");
+                entity.Property(x => x.CommissionRate).HasColumnType("decimal(5,2)");
+                entity.Property(x => x.Stage).HasMaxLength(50);
 
                 entity.HasOne<Customer>()
                     .WithMany()
@@ -223,12 +183,8 @@ namespace CRMS_Peguit.infrastructure.data
             builder.Entity<Activity>(entity =>
             {
                 entity.HasKey(x => x.ActivityId);
-
-                entity.Property(x => x.Type)
-                    .HasMaxLength(100);
-
-                entity.Property(x => x.Notes)
-                    .HasMaxLength(2000);
+                entity.Property(x => x.Type).HasMaxLength(100);
+                entity.Property(x => x.Notes).HasMaxLength(2000);
 
                 entity.HasOne<Lead>()
                     .WithMany()
@@ -249,9 +205,7 @@ namespace CRMS_Peguit.infrastructure.data
             builder.Entity<PropertyShowingDetail>(entity =>
             {
                 entity.HasKey(x => x.ShowingDetailId);
-
-                entity.Property(x => x.FeedbackNotes)
-                    .HasMaxLength(2000);
+                entity.Property(x => x.FeedbackNotes).HasMaxLength(2000);
 
                 entity.HasOne<Activity>()
                     .WithOne()
@@ -267,15 +221,9 @@ namespace CRMS_Peguit.infrastructure.data
             builder.Entity<SupportTicket>(entity =>
             {
                 entity.HasKey(x => x.TicketId);
-
-                entity.Property(x => x.Description)
-                    .HasMaxLength(2000);
-
-                entity.Property(x => x.Priority)
-                    .HasMaxLength(20);
-
-                entity.Property(x => x.Status)
-                    .HasMaxLength(50);
+                entity.Property(x => x.Description).HasMaxLength(2000);
+                entity.Property(x => x.Priority).HasMaxLength(20);
+                entity.Property(x => x.Status).HasMaxLength(50);
 
                 entity.HasOne<Customer>()
                     .WithMany()
@@ -296,31 +244,17 @@ namespace CRMS_Peguit.infrastructure.data
             builder.Entity<Subscription>(entity =>
             {
                 entity.HasKey(x => x.SubscriptionId);
-
-                entity.Property(x => x.PlanName)
-                    .HasMaxLength(100)
-                    .IsRequired();
-
-                entity.Property(x => x.BillingAmount)
-                    .HasColumnType("decimal(18,2)");
-
-                entity.Property(x => x.Status)
-                    .HasMaxLength(50);
+                entity.Property(x => x.PlanName).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.BillingAmount).HasColumnType("decimal(18,2)");
+                entity.Property(x => x.Status).HasMaxLength(50);
             });
 
             builder.Entity<SystemSetting>(entity =>
             {
                 entity.HasKey(x => x.SettingId);
-
-                entity.Property(x => x.SettingKey)
-                    .HasMaxLength(200)
-                    .IsRequired();
-
-                entity.Property(x => x.SettingValue)
-                    .HasMaxLength(2000);
-
-                entity.HasIndex(x => x.SettingKey)
-                    .IsUnique();
+                entity.Property(x => x.SettingKey).HasMaxLength(200).IsRequired();
+                entity.Property(x => x.SettingValue).HasMaxLength(2000);
+                entity.HasIndex(x => x.SettingKey).IsUnique();
 
                 entity.HasOne<User>()
                     .WithMany()
@@ -331,25 +265,23 @@ namespace CRMS_Peguit.infrastructure.data
             builder.Entity<BackupLog>(entity =>
             {
                 entity.HasKey(x => x.BackupId);
-
-                entity.Property(x => x.Status)
-                    .HasMaxLength(50);
-
-                entity.Property(x => x.FileLocation)
-                    .HasMaxLength(500);
+                entity.Property(x => x.Status).HasMaxLength(50);
+                entity.Property(x => x.FileLocation).HasMaxLength(500);
 
                 entity.HasOne<User>()
                     .WithMany()
                     .HasForeignKey(x => x.PerformedByUserId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
+
+            // --- Global query filters ---
             builder.Entity<Role>().HasQueryFilter(x => x.TenantId == _tenantId);
             builder.Entity<User>().HasQueryFilter(x => x.TenantId == _tenantId);
             builder.Entity<LoginSession>().HasQueryFilter(x => x.TenantId == _tenantId);
-            builder.Entity<Customer>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<Customer>().HasQueryFilter(x => x.TenantId == _tenantId && !x.IsDeleted);
             builder.Entity<BuyerProfile>().HasQueryFilter(x => x.TenantId == _tenantId);
             builder.Entity<Property>().HasQueryFilter(x => x.TenantId == _tenantId);
-            builder.Entity<Lead>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<Lead>().HasQueryFilter(x => x.TenantId == _tenantId && !x.IsDeleted);
             builder.Entity<Deal>().HasQueryFilter(x => x.TenantId == _tenantId);
             builder.Entity<Activity>().HasQueryFilter(x => x.TenantId == _tenantId);
             builder.Entity<PropertyShowingDetail>().HasQueryFilter(x => x.TenantId == _tenantId);

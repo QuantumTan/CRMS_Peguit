@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace CRMS_Peguit.domain.Entities
+namespace CRMS_Peguit.domain.entities
 {
     public class Device
     {

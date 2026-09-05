@@ -1,4 +1,4 @@
-﻿using CRMS_Peguit.domain.Entities;
+﻿using CRMS_Peguit.domain.entities;
 using System;
 using System.Collections.Generic;
 using System.Text;
