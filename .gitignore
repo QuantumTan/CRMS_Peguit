@@ -371,3 +371,37 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Database context files (if they contain OnConfiguring with connection strings)
+**/*DbContext.cs
+**/*DbContextFactory.cs
+**/*MasterDbContext.cs
+**/*RealEstateDbContext.cs
+
+# Connection strings and sensitive configuration
+**/appsettings.Production.json
+**/appsettings.Staging.json
+**/web.Production.config
+**/web.Staging.config
+**/web.Debug.config
+**/web.Release.config
+**/connectionstrings.config
+**/connections.config
+**/*.connectionstrings.config
+**/*.dbconnection.config
+**/secrets.*.json
+**/*.user.json
+**/*.private.json
+**/*.secret.*
+**/*.key.json
+**/*.edmx
+**/*.edmx.diagram
+**/*.edmx.sql
+**/*.sqlconnection.config
+**/*.mysqlconnection.config
+**/*.postgresqlconnection.config
+**/*.oracleconnection.config
+**/Web.Debug.config
+**/Web.Release.config
+**/Web.Staging.config
+**/Web.Production.config
