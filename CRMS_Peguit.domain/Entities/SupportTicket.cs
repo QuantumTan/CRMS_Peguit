@@ -7,6 +7,8 @@ namespace CRMS_Peguit.domain.entities
     public class SupportTicket
     {
         public int TicketId { get; set; }
+
+        public int TenantId { get; set; }
         public int CustomerId { get; set; }
         public int RaisedByUserId { get; set; }
         public int? AssignedToUserId { get; set; }

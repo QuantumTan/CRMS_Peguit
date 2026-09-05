@@ -9,6 +9,7 @@ namespace CRMS_Peguit.infrastructure.data
 {
     public class RealEstateDbContext : DbContext
     {
+    private readonly int _tenantId;
         public DbSet<Role> Roles => Set<Role>();
         public DbSet<User> Users => Set<User>();
         public DbSet<LoginSession> LoginSessions => Set<LoginSession>();
@@ -25,9 +26,11 @@ namespace CRMS_Peguit.infrastructure.data
         public DbSet<BackupLog> BackupLogs => Set<BackupLog>();
 
         public RealEstateDbContext(
-            DbContextOptions<RealEstateDbContext> options
+            DbContextOptions<RealEstateDbContext> options,
+            int tenantId = 0 // added
         ) : base(options)
         {
+            _tenantId = tenantId;
         }
 
         protected override void OnModelCreating(ModelBuilder builder)
@@ -340,6 +343,20 @@ namespace CRMS_Peguit.infrastructure.data
                     .HasForeignKey(x => x.PerformedByUserId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
+            builder.Entity<Role>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<User>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<LoginSession>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<Customer>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<BuyerProfile>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<Property>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<Lead>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<Deal>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<Activity>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<PropertyShowingDetail>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<SupportTicket>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<Subscription>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<SystemSetting>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<BackupLog>().HasQueryFilter(x => x.TenantId == _tenantId);
         }
     }
 }

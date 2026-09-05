@@ -7,6 +7,8 @@ namespace CRMS_Peguit.domain.entities
     public class Activity
     {
         public int ActivityId { get; set; }
+
+        public int TenantId { get; set; }
         public string Type { get; set; } = string.Empty;
         public int? RelatedLeadId { get; set; }
         public int? RelatedCustomerId { get; set; }
