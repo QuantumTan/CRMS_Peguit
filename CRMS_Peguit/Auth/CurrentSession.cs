@@ -52,7 +52,6 @@ namespace CRMS_Peguit.winforms.Auth
 
             IsOffline = isOffline;
 
-            // Normalize role name.
             var role = roleName
                 .Trim()
                 .ToLowerInvariant();

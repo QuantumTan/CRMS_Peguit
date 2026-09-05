@@ -16,6 +16,7 @@ namespace CRMS_Peguit.winforms
 
             ApplyRolePermissions();
 
+            // Always start with a fresh Dashboard.
             ShowView(new DashboardView());
         }
 
@@ -34,7 +35,7 @@ namespace CRMS_Peguit.winforms
                     MessageBoxIcon.Error
                 );
 
-                Application.Exit();
+                Close();
 
                 return;
             }
@@ -70,6 +71,12 @@ namespace CRMS_Peguit.winforms
 
         private void ShowView(UserControl view)
         {
+            // Dispose the old view before replacing it.
+            foreach (Control control in mainPanel.Controls)
+            {
+                control.Dispose();
+            }
+
             mainPanel.Controls.Clear();
 
             view.Dock = DockStyle.Fill;
@@ -159,46 +166,17 @@ namespace CRMS_Peguit.winforms
                 MessageBoxIcon.Question
             );
 
-            // User selected No.
             if (result != DialogResult.Yes)
             {
                 return;
             }
 
-            // ---------------------------------------------
-            // Clear current session
-            // ---------------------------------------------
-
+            // Clear the current authentication session.
             CurrentSession.SignOut();
 
-            // ---------------------------------------------
-            // Hide CRM window
-            // ---------------------------------------------
-
-            Hide();
-
-            // ---------------------------------------------
-            // Show login screen
-            // ---------------------------------------------
-
-            using var loginForm = new LoginForm();
-
-            loginForm.ShowDialog();
-
-            // ---------------------------------------------
-            // Check result of login
-            // ---------------------------------------------
-
-            if (CurrentSession.CurrentUser != null)
-            {
-                // Login successful.
-                Show();
-            }
-            else
-            {
-                // Login form was closed without logging in.
-                Close();
-            }
+            // Completely destroy this Form1.
+            // LoginForm will create a new Form1 after login.
+            Close();
         }
     }
 }

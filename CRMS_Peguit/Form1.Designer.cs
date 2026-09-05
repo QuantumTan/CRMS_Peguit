@@ -92,16 +92,25 @@ namespace CRMS_Peguit.winforms
             btnLogout = new Button
             {
                 Text = "  Logout",
+
                 FlatStyle = FlatStyle.Flat,
+
                 BackColor = Theme.Surface,
+
                 ForeColor = Theme.TextPrimary,
+
                 Font = new Font(
                     "Segoe UI",
                     10.5f
                 ),
+
                 Dock = DockStyle.Bottom,
+
                 Height = 50,
-                TextAlign = ContentAlignment.MiddleLeft,
+
+                TextAlign =
+                    ContentAlignment.MiddleLeft,
+
                 Cursor = Cursors.Hand
             };
 
@@ -112,9 +121,13 @@ namespace CRMS_Peguit.winforms
             // ==========================================
 
             btnDashboard.Click += BtnDashboardClick;
+
             btnCustomers.Click += BtnCustomersClick;
+
             btnLeads.Click += BtnLeadsClick;
+
             btnProperties.Click += BtnPropertiesClick;
+
             btnDeals.Click += BtnDealsClick;
 
             btnLogout.Click += BtnLogoutClick;
@@ -126,12 +139,16 @@ namespace CRMS_Peguit.winforms
             sidebarPanel.Controls.Add(lblLogo);
 
             sidebarPanel.Controls.Add(btnDashboard);
+
             sidebarPanel.Controls.Add(btnCustomers);
+
             sidebarPanel.Controls.Add(btnLeads);
+
             sidebarPanel.Controls.Add(btnProperties);
+
             sidebarPanel.Controls.Add(btnDeals);
 
-            // Logout is added last and docked to bottom.
+            // Logout remains at the bottom.
             sidebarPanel.Controls.Add(btnLogout);
 
             // ==========================================
@@ -144,6 +161,7 @@ namespace CRMS_Peguit.winforms
             );
 
             Controls.Add(mainPanel);
+
             Controls.Add(sidebarPanel);
 
             Text = "CRMS";
