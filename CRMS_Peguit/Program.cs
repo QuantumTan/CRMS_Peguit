@@ -11,22 +11,49 @@ namespace CRMS_Peguit.winforms
         {
             ApplicationConfiguration.Initialize();
 
+            // ==================================================
+            // LOCAL DATABASE
+            // ==================================================
+
             var localConnection =
-                "Server=localhost\\SQLEXPRESS;Database=CRMS_Local;Trusted_Connection=True;TrustServerCertificate=True;";
+                "Server=localhost\\SQLEXPRESS;" +
+                "Database=CRMS_Local;" +
+                "Trusted_Connection=True;" +
+                "TrustServerCertificate=True;";
+
+            // ==================================================
+            // CLOUD DATABASE
+            // ==================================================
+            //
+            // Keep your actual connection string here for now.
+            // Do NOT commit database credentials to Git.
+            //
 
             var cloudConnection =
-                "Server=db66713.public.databaseasp.net; Database=db66713; User Id=db66713; Password=2Ni%Sz_9?J8m; Encrypt=True; TrustServerCertificate=True; MultipleActiveResultSets=True;";
+                "YOUR_CLOUD_CONNECTION_STRING";
 
-            // Test connections and show diagnostic info
-            string testResult = ConnectionTester.Test();
-            MessageBox.Show(testResult, "DATABASE CONNECTION TEST", MessageBoxButtons.OK, 
-                testResult.Contains("✗") ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+            // ==================================================
+            // START SYNC SERVICE
+            // ==================================================
 
-            // Initialize and start sync service (won't block app if cloud fails)
-            _syncService = new SyncService(localConnection, cloudConnection);
+            _syncService = new SyncService(
+                localConnection,
+                cloudConnection
+            );
+
             _syncService.Start(30);
 
-            Application.Run(new Form1());
+            // ==================================================
+            // START LOGIN FORM
+            // ==================================================
+
+            using var loginForm = new LoginForm();
+
+            Application.Run(loginForm);
+
+            // ==================================================
+            // CLEAN UP
+            // ==================================================
 
             _syncService?.Dispose();
         }

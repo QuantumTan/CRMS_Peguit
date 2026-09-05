@@ -1,7 +1,5 @@
 ﻿using NEXA.Model;
-using System;
 using System.Collections.Generic;
-using System.Text;
 
 namespace CRMS_Peguit.Models.Backend
 {
@@ -9,8 +7,13 @@ namespace CRMS_Peguit.Models.Backend
 
     public class SalesStaff : User
     {
-        public SalesStaff(string fullName, string email)
-            : base(fullName, email, UserRole.SalesStaff)
+        public SalesStaff(
+            string fullName,
+            string email)
+            : base(
+                fullName,
+                email,
+                UserRole.SalesStaff)
         {
         }
 
@@ -18,7 +21,12 @@ namespace CRMS_Peguit.Models.Backend
         {
             return new List<string>
             {
-                "Customers", "Leads", "Deals", "Activities", "TasksReminders"
+                "Customers",
+                "Leads",
+                "Properties",
+                "Deals",
+                "Activities",
+                "TasksReminders"
             };
         }
 
