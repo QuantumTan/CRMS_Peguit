@@ -14,21 +14,29 @@ namespace CRMS_Peguit.winforms.Views.Customers
         private Button? _btnExport;
         private Label _lblEmptyState = null!;
         private PaginationControl _pagination = null!;
-        private List<Customer> _allCustomers = new();
-        private List<Customer> _filteredCustomers = new();
+        private List<Customer> _currentPageCustomers = new();
         private Dictionary<int, string> _agentDict = new();
+        private readonly System.Windows.Forms.Timer _searchDebounceTimer;
+        private bool _isLoading = false;
 
         public CustomersView()
         {
             InitializeComponent();
             _controller = new CustomerController();
 
+            _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
+            _searchDebounceTimer.Tick += async (_, _) =>
+            {
+                _searchDebounceTimer.Stop();
+                await RefreshGridAsync(resetPage: true);
+            };
+
             InitPagination();
             InitEmptyState();
             ApplyStyling();
             BindEvents();
             UpdateFilterPillStyles();
-            RefreshGrid();
+            _ = RefreshGridAsync(resetPage: true);
 
             this.Load += (_, _) => LayoutToolbar();
             this.Resize += (_, _) => LayoutToolbar();
@@ -38,8 +46,8 @@ namespace CRMS_Peguit.winforms.Views.Customers
         {
             _pagination = new PaginationControl();
             _pagination.SetItemLabel("customers");
-            _pagination.PageChanged += (_, _) => BindCurrentPage();
-            _pagination.PageSizeChanged += (_, _) => BindCurrentPage();
+            _pagination.PageChanged += async (_, _) => await RefreshGridAsync(resetPage: false);
+            _pagination.PageSizeChanged += async (_, _) => await RefreshGridAsync(resetPage: true);
             pnlCard.Controls.Add(_pagination);
             _pagination.BringToFront();
         }
@@ -73,7 +81,11 @@ namespace CRMS_Peguit.winforms.Views.Customers
         {
             btnAdd.Visible = RbacService.CanCreateSalesRecord;
             btnAdd.Click += BtnAddClick;
-            txtSearch.TextChanged += (_, _) => RefreshGrid(reloadFromDb: false);
+            txtSearch.TextChanged += (_, _) =>
+            {
+                _searchDebounceTimer.Stop();
+                _searchDebounceTimer.Start();
+            };
 
             if (RbacService.CanExportData)
             {
@@ -113,7 +125,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
             };
         }
 
-        private void SetFilter(string filter)
+        private async void SetFilter(string filter)
         {
             if (string.Equals(_filterStatus, filter, StringComparison.OrdinalIgnoreCase) && !string.Equals(filter, "All", StringComparison.OrdinalIgnoreCase))
             {
@@ -124,7 +136,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
                 _filterStatus = filter;
             }
             UpdateFilterPillStyles();
-            RefreshGrid(reloadFromDb: false);
+            await RefreshGridAsync(resetPage: true);
         }
 
         private void UpdateFilterPillStyles()
@@ -144,50 +156,39 @@ namespace CRMS_Peguit.winforms.Views.Customers
             }
         }
 
-        private void RefreshGrid(bool reloadFromDb = true)
+        public void RefreshGrid(bool reloadFromDb = true)
         {
-            if (reloadFromDb || _allCustomers.Count == 0)
-            {
-                _allCustomers = _controller.GetAll().ToList();
-                _agentDict = _controller.GetAgentDictionary();
-            }
+            _ = RefreshGridAsync(resetPage: false);
+        }
 
-            int total = _allCustomers.Count;
-            int active = _allCustomers.Count(c => string.Equals(c.Status, "active", StringComparison.OrdinalIgnoreCase));
-            lblSubtitle.Text = $"{total} total · {active} active";
+        public async Task RefreshGridAsync(bool resetPage = false)
+        {
+            if (_isLoading) return;
+            _isLoading = true;
 
-            IEnumerable<Customer> query = _allCustomers;
+            try
+            {
+                int page = resetPage ? 1 : _pagination.CurrentPage;
+                int pageSize = _pagination.PageSize;
 
-            if (string.Equals(_filterStatus, "Active", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(c => string.Equals(c.Status, "active", StringComparison.OrdinalIgnoreCase));
-            }
-            else if (string.Equals(_filterStatus, "Inactive", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(c => string.Equals(c.Status, "inactive", StringComparison.OrdinalIgnoreCase));
-            }
-            else if (string.Equals(_filterStatus, "Follow Up", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(c => string.Equals(c.Status, "prospect", StringComparison.OrdinalIgnoreCase) ||
-                                         string.Equals(c.AssignmentStatus, "pending", StringComparison.OrdinalIgnoreCase));
-            }
+                var pagedResult = await _controller.GetPagedAsync(page, pageSize, txtSearch.Text, _filterStatus);
+                _currentPageCustomers = pagedResult.Items;
 
-            string search = txtSearch.Text.Trim();
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                query = query.Where(c =>
-                    ContainsText(c.FirstName, search) ||
-                    ContainsText(c.MiddleName, search) ||
-                    ContainsText(c.LastName, search) ||
-                    ContainsText(c.Suffix, search) ||
-                    ContainsText(c.FullName, search) ||
-                    ContainsText(c.Email, search) ||
-                    ContainsText(c.Phone, search));
-            }
+                var kpis = await _controller.GetKpiCountsAsync();
+                lblSubtitle.Text = $"{kpis.Total:N0} total · {kpis.Active:N0} active";
 
-            _filteredCustomers = query.ToList();
-            _pagination.UpdatePagination(_filteredCustomers.Count, 1, _pagination.PageSize);
-            BindCurrentPage();
+                if (_agentDict.Count == 0)
+                {
+                    _agentDict = _controller.GetAgentDictionary();
+                }
+
+                _pagination.UpdatePagination(pagedResult.TotalCount, pagedResult.PageNumber, pagedResult.PageSize);
+                BindCurrentPage();
+            }
+            finally
+            {
+                _isLoading = false;
+            }
         }
 
         private void BindCurrentPage()
@@ -195,9 +196,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
             grid.Columns.Clear();
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
 
-            var pageItems = _filteredCustomers
-                .Skip((_pagination.CurrentPage - 1) * _pagination.PageSize)
-                .Take(_pagination.PageSize)
+            var pageItems = _currentPageCustomers
                 .Select(c => new
                 {
                     c.CustomerId,
@@ -266,7 +265,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
             UiGridHelper.AddActionsColumn(grid, 64);
             UiGridHelper.EnforceTableStandards(grid);
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-            _lblEmptyState.Visible = (_filteredCustomers.Count == 0);
+            _lblEmptyState.Visible = (_currentPageCustomers.Count == 0);
         }
 
         private void Grid_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
@@ -410,9 +409,10 @@ namespace CRMS_Peguit.winforms.Views.Customers
 
         private Customer? GetCustomerAtRow(int rowIndex)
         {
+            if (rowIndex < 0 || rowIndex >= grid.Rows.Count) return null;
             if (grid.Rows[rowIndex].Cells["CustomerId"].Value is int id)
             {
-                return _controller.GetAll().FirstOrDefault(c => c.CustomerId == id) ?? _controller.GetById(id);
+                return _currentPageCustomers.FirstOrDefault(c => c.CustomerId == id) ?? _controller.GetById(id);
             }
             return null;
         }

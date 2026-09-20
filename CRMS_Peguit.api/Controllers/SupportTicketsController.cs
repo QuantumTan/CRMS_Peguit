@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 
+using CRMS_Peguit.domain.Common;
+
 namespace CRMS_Peguit.api.Controllers
 {
     [ApiController]
@@ -17,9 +19,57 @@ namespace CRMS_Peguit.api.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll(
+            [FromQuery] int? page = null,
+            [FromQuery] int? pageSize = null,
+            [FromQuery] string? search = null,
+            [FromQuery] string? status = null)
         {
-            var items = await _db.SupportTickets.ToListAsync();
+            var query = _db.SupportTickets
+                .Include(t => t.Customer).ThenInclude(c => c!.Person)
+                .Include(t => t.AssignedToUser).ThenInclude(u => u!.Person)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
+            {
+                if (status.Equals("Overdue", StringComparison.OrdinalIgnoreCase))
+                {
+                    var now = DateTime.UtcNow;
+                    query = query.Where(t => t.Status != "Resolved" && t.DueDate.HasValue && t.DueDate.Value < now);
+                }
+                else
+                {
+                    query = query.Where(t => t.Status == status);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                string s = search.Trim();
+                query = query.Where(t =>
+                    t.TicketNumber.Contains(s) ||
+                    t.Category.Contains(s) ||
+                    t.Description.Contains(s) ||
+                    (t.Customer != null && (t.Customer.Person.FirstName.Contains(s) || t.Customer.Person.LastName.Contains(s) || (t.Customer.Person.Email != null && t.Customer.Person.Email.Contains(s)))));
+            }
+
+            if (page.HasValue || pageSize.HasValue)
+            {
+                int pageNum = page.GetValueOrDefault(1);
+                int size = pageSize.GetValueOrDefault(25);
+                if (pageNum < 1) pageNum = 1;
+                if (size < 1) size = 25;
+
+                int totalCount = await query.CountAsync();
+                var pagedList = await query.OrderByDescending(t => t.CreatedAt)
+                    .Skip((pageNum - 1) * size)
+                    .Take(size)
+                    .ToListAsync();
+
+                return Ok(new PagedResult<SupportTicket>(pagedList, totalCount, pageNum, size));
+            }
+
+            var items = await query.ToListAsync();
             return Ok(items);
         }
 

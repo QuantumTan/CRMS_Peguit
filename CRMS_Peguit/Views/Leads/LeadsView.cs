@@ -21,19 +21,27 @@ namespace CRMS_Peguit.winforms.Views.Leads
         private bool _isSkeletonLoading = false;
         private System.Windows.Forms.Timer? _skeletonTimer;
         private PaginationControl _pagination = null!;
-        private List<Lead> _allLeads = new();
-        private List<Lead> _filteredLeads = new();
+        private List<Lead> _currentPageLeads = new();
+        private readonly System.Windows.Forms.Timer _searchDebounceTimer;
+        private bool _isLoading = false;
 
         public LeadsView()
         {
             InitializeComponent();
             _controller = new LeadController();
 
+            _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
+            _searchDebounceTimer.Tick += async (_, _) =>
+            {
+                _searchDebounceTimer.Stop();
+                await RefreshGridAsync(resetPage: true, animate: false);
+            };
+
             InitPagination();
             InitEmptyState();
             ApplyStyling();
             BindEvents();
-            RefreshGrid(reloadFromDb: true, animate: false);
+            _ = RefreshGridAsync(resetPage: true, animate: false);
 
             this.Load += (_, _) => LayoutToolbar();
             this.Resize += (_, _) => LayoutToolbar();
@@ -43,8 +51,8 @@ namespace CRMS_Peguit.winforms.Views.Leads
         {
             _pagination = new PaginationControl();
             _pagination.SetItemLabel("leads");
-            _pagination.PageChanged += (_, _) => BindCurrentPage();
-            _pagination.PageSizeChanged += (_, _) => BindCurrentPage();
+            _pagination.PageChanged += async (_, _) => await RefreshGridAsync(resetPage: false, animate: true);
+            _pagination.PageSizeChanged += async (_, _) => await RefreshGridAsync(resetPage: true, animate: false);
             pnlCard.Controls.Add(_pagination);
             _pagination.BringToFront();
         }
@@ -143,7 +151,11 @@ namespace CRMS_Peguit.winforms.Views.Leads
         {
             btnAdd.Visible = RbacService.CanCreateSalesRecord;
             btnAdd.Click += BtnAddClick;
-            txtSearch.TextChanged += (_, _) => RefreshGrid(reloadFromDb: false, animate: false);
+            txtSearch.TextChanged += (_, _) =>
+            {
+                _searchDebounceTimer.Stop();
+                _searchDebounceTimer.Start();
+            };
 
             if (RbacService.CanExportData)
             {
@@ -207,7 +219,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
             };
         }
 
-        private void SetFilter(string stage)
+        private async void SetFilter(string stage)
         {
             if (string.Equals(_filterStage, stage, StringComparison.OrdinalIgnoreCase) && !string.Equals(stage, "All", StringComparison.OrdinalIgnoreCase))
             {
@@ -217,28 +229,20 @@ namespace CRMS_Peguit.winforms.Views.Leads
             {
                 _filterStage = stage;
             }
-            UpdateFilterPillStyles();
-            RefreshGrid(reloadFromDb: false, animate: true);
+            await RefreshGridAsync(resetPage: true, animate: true);
         }
 
-        private void UpdateFilterPillStyles()
+        private void UpdateFilterPillStyles(LeadStageCounts counts)
         {
-            var allList = _allLeads;
-            int total = allList.Count;
-            int countNew = allList.Count(l => string.Equals(l.Stage, "new", StringComparison.OrdinalIgnoreCase));
-            int countContacted = allList.Count(l => string.Equals(l.Stage, "contacted", StringComparison.OrdinalIgnoreCase));
-            int countQualified = allList.Count(l => string.Equals(l.Stage, "qualified", StringComparison.OrdinalIgnoreCase));
-            int countConverted = allList.Count(l => string.Equals(l.Stage, "converted", StringComparison.OrdinalIgnoreCase));
-
-            lblSubtitle.Text = $"{total} total · {countQualified} qualified";
+            lblSubtitle.Text = $"{counts.Total} total · {counts.Qualified} qualified";
 
             var pills = new[]
             {
-                (btnFilterAll, "All", total),
-                (btnFilterNew, "New", countNew),
-                (btnFilterContacted, "Contacted", countContacted),
-                (btnFilterQualified, "Qualified", countQualified),
-                (btnFilterConverted, "Converted", countConverted)
+                (btnFilterAll, "All", counts.Total),
+                (btnFilterNew, "New", counts.New),
+                (btnFilterContacted, "Contacted", counts.Contacted),
+                (btnFilterQualified, "Qualified", counts.Qualified),
+                (btnFilterConverted, "Converted", counts.Converted)
             };
 
             foreach (var (btn, name, count) in pills)
@@ -252,7 +256,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
             LayoutToolbar();
         }
 
-        private void Grid_ColumnHeaderMouseClick(object? sender, DataGridViewCellMouseEventArgs e)
+        private async void Grid_ColumnHeaderMouseClick(object? sender, DataGridViewCellMouseEventArgs e)
         {
             if (e.ColumnIndex < 0 || _isSkeletonLoading) return;
             string colName = grid.Columns[e.ColumnIndex].Name;
@@ -268,75 +272,67 @@ namespace CRMS_Peguit.winforms.Views.Leads
                 _sortDirection = SortOrder.Ascending;
             }
 
-            RefreshGrid(reloadFromDb: false, animate: false);
+            await RefreshGridAsync(resetPage: false, animate: false);
         }
 
-        private void RefreshGrid(bool reloadFromDb = true, bool animate = false)
+        public void RefreshGrid(bool reloadFromDb = true, bool animate = false)
         {
-            if (reloadFromDb || _allLeads.Count == 0)
+            _ = RefreshGridAsync(resetPage: false, animate: animate);
+        }
+
+        public async Task RefreshGridAsync(bool resetPage = false, bool animate = false)
+        {
+            if (_isLoading) return;
+            _isLoading = true;
+
+            try
             {
-                _allLeads = _controller.GetAll().ToList();
-                UpdateFilterPillStyles();
-            }
+                int page = resetPage ? 1 : _pagination.CurrentPage;
+                int pageSize = _pagination.PageSize;
 
-            IEnumerable<Lead> query = _allLeads;
+                var counts = await _controller.GetStageCountsAsync();
+                UpdateFilterPillStyles(counts);
 
-            if (!string.Equals(_filterStage, "All", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(l => string.Equals(l.Stage, _filterStage, StringComparison.OrdinalIgnoreCase));
-            }
+                var pagedResult = await _controller.GetPagedAsync(
+                    page,
+                    pageSize,
+                    txtSearch.Text,
+                    _filterStage,
+                    _sortColumn,
+                    _sortDirection == SortOrder.Ascending);
 
-            string search = txtSearch.Text.Trim();
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                query = query.Where(lead =>
-                    ContainsText(lead.FirstName, search) ||
-                    ContainsText(lead.MiddleName, search) ||
-                    ContainsText(lead.LastName, search) ||
-                    ContainsText(lead.Suffix, search) ||
-                    ContainsText(lead.FullName, search) ||
-                    ContainsText(lead.Email, search) ||
-                    ContainsText(lead.Phone, search));
-            }
+                _currentPageLeads = pagedResult.Items;
+                _pagination.UpdatePagination(pagedResult.TotalCount, pagedResult.PageNumber, pagedResult.PageSize);
 
-            // Sorting
-            query = _sortColumn switch
-            {
-                "Name" => _sortDirection == SortOrder.Ascending ? query.OrderBy(l => l.FullName) : query.OrderByDescending(l => l.FullName),
-                "Email" => _sortDirection == SortOrder.Ascending ? query.OrderBy(l => l.Email ?? "") : query.OrderByDescending(l => l.Email ?? ""),
-                "Phone" => _sortDirection == SortOrder.Ascending ? query.OrderBy(l => l.Phone ?? "") : query.OrderByDescending(l => l.Phone ?? ""),
-                "Source" => _sortDirection == SortOrder.Ascending ? query.OrderBy(l => l.Source ?? "") : query.OrderByDescending(l => l.Source ?? ""),
-                "ExpectedValue" => _sortDirection == SortOrder.Ascending ? query.OrderBy(l => l.ExpectedValue ?? 0m) : query.OrderByDescending(l => l.ExpectedValue ?? 0m),
-                "Stage" => _sortDirection == SortOrder.Ascending ? query.OrderBy(l => l.Stage ?? "") : query.OrderByDescending(l => l.Stage ?? ""),
-                "Assignment" => _sortDirection == SortOrder.Ascending ? query.OrderBy(l => l.AssignmentStatus ?? "") : query.OrderByDescending(l => l.AssignmentStatus ?? ""),
-                _ => query
-            };
-
-            _filteredLeads = query.ToList();
-            _pagination.UpdatePagination(_filteredLeads.Count, 1, _pagination.PageSize);
-
-            if (animate)
-            {
-                _isSkeletonLoading = true;
-                _skeletonTimer?.Stop();
-                _skeletonTimer?.Dispose();
-
-                BindCurrentPage();
-                grid.Invalidate();
-
-                _skeletonTimer = new System.Windows.Forms.Timer { Interval = 130 };
-                _skeletonTimer.Tick += (_, _) =>
+                if (animate)
                 {
-                    _skeletonTimer.Stop();
-                    _isSkeletonLoading = false;
+                    _isSkeletonLoading = true;
+                    _skeletonTimer?.Stop();
+                    _skeletonTimer?.Dispose();
+
+                    BindCurrentPage();
                     grid.Invalidate();
-                };
-                _skeletonTimer.Start();
+
+                    _skeletonTimer = new System.Windows.Forms.Timer { Interval = 130 };
+                    _skeletonTimer.Tick += (_, _) =>
+                    {
+                        _skeletonTimer?.Stop();
+                        _skeletonTimer?.Dispose();
+                        _skeletonTimer = null;
+                        _isSkeletonLoading = false;
+                        grid.Invalidate();
+                    };
+                    _skeletonTimer.Start();
+                }
+                else
+                {
+                    _isSkeletonLoading = false;
+                    BindCurrentPage();
+                }
             }
-            else
+            finally
             {
-                _isSkeletonLoading = false;
-                BindCurrentPage();
+                _isLoading = false;
             }
         }
 
@@ -345,9 +341,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
             grid.Columns.Clear();
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
 
-            var pageItems = _filteredLeads
-                .Skip((_pagination.CurrentPage - 1) * _pagination.PageSize)
-                .Take(_pagination.PageSize)
+            var pageItems = _currentPageLeads
                 .Select(lead => new
                 {
                     lead.LeadId,
@@ -408,26 +402,26 @@ namespace CRMS_Peguit.winforms.Views.Leads
             if (grid.Columns["Stage"] is DataGridViewColumn stageCol)
             {
                 stageCol.HeaderText = "STAGE";
-                stageCol.FillWeight = 95;
-                stageCol.MinimumWidth = 85;
+                stageCol.FillWeight = 90;
+                stageCol.MinimumWidth = 80;
                 stageCol.SortMode = DataGridViewColumnSortMode.Programmatic;
-                stageCol.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleLeft;
                 stageCol.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
+                stageCol.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleLeft;
             }
             if (grid.Columns["Assignment"] is DataGridViewColumn assignCol)
             {
                 assignCol.HeaderText = "ASSIGNMENT";
-                assignCol.FillWeight = 110;
-                assignCol.MinimumWidth = 95;
+                assignCol.FillWeight = 100;
+                assignCol.MinimumWidth = 90;
                 assignCol.SortMode = DataGridViewColumnSortMode.Programmatic;
-                assignCol.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleLeft;
                 assignCol.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
+                assignCol.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleLeft;
             }
 
             UiGridHelper.AddActionsColumn(grid, 64);
             UiGridHelper.EnforceTableStandards(grid);
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-            _pnlEmptyState.Visible = (_filteredLeads.Count == 0);
+            _pnlEmptyState.Visible = (_currentPageLeads.Count == 0);
         }
 
         private void Grid_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
@@ -596,7 +590,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
             if (idValue is null || !int.TryParse(idValue.ToString(), out int leadId))
                 return null;
 
-            return _allLeads.FirstOrDefault(lead => lead.LeadId == leadId) ?? _controller.GetById(leadId);
+            return _currentPageLeads.FirstOrDefault(lead => lead.LeadId == leadId) ?? _controller.GetById(leadId);
         }
 
         private Lead? GetSelectedLead()

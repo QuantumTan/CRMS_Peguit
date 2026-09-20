@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
@@ -49,6 +51,78 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 System.Diagnostics.Debug.WriteLine($"[CustomerController.GetAll] Error: {ex.Message}");
                 return new List<Customer>();
+            }
+        }
+
+        public async Task<PagedResult<Customer>> GetPagedAsync(
+            int pageNumber = 1,
+            int pageSize = 25,
+            string? search = null,
+            string? filterStatus = null)
+        {
+            try
+            {
+                using var db = LocalDb.CreateContext(TenantId);
+                var query = db.Customers
+                    .Include(c => c.Person)
+                    .AsNoTracking()
+                    .Where(c => !c.IsDeleted);
+
+                if (!RbacService.HasFullOversight && RbacService.IsAgent)
+                {
+                    int currentUserId = CurrentSession.UserId;
+                    query = query.Where(c =>
+                        (c.AssignedAgentId.HasValue && c.AssignedAgentId.Value > 0)
+                            ? c.AssignedAgentId.Value == currentUserId
+                            : c.CreatedByUserId == currentUserId);
+                }
+
+                if (!string.IsNullOrWhiteSpace(filterStatus) && !string.Equals(filterStatus, "All", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.Equals(filterStatus, "Active", StringComparison.OrdinalIgnoreCase))
+                    {
+                        query = query.Where(c => c.Status.ToLower() == "active");
+                    }
+                    else if (string.Equals(filterStatus, "Inactive", StringComparison.OrdinalIgnoreCase))
+                    {
+                        query = query.Where(c => c.Status.ToLower() == "inactive");
+                    }
+                    else if (string.Equals(filterStatus, "Follow Up", StringComparison.OrdinalIgnoreCase))
+                    {
+                        query = query.Where(c => c.Status.ToLower() == "prospect" || c.AssignmentStatus.ToLower() == "pending");
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    string s = search.Trim();
+                    query = query.Where(c =>
+                        c.Person.FirstName.Contains(s) ||
+                        (c.Person.MiddleName != null && c.Person.MiddleName.Contains(s)) ||
+                        c.Person.LastName.Contains(s) ||
+                        (c.Person.Suffix != null && c.Person.Suffix.Contains(s)) ||
+                        (c.Person.Email != null && c.Person.Email.Contains(s)) ||
+                        (c.Person.Phone != null && c.Person.Phone.Contains(s)));
+                }
+
+                int totalCount = await query.CountAsync();
+
+                int validPage = Math.Max(1, pageNumber);
+                int validPageSize = Math.Max(1, pageSize);
+
+                var items = await query
+                    .OrderBy(x => x.Person.LastName)
+                    .ThenBy(x => x.Person.FirstName)
+                    .Skip((validPage - 1) * validPageSize)
+                    .Take(validPageSize)
+                    .ToListAsync();
+
+                return new PagedResult<Customer>(items, totalCount, validPage, validPageSize);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CustomerController.GetPagedAsync] Error: {ex.Message}");
+                return new PagedResult<Customer>(new List<Customer>(), 0, pageNumber, pageSize);
             }
         }
 
@@ -331,19 +405,54 @@ namespace CRMS_Peguit.winforms.Controllers
                 .ToList();
         }
 
-        // KPI counts - computed here so CustomersView doesn't need its own queries
+        // KPI counts - computed directly in SQL to prevent loading entire table into memory
+        public async Task<CustomerKpiCounts> GetKpiCountsAsync()
+        {
+            try
+            {
+                using var db = LocalDb.CreateContext(TenantId);
+                var query = db.Customers.AsNoTracking().Where(c => !c.IsDeleted);
+
+                if (!RbacService.HasFullOversight && RbacService.IsAgent)
+                {
+                    int currentUserId = CurrentSession.UserId;
+                    query = query.Where(c =>
+                        (c.AssignedAgentId.HasValue && c.AssignedAgentId.Value > 0)
+                            ? c.AssignedAgentId.Value == currentUserId
+                            : c.CreatedByUserId == currentUserId);
+                }
+
+                var now = DateTime.UtcNow;
+                int total = await query.CountAsync();
+                int active = await query.CountAsync(c => c.Status.ToLower() == "active");
+                int inactive = await query.CountAsync(c => c.Status.ToLower() == "inactive");
+                int thisMonth = await query.CountAsync(c => c.CreatedAt.Year == now.Year && c.CreatedAt.Month == now.Month);
+
+                return new CustomerKpiCounts
+                {
+                    Total = total,
+                    Active = active,
+                    Inactive = inactive,
+                    ThisMonth = thisMonth
+                };
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CustomerController.GetKpiCountsAsync] Error: {ex.Message}");
+                return new CustomerKpiCounts();
+            }
+        }
+
         public CustomerKpiCounts GetKpiCounts()
         {
-            var all = _db.Customers.AsNoTracking().ToList();
-            var now = DateTime.UtcNow;
-
-            return new CustomerKpiCounts
+            try
             {
-                Total = all.Count,
-                Active = all.Count(c => string.Equals(c.Status, "active", StringComparison.OrdinalIgnoreCase)),
-                Inactive = all.Count(c => string.Equals(c.Status, "inactive", StringComparison.OrdinalIgnoreCase)),
-                ThisMonth = all.Count(c => c.CreatedAt.Year == now.Year && c.CreatedAt.Month == now.Month)
-            };
+                return GetKpiCountsAsync().GetAwaiter().GetResult();
+            }
+            catch
+            {
+                return new CustomerKpiCounts();
+            }
         }
 
         public void LogEmail(Customer customer, string subject)

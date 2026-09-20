@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 
+using CRMS_Peguit.domain.Common;
+
 namespace CRMS_Peguit.api.Controllers
 {
     [ApiController]
@@ -17,9 +19,50 @@ namespace CRMS_Peguit.api.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll(
+            [FromQuery] int? page = null,
+            [FromQuery] int? pageSize = null,
+            [FromQuery] string? search = null,
+            [FromQuery] string? status = null)
         {
-            var customers = await _db.Customers.ToListAsync();
+            var query = _db.Customers
+                .Include(c => c.Person)
+                .Where(c => !c.IsDeleted)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                string s = search.Trim();
+                query = query.Where(c => (c.Person != null && (
+                    c.Person.FirstName.Contains(s) ||
+                    c.Person.LastName.Contains(s) ||
+                    (c.Person.Email != null && c.Person.Email.Contains(s)) ||
+                    (c.Person.Phone != null && c.Person.Phone.Contains(s)))) ||
+                    c.Type.Contains(s));
+            }
+
+            if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(c => c.Status == status);
+            }
+
+            if (page.HasValue || pageSize.HasValue)
+            {
+                int pageNum = page.GetValueOrDefault(1);
+                int size = pageSize.GetValueOrDefault(25);
+                if (pageNum < 1) pageNum = 1;
+                if (size < 1) size = 25;
+
+                int totalCount = await query.CountAsync();
+                var items = await query.OrderByDescending(c => c.CreatedAt)
+                    .Skip((pageNum - 1) * size)
+                    .Take(size)
+                    .ToListAsync();
+
+                return Ok(new PagedResult<Customer>(items, totalCount, pageNum, size));
+            }
+
+            var customers = await query.ToListAsync();
             return Ok(customers);
         }
 

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
@@ -57,6 +59,84 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 System.Diagnostics.Debug.WriteLine($"[SupportTicketController.GetAll] Error: {ex.Message}");
                 return new List<SupportTicket>();
+            }
+        }
+
+        public async Task<PagedResult<SupportTicket>> GetPagedAsync(
+            int pageNumber = 1,
+            int pageSize = 25,
+            string? search = null,
+            string? filterStatus = null)
+        {
+            try
+            {
+                using var db = LocalDb.CreateContext(TenantId);
+                var query = db.SupportTickets
+                    .Include(t => t.Customer).ThenInclude(c => c.Person)
+                    .Include(t => t.RaisedByUser).ThenInclude(u => u.Person)
+                    .Include(t => t.AssignedToUser).ThenInclude(u => u!.Person)
+                    .AsNoTracking()
+                    .Where(t => !t.IsDeleted);
+
+                if (!RbacService.HasFullOversight && RbacService.IsAgent)
+                {
+                    int currentUserId = CurrentSession.UserId;
+                    query = query.Where(t =>
+                        (t.AssignedToUserId.HasValue && t.AssignedToUserId.Value > 0)
+                            ? t.AssignedToUserId.Value == currentUserId
+                            : t.RaisedByUserId == currentUserId);
+                }
+
+                if (!string.IsNullOrWhiteSpace(filterStatus) && !string.Equals(filterStatus, "All", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.Equals(filterStatus, "Open", StringComparison.OrdinalIgnoreCase))
+                    {
+                        query = query.Where(t => t.Status.ToLower() == "open");
+                    }
+                    else if (string.Equals(filterStatus, "In Progress", StringComparison.OrdinalIgnoreCase))
+                    {
+                        query = query.Where(t => t.Status.ToLower() == "in progress");
+                    }
+                    else if (string.Equals(filterStatus, "Resolved", StringComparison.OrdinalIgnoreCase))
+                    {
+                        query = query.Where(t => t.Status.ToLower() == "resolved");
+                    }
+                    else if (string.Equals(filterStatus, "Overdue", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var now = DateTime.UtcNow;
+                        query = query.Where(t => t.Status.ToLower() != "resolved" && t.DueDate.HasValue && t.DueDate.Value < now);
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    string s = search.Trim();
+                    query = query.Where(t =>
+                        t.TicketNumber.Contains(s) ||
+                        (t.Description != null && t.Description.Contains(s)) ||
+                        t.Category.Contains(s) ||
+                        t.Status.Contains(s) ||
+                        (t.Customer != null && (t.Customer.Person.FirstName.Contains(s) || t.Customer.Person.LastName.Contains(s))) ||
+                        (t.AssignedToUser != null && (t.AssignedToUser.Person.FirstName.Contains(s) || t.AssignedToUser.Person.LastName.Contains(s))));
+                }
+
+                int totalCount = await query.CountAsync();
+
+                int validPage = Math.Max(1, pageNumber);
+                int validPageSize = Math.Max(1, pageSize);
+
+                var items = await query
+                    .OrderByDescending(t => t.CreatedAt)
+                    .Skip((validPage - 1) * validPageSize)
+                    .Take(validPageSize)
+                    .ToListAsync();
+
+                return new PagedResult<SupportTicket>(items, totalCount, validPage, validPageSize);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SupportTicketController.GetPagedAsync] Error: {ex.Message}");
+                return new PagedResult<SupportTicket>(new List<SupportTicket>(), 0, pageNumber, pageSize);
             }
         }
 
@@ -428,22 +508,57 @@ namespace CRMS_Peguit.winforms.Controllers
         }
 
         // =========================================================================
-        // KPI COUNTS
+        // KPI COUNTS - computed directly in SQL to avoid loading all tickets into memory
         // =========================================================================
+        public async Task<SupportTicketKpiCounts> GetKpiCountsAsync()
+        {
+            try
+            {
+                using var db = LocalDb.CreateContext(TenantId);
+                var query = db.SupportTickets.AsNoTracking().Where(t => !t.IsDeleted);
+
+                if (!RbacService.HasFullOversight && RbacService.IsAgent)
+                {
+                    int currentUserId = CurrentSession.UserId;
+                    query = query.Where(t =>
+                        (t.AssignedToUserId.HasValue && t.AssignedToUserId.Value > 0)
+                            ? t.AssignedToUserId.Value == currentUserId
+                            : t.RaisedByUserId == currentUserId);
+                }
+
+                var now = DateTime.UtcNow;
+                int total = await query.CountAsync();
+                int open = await query.CountAsync(t => t.Status.ToLower() == "open");
+                int inProgress = await query.CountAsync(t => t.Status.ToLower() == "in progress");
+                int resolved = await query.CountAsync(t => t.Status.ToLower() == "resolved");
+                int overdue = await query.CountAsync(t => t.Status.ToLower() != "resolved" && t.DueDate.HasValue && t.DueDate.Value < now);
+
+                return new SupportTicketKpiCounts
+                {
+                    Total = total,
+                    Open = open,
+                    InProgress = inProgress,
+                    Resolved = resolved,
+                    Overdue = overdue
+                };
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SupportTicketController.GetKpiCountsAsync] Error: {ex.Message}");
+                return new SupportTicketKpiCounts();
+            }
+        }
+
         public SupportTicketKpiCounts GetKpiCounts()
         {
-            var list = GetAll(); // Reuses role-based ownership filtering
-            var now = DateTime.UtcNow;
-
-            return new SupportTicketKpiCounts
+            try
             {
-                Total = list.Count,
-                Open = list.Count(t => string.Equals(t.Status, "Open", StringComparison.OrdinalIgnoreCase)),
-                InProgress = list.Count(t => string.Equals(t.Status, "In Progress", StringComparison.OrdinalIgnoreCase)),
-                Resolved = list.Count(t => string.Equals(t.Status, "Resolved", StringComparison.OrdinalIgnoreCase)),
-                Overdue = list.Count(t => !string.Equals(t.Status, "Resolved", StringComparison.OrdinalIgnoreCase)
-                                          && t.DueDate.HasValue && t.DueDate.Value < now)
-            };
+                return GetKpiCountsAsync().GetAwaiter().GetResult();
+            }
+            catch
+            {
+                return new SupportTicketKpiCounts();
+            }
         }
 
         // =========================================================================

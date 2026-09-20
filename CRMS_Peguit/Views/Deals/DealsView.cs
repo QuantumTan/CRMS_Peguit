@@ -16,23 +16,30 @@ namespace CRMS_Peguit.winforms.Views.Deals
         private Button? _btnExport;
         private Button? _btnAdd;
         private PaginationControl _pagination = null!;
-        private List<Deal> _allDeals = new();
-        private List<Deal> _filteredDeals = new();
+        private List<Deal> _currentPageDeals = new();
         private Dictionary<int, string> _customers = new();
         private Dictionary<int, string> _properties = new();
         private Dictionary<int, string> _agents = new();
+        private readonly System.Windows.Forms.Timer _searchDebounceTimer;
+        private bool _isLoading = false;
 
         public DealsView()
         {
             InitializeComponent();
             _controller = new DealController();
 
+            _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
+            _searchDebounceTimer.Tick += async (_, _) =>
+            {
+                _searchDebounceTimer.Stop();
+                await RefreshGridAsync(resetPage: true);
+            };
+
             InitPagination();
             InitEmptyState();
             ApplyStyling();
             BindEvents();
-            UpdateFilterPillStyles();
-            RefreshGrid();
+            _ = RefreshGridAsync(resetPage: true);
 
             this.Load += (_, _) => LayoutToolbar();
             this.Resize += (_, _) => LayoutToolbar();
@@ -42,8 +49,8 @@ namespace CRMS_Peguit.winforms.Views.Deals
         {
             _pagination = new PaginationControl();
             _pagination.SetItemLabel("deals");
-            _pagination.PageChanged += (_, _) => BindCurrentPage();
-            _pagination.PageSizeChanged += (_, _) => BindCurrentPage();
+            _pagination.PageChanged += async (_, _) => await RefreshGridAsync(resetPage: false);
+            _pagination.PageSizeChanged += async (_, _) => await RefreshGridAsync(resetPage: true);
             pnlCard.Controls.Add(_pagination);
             _pagination.BringToFront();
         }
@@ -137,6 +144,11 @@ namespace CRMS_Peguit.winforms.Views.Deals
             // Modern Grid Styling & Search Padding
             UiGridHelper.ApplyModernGridStyle(grid, 52);
             UiRadiusHelper.SetPadding(txtSearch, 10, 10);
+            txtSearch.TextChanged += (_, _) =>
+            {
+                _searchDebounceTimer.Stop();
+                _searchDebounceTimer.Start();
+            };
 
             grid.CellPainting += Grid_CellPainting;
             grid.CellContentClick += GridCellContentClick;
@@ -168,14 +180,13 @@ namespace CRMS_Peguit.winforms.Views.Deals
             }
         }
 
-        private void SetFilter(string stage)
+        private async void SetFilter(string stage)
         {
             _filterStage = stage;
-            UpdateFilterPillStyles();
-            RefreshGrid(reloadFromDb: false);
+            await RefreshGridAsync(resetPage: true);
         }
 
-        private void UpdateFilterPillStyles()
+        private void UpdateFilterPillStyles(DealKpiResult? kpis)
         {
             var pills = new[]
             {
@@ -192,88 +203,62 @@ namespace CRMS_Peguit.winforms.Views.Deals
                 UiRadiusHelper.StyleFilterPill(btn, isSelected);
             }
 
-            if (_allDeals != null)
+            if (kpis != null)
             {
-                int total = _allDeals.Count;
-                int offer = _allDeals.Count(d => string.Equals(d.Stage, "Offer", StringComparison.OrdinalIgnoreCase) || string.Equals(d.Stage, "Reservation", StringComparison.OrdinalIgnoreCase));
-                int contract = _allDeals.Count(d => string.Equals(d.Stage, "ContractSigned", StringComparison.OrdinalIgnoreCase) || string.Equals(d.Stage, "Contract", StringComparison.OrdinalIgnoreCase));
-                int closed = _allDeals.Count(d => string.Equals(d.Stage, "Closed", StringComparison.OrdinalIgnoreCase));
-                int lost = _allDeals.Count(d => string.Equals(d.Stage, "Lost", StringComparison.OrdinalIgnoreCase));
-
-                decimal totalVol = _allDeals.Sum(d => d.Value);
-                decimal closedVol = _allDeals.Where(d => string.Equals(d.Stage, "Closed", StringComparison.OrdinalIgnoreCase)).Sum(d => d.Value);
-                decimal contractVol = _allDeals.Where(d => string.Equals(d.Stage, "ContractSigned", StringComparison.OrdinalIgnoreCase) || string.Equals(d.Stage, "Contract", StringComparison.OrdinalIgnoreCase)).Sum(d => d.Value);
-
-                kpiTotal.SetValue(total);
-                kpiTotal.SetSubtitle($"{AppFormat.FormatCompactCurrency(totalVol)} total volume");
-                kpiOffer.SetValue(offer);
-                kpiContract.SetValue(contract);
-                kpiContract.SetSubtitle($"{AppFormat.FormatCompactCurrency(contractVol)} in escrow");
-                kpiClosed.SetValue(closed);
-                kpiClosed.SetSubtitle($"{AppFormat.FormatCompactCurrency(closedVol)} revenue");
-                kpiLost.SetValue(lost);
+                kpiTotal.SetValue(kpis.Total);
+                kpiTotal.SetSubtitle($"{AppFormat.FormatCompactCurrency(kpis.TotalVolume)} total volume");
+                kpiOffer.SetValue(kpis.Offer);
+                kpiContract.SetValue(kpis.Contract);
+                kpiContract.SetSubtitle($"{AppFormat.FormatCompactCurrency(kpis.ContractVolume)} in escrow");
+                kpiClosed.SetValue(kpis.Closed);
+                kpiClosed.SetSubtitle($"{AppFormat.FormatCompactCurrency(kpis.ClosedVolume)} revenue");
+                kpiLost.SetValue(kpis.Lost);
 
                 kpiTotal.SetSelected(string.Equals(_filterStage, "All", StringComparison.OrdinalIgnoreCase));
                 kpiOffer.SetSelected(string.Equals(_filterStage, "Offer", StringComparison.OrdinalIgnoreCase));
                 kpiContract.SetSelected(string.Equals(_filterStage, "Contract", StringComparison.OrdinalIgnoreCase));
                 kpiClosed.SetSelected(string.Equals(_filterStage, "Closed", StringComparison.OrdinalIgnoreCase));
                 kpiLost.SetSelected(string.Equals(_filterStage, "Lost", StringComparison.OrdinalIgnoreCase));
+
+                lblSubtitle.Text = $"{kpis.Total} deals · {AppFormat.FormatCurrency(kpis.TotalVolume)} total volume";
             }
         }
 
-        private void RefreshGrid(bool reloadFromDb = true)
+        public void RefreshGrid(bool reloadFromDb = true)
         {
-            if (reloadFromDb || _allDeals.Count == 0)
+            _ = RefreshGridAsync(resetPage: false);
+        }
+
+        public async Task RefreshGridAsync(bool resetPage = false)
+        {
+            if (_isLoading) return;
+            _isLoading = true;
+
+            try
             {
-                _allDeals = _controller.GetAll();
-                if (_allDeals.Any(d => d.Customer == null))
+                int page = resetPage ? 1 : _pagination.CurrentPage;
+                int pageSize = _pagination.PageSize;
+
+                var kpis = await _controller.GetDealKpisAsync();
+                UpdateFilterPillStyles(kpis);
+
+                var pagedResult = await _controller.GetPagedAsync(page, pageSize, txtSearch.Text, _filterStage);
+                _currentPageDeals = pagedResult.Items;
+
+                if (_customers.Count == 0)
                     _customers = _controller.GetCustomerNames();
-                if (_allDeals.Any(d => d.Property == null))
+                if (_properties.Count == 0)
                     _properties = _controller.GetPropertyAddresses();
-                if (_allDeals.Any(d => d.Agent == null && d.AgentId.HasValue))
+                if (_agents.Count == 0)
                     _agents = _controller.GetAgentNames();
 
-                UpdateFilterPillStyles();
+                _pagination.UpdatePagination(pagedResult.TotalCount, pagedResult.PageNumber, pagedResult.PageSize);
+                BindCurrentPage();
             }
-
-            int total = _allDeals.Count;
-            decimal totalVolume = _allDeals.Sum(d => d.Value);
-            lblSubtitle.Text = $"{total} deals · {AppFormat.FormatCurrency(totalVolume)} total volume";
-
-            IEnumerable<Deal> query = _allDeals;
-
-            if (string.Equals(_filterStage, "Offer", StringComparison.OrdinalIgnoreCase))
+            finally
             {
-                query = query.Where(d => string.Equals(d.Stage, "Offer", StringComparison.OrdinalIgnoreCase) ||
-                                         string.Equals(d.Stage, "Reservation", StringComparison.OrdinalIgnoreCase));
+                _isLoading = false;
             }
-            else if (string.Equals(_filterStage, "Contract", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(d => string.Equals(d.Stage, "ContractSigned", StringComparison.OrdinalIgnoreCase) ||
-                                         string.Equals(d.Stage, "Contract", StringComparison.OrdinalIgnoreCase));
-            }
-            else if (string.Equals(_filterStage, "Closed", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(d => string.Equals(d.Stage, "Closed", StringComparison.OrdinalIgnoreCase));
-            }
-            else if (string.Equals(_filterStage, "Lost", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(d => string.Equals(d.Stage, "Lost", StringComparison.OrdinalIgnoreCase));
-            }
-
-            string search = txtSearch.Text.Trim();
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                query = query.Where(d =>
-                    ContainsText(d.Stage, search) ||
-                    ContainsText(d.Customer?.FullName ?? GetName(_customers, d.CustomerId), search) ||
-                    ContainsText(d.Property?.Address ?? GetName(_properties, d.PropertyId), search) ||
-                    ContainsText(d.Agent?.FullName ?? GetName(_agents, d.AgentId), search));
-            }
-
-            _filteredDeals = query.ToList();
-            _pagination.UpdatePagination(_filteredDeals.Count, 1, _pagination.PageSize);
-            BindCurrentPage();
         }
 
         private void BindCurrentPage()
@@ -284,9 +269,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
                 grid.Columns.Clear();
                 grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
 
-                var pageItems = _filteredDeals
-                    .Skip((_pagination.CurrentPage - 1) * _pagination.PageSize)
-                    .Take(_pagination.PageSize)
+                var pageItems = _currentPageDeals
                     .Select(d => new
                     {
                         d.DealId,
@@ -365,7 +348,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
 
             UiGridHelper.AddActionsColumn(grid, 64);
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-            _lblEmptyState.Visible = (_filteredDeals.Count == 0);
+            _lblEmptyState.Visible = (_currentPageDeals.Count == 0);
             }
             finally
             {

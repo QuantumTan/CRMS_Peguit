@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 
+using CRMS_Peguit.domain.Common;
+
 namespace CRMS_Peguit.api.Controllers
 {
     [ApiController]
@@ -17,9 +19,51 @@ namespace CRMS_Peguit.api.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll(
+            [FromQuery] int? page = null,
+            [FromQuery] int? pageSize = null,
+            [FromQuery] string? search = null,
+            [FromQuery] string? stage = null)
         {
-            var leads = await _db.Leads.ToListAsync();
+            var query = _db.Leads
+                .Include(l => l.Person)
+                .Where(l => !l.IsDeleted)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                string s = search.Trim();
+                query = query.Where(l => (l.Person != null && (
+                    l.Person.FirstName.Contains(s) ||
+                    l.Person.LastName.Contains(s) ||
+                    (l.Person.Email != null && l.Person.Email.Contains(s)) ||
+                    (l.Person.Phone != null && l.Person.Phone.Contains(s)))) ||
+                    (l.Source != null && l.Source.Contains(s)) ||
+                    (l.Notes != null && l.Notes.Contains(s)));
+            }
+
+            if (!string.IsNullOrWhiteSpace(stage) && !stage.Equals("All", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(l => l.Stage == stage);
+            }
+
+            if (page.HasValue || pageSize.HasValue)
+            {
+                int pageNum = page.GetValueOrDefault(1);
+                int size = pageSize.GetValueOrDefault(25);
+                if (pageNum < 1) pageNum = 1;
+                if (size < 1) size = 25;
+
+                int totalCount = await query.CountAsync();
+                var items = await query.OrderByDescending(l => l.CreatedAt)
+                    .Skip((pageNum - 1) * size)
+                    .Take(size)
+                    .ToListAsync();
+
+                return Ok(new PagedResult<Lead>(items, totalCount, pageNum, size));
+            }
+
+            var leads = await query.ToListAsync();
             return Ok(leads);
         }
 

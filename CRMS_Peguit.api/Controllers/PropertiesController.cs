@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 
+using CRMS_Peguit.domain.Common;
+
 namespace CRMS_Peguit.api.Controllers
 {
     [ApiController]
@@ -17,9 +19,45 @@ namespace CRMS_Peguit.api.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll(
+            [FromQuery] int? page = null,
+            [FromQuery] int? pageSize = null,
+            [FromQuery] string? search = null,
+            [FromQuery] string? status = null)
         {
-            var items = await _db.Properties.ToListAsync();
+            var query = _db.Properties.AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                string s = search.Trim();
+                query = query.Where(p =>
+                    p.Address.Contains(s) ||
+                    (p.PropertyType != null && p.PropertyType.Contains(s)) ||
+                    p.Status.Contains(s));
+            }
+
+            if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(p => p.Status == status);
+            }
+
+            if (page.HasValue || pageSize.HasValue)
+            {
+                int pageNum = page.GetValueOrDefault(1);
+                int size = pageSize.GetValueOrDefault(25);
+                if (pageNum < 1) pageNum = 1;
+                if (size < 1) size = 25;
+
+                int totalCount = await query.CountAsync();
+                var pagedList = await query.OrderByDescending(p => p.CreatedAt)
+                    .Skip((pageNum - 1) * size)
+                    .Take(size)
+                    .ToListAsync();
+
+                return Ok(new PagedResult<Property>(pagedList, totalCount, pageNum, size));
+            }
+
+            var items = await query.ToListAsync();
             return Ok(items);
         }
 
