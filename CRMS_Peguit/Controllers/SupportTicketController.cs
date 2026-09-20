@@ -568,6 +568,43 @@ namespace CRMS_Peguit.winforms.Controllers
             }
         }
 
+        public List<CRMS_Peguit.winforms.Models.ViewModels.AdminTicketAttentionItemDto> GetTicketsNeedingAttention(int maxCount = 3)
+        {
+            try
+            {
+                var rawTickets = _db.SupportTickets
+                    .AsNoTracking()
+                    .Include(t => t.Customer).ThenInclude(c => c!.Person)
+                    .Where(t => !t.IsDeleted && t.Status != "Resolved" && t.Status != "Closed")
+                    .OrderBy(t => t.CreatedAt)
+                    .Take(maxCount)
+                    .ToList();
+
+                var now = DateTime.UtcNow;
+                return rawTickets.Select(t =>
+                {
+                    int daysAgo = Math.Max(0, (int)(now - t.CreatedAt).TotalDays);
+                    string openedAgo = daysAgo == 0 ? "opened today" : (daysAgo == 1 ? "opened 1 day ago" : $"opened {daysAgo} days ago");
+
+                    return new CRMS_Peguit.winforms.Models.ViewModels.AdminTicketAttentionItemDto
+                    {
+                        TicketId = t.TicketId,
+                        TicketNumber = t.TicketNumber,
+                        CustomerName = t.Customer?.FullName ?? "Client",
+                        Category = t.Category,
+                        Priority = t.Priority,
+                        Status = t.Status,
+                        OpenedAgoText = openedAgo
+                    };
+                }).ToList();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SupportTicketController.GetTicketsNeedingAttention] Error: {ex.Message}");
+                return new List<CRMS_Peguit.winforms.Models.ViewModels.AdminTicketAttentionItemDto>();
+            }
+        }
+
         public void Dispose()
         {
             _db.Dispose();

@@ -29,6 +29,21 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
         private readonly Panel _spacerRight = new Panel { BackColor = Color.Transparent, Dock = DockStyle.Fill, Margin = Padding.Empty };
         private string _chartNavigationTarget = "Analytics";
 
+        private UserRole _currentRole = UserRole.SalesStaff;
+        private Panel? _pnlAdminContainer;
+        private Panel? _cardTeamRoster;
+        private Panel? _pnlTeamRosterList;
+        private Panel? _cardTicketBreakdown;
+        private ScottPlot.WinForms.FormsPlot? _plotAdminTicketBreakdown;
+        private Label? _lblAdminTicketBreakdownFooter;
+        private Panel? _cardCommissionTrend;
+        private ScottPlot.WinForms.FormsPlot? _plotAdminCommissionTrend;
+        private Label? _lblAdminCommissionFooter;
+        private Panel? _cardTicketsAttention;
+        private Panel? _pnlTicketsAttentionList;
+        private Panel? _cardRecentActivity;
+        private Panel? _pnlRecentActivityList;
+
         public DashboardView()
         {
             InitializeComponent();
@@ -83,6 +98,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
 
                 var user = CurrentSession.CurrentUser;
                 var role = user?.Role ?? UserRole.SalesStaff;
+                _currentRole = role;
 
                 object? snapshot = null;
                 await System.Threading.Tasks.Task.Run(() =>
@@ -396,66 +412,668 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
         {
             lblTitle.Text = snapshot.Greeting;
             lblSubtitle.Text = snapshot.DateText;
-            _chartNavigationTarget = "SupportTickets";
 
-            // Quick Actions: "View Reports", "Manage Users"
+            // Quick Actions: "Manage Users", "View Reports"
             pnlQuickActions.Controls.Clear();
-            var btnReports = CreateQuickActionButton("📊 View Reports", BiDisplayConstants.PrimaryAccent, Color.White, (_, _) =>
-            {
-                RequestNavigation("Reports");
-            });
-
-            var btnManageUsers = CreateQuickActionButton("👥 Manage Users", Color.White, Theme.TextPrimary, (_, _) =>
+            var btnManageUsers = CreateQuickActionButton("👥 Manage Users", BiDisplayConstants.PrimaryAccent, Color.White, (_, _) =>
             {
                 RequestNavigation("SalesStaff");
+            });
+
+            var btnReports = CreateQuickActionButton("📊 View Reports", Color.White, Theme.TextPrimary, (_, _) =>
+            {
+                RequestNavigation("Reports");
             }, hasBorder: true);
 
-            pnlQuickActions.Controls.Add(btnReports);
             pnlQuickActions.Controls.Add(btnManageUsers);
+            pnlQuickActions.Controls.Add(btnReports);
 
-            // 4 KPI Cards
-            ConfigureKpiCard(kpi1, "TOTAL ACTIVE USERS", snapshot.TotalActiveUsersCount, "Active team personnel", BiDisplayConstants.PrimaryAccent, KpiIconType.Users, () => RequestNavigation("SalesStaff"));
-            ConfigureKpiCard(kpi2, "OPEN TICKETS", snapshot.OpenTicketsCount, "Awaiting resolution", BiDisplayConstants.StatusLost, KpiIconType.Ticket, () => RequestNavigation("SupportTickets"));
-            ConfigureKpiCard(kpi3, "SUBSCRIPTION STATUS", snapshot.SubscriptionStatus, snapshot.SubscriptionExpiryText, BiDisplayConstants.StatusWon, KpiIconType.Building, () => RequestNavigation("Reports"), StatusColorHelper.GetTextColor("Active"));
-            ConfigureKpiCard(kpi4, "DEALS CLOSED THIS MONTH", snapshot.DealsClosedThisMonthCount, "Current month", BiDisplayConstants.HighlightAccent, KpiIconType.Currency, () => RequestNavigation("Reports"));
+            // 4 KPI Cards: Real, clear titles with one-line subtext for context
+            ConfigureKpiCard(kpi1, "Total Active Users", snapshot.TotalActiveUsersCount, snapshot.ActiveUsersSubtext, BiDisplayConstants.PrimaryAccent, KpiIconType.Users, () => RequestNavigation("SalesStaff"));
+            ConfigureKpiCard(kpi2, "Open Support Tickets", snapshot.OpenTicketsCount, snapshot.OpenTicketsSubtext, BiDisplayConstants.StatusLost, KpiIconType.Ticket, () => RequestNavigation("SupportTickets"), null, string.IsNullOrWhiteSpace(snapshot.OpenTicketsSubtext) ? null : BiDisplayConstants.StatusLost);
+            ConfigureKpiCard(kpi3, "Deals Closed This Month", snapshot.DealsClosedThisMonthCount, snapshot.DealsClosedSubtext, BiDisplayConstants.HighlightAccent, KpiIconType.Currency, () => RequestNavigation("Reports:Commission"));
+            ConfigureKpiCard(kpi4, "Subscription Status", snapshot.SubscriptionStatus, snapshot.SubscriptionExpiryText, BiDisplayConstants.StatusWon, KpiIconType.Building, () => RequestNavigation("Reports"), StatusColorHelper.GetTextColor(snapshot.SubscriptionStatus));
 
-            // Glanceable Ticket Donut
-            RenderAdminDonut(snapshot.OpenTicketsBreakdown, snapshot.InProgressTicketsBreakdown, snapshot.ResolvedTicketsBreakdown);
+            // Multi-section layout container for Admin
+            BuildOrGetAdminContainer();
 
-            // Left Card: "Recent System Activity" (omitted if no logs exist)
-            pnlLeftList.Controls.Clear();
-            bool hasSystemLogs = snapshot.RecentSystemActivities.Count > 0;
-
-            if (hasSystemLogs)
+            // 1. Team Roster Snapshot
+            if (_pnlTeamRosterList != null)
             {
-                ConfigureContentLayout(1);
-                lblLeftTitle.Text = "Recent System Activity";
-                lblLeftSubtitle.Text = "System backups & configuration logs";
-                lblLeftEmpty.Visible = false;
-
-                int y = 0;
-                foreach (var log in snapshot.RecentSystemActivities)
+                _pnlTeamRosterList.Controls.Clear();
+                if (_cardTeamRoster?.Controls["lblRosterSub"] is Label lblSub)
                 {
-                    var row = CreateItemRow(
-                        iconText: log.Icon,
-                        title: log.Title,
-                        subtitle: log.Details,
-                        statusText: log.Status,
-                        timeAgo: log.TimeAgo,
-                        onClick: null
-                    );
+                    lblSub.Text = $"{snapshot.TeamRoster.Count} members listed · Oversight only";
+                }
 
-                    row.Location = new Point(0, y);
-                    row.Width = Math.Max(200, pnlLeftList.ClientSize.Width - 4);
-                    pnlLeftList.Controls.Add(row);
-                    y += row.Height + 8;
+                if (snapshot.TeamRoster.Count == 0)
+                {
+                    var lblEmpty = new Label
+                    {
+                        Text = "👥  No team members found.",
+                        Font = new Font("Segoe UI", 9.5f),
+                        ForeColor = Theme.TextSecondary,
+                        TextAlign = ContentAlignment.MiddleCenter,
+                        Dock = DockStyle.Fill
+                    };
+                    _pnlTeamRosterList.Controls.Add(lblEmpty);
+                }
+                else
+                {
+                    int y = 0;
+                    foreach (var item in snapshot.TeamRoster)
+                    {
+                        var row = CreateTeamRosterRow(item, () => RequestNavigation("SalesStaff"));
+                        row.Location = new Point(0, y);
+                        row.Width = Math.Max(200, _pnlTeamRosterList.ClientSize.Width - 4);
+                        _pnlTeamRosterList.Controls.Add(row);
+                        y += row.Height + 8;
+                    }
                 }
             }
-            else
+
+            // 2. Ticket Breakdown Donut Chart
+            RenderAdminTicketDonut(snapshot.OpenTicketsBreakdown, snapshot.InProgressTicketsBreakdown, snapshot.ResolvedTicketsBreakdown);
+
+            // 3. Commission Trend Bar Chart
+            RenderAdminCommissionTrend(snapshot.CommissionTrendLast6Months);
+
+            // 4. Tickets Needing Attention
+            if (_pnlTicketsAttentionList != null)
             {
-                // Omitted per prompt requirement: "Recent System Activity (omitted if no data exists)"
-                ConfigureContentLayout(2);
+                _pnlTicketsAttentionList.Controls.Clear();
+                if (_cardTicketsAttention?.Controls["lblAttnSub"] is Label lblSub)
+                {
+                    lblSub.Text = $"{snapshot.TicketsNeedingAttention.Count} oldest open support tickets";
+                }
+
+                if (snapshot.TicketsNeedingAttention.Count == 0)
+                {
+                    var lblEmpty = new Label
+                    {
+                        Text = "✓  No open tickets needing attention. Support queue clear!",
+                        Font = new Font("Segoe UI", 9.5f),
+                        ForeColor = Theme.TextSecondary,
+                        TextAlign = ContentAlignment.MiddleCenter,
+                        Dock = DockStyle.Fill
+                    };
+                    _pnlTicketsAttentionList.Controls.Add(lblEmpty);
+                }
+                else
+                {
+                    int y = 0;
+                    foreach (var item in snapshot.TicketsNeedingAttention)
+                    {
+                        var row = CreateTicketAttentionRow(item, () => RequestNavigation("SupportTickets"));
+                        row.Location = new Point(0, y);
+                        row.Width = Math.Max(200, _pnlTicketsAttentionList.ClientSize.Width - 4);
+                        _pnlTicketsAttentionList.Controls.Add(row);
+                        y += row.Height + 8;
+                    }
+                }
             }
+
+            // 5. Recent System Activity (Real entries only; fully omitted if no data exists)
+            bool hasRealData = snapshot.RecentSystemActivities.Count > 0;
+            if (_cardRecentActivity != null)
+            {
+                _cardRecentActivity.Visible = hasRealData;
+                if (hasRealData && _pnlRecentActivityList != null)
+                {
+                    _pnlRecentActivityList.Controls.Clear();
+                    int y = 0;
+                    foreach (var log in snapshot.RecentSystemActivities)
+                    {
+                        var row = CreateItemRow(
+                            iconText: log.UseAvatar ? null : log.Icon,
+                            title: log.Title,
+                            subtitle: log.Details,
+                            statusText: log.Status,
+                            timeAgo: log.TimeAgo,
+                            onClick: null,
+                            useAvatar: log.UseAvatar,
+                            avatarName: log.AvatarName
+                        );
+
+                        row.Location = new Point(0, y);
+                        row.Width = Math.Max(200, _pnlRecentActivityList.ClientSize.Width - 4);
+                        _pnlRecentActivityList.Controls.Add(row);
+                        y += row.Height + 8;
+                    }
+                }
+            }
+
+            if (_pnlAdminContainer != null)
+            {
+                LayoutAdminControls();
+            }
+        }
+
+        private Panel BuildOrGetAdminContainer()
+        {
+            if (_pnlAdminContainer != null) return _pnlAdminContainer;
+
+            _pnlAdminContainer = new Panel
+            {
+                AutoScroll = true,
+                BackColor = Color.Transparent,
+                Visible = false
+            };
+
+            // 1. Team Roster Snapshot Card
+            _cardTeamRoster = new Panel { BackColor = Color.White };
+            UiRadiusHelper.StyleCard(_cardTeamRoster, 12);
+
+            var lblRosterTitle = new Label
+            {
+                Text = "Team Roster Snapshot",
+                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
+                ForeColor = Theme.TextPrimary,
+                Location = new Point(16, 14),
+                AutoSize = true
+            };
+            var lblRosterSub = new Label
+            {
+                Name = "lblRosterSub",
+                Text = "Staff oversight",
+                Font = new Font("Segoe UI", 8.5f),
+                ForeColor = Theme.TextSecondary,
+                Location = new Point(17, 36),
+                AutoSize = true
+            };
+            var btnRosterViewAll = new Label
+            {
+                Name = "btnRosterViewAll",
+                Text = "View All →",
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+                ForeColor = Theme.Primary,
+                Cursor = Cursors.Hand,
+                AutoSize = true
+            };
+            btnRosterViewAll.Click += (_, _) => RequestNavigation("SalesStaff");
+
+            _pnlTeamRosterList = new Panel
+            {
+                AutoScroll = true,
+                Location = new Point(16, 58)
+            };
+
+            _cardTeamRoster.Controls.Add(lblRosterTitle);
+            _cardTeamRoster.Controls.Add(lblRosterSub);
+            _cardTeamRoster.Controls.Add(btnRosterViewAll);
+            _cardTeamRoster.Controls.Add(_pnlTeamRosterList);
+
+            // 2. Ticket Breakdown Card
+            _cardTicketBreakdown = new Panel { BackColor = Color.White };
+            UiRadiusHelper.StyleCard(_cardTicketBreakdown, 12);
+
+            var lblTicketTitle = new Label
+            {
+                Text = "Ticket Breakdown",
+                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
+                ForeColor = Theme.TextPrimary,
+                Location = new Point(16, 14),
+                AutoSize = true
+            };
+            var lblTicketSub = new Label
+            {
+                Text = "Support queue status",
+                Font = new Font("Segoe UI", 8.5f),
+                ForeColor = Theme.TextSecondary,
+                Location = new Point(17, 36),
+                AutoSize = true
+            };
+            _plotAdminTicketBreakdown = new ScottPlot.WinForms.FormsPlot
+            {
+                Location = new Point(12, 54)
+            };
+            BiDisplayConstants.ConfigureStandardPlot(_plotAdminTicketBreakdown);
+
+            _lblAdminTicketBreakdownFooter = new Label
+            {
+                Text = "View all support tickets →",
+                Font = new Font("Segoe UI Semibold", 8.5f),
+                ForeColor = Theme.Primary,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Cursor = Cursors.Hand
+            };
+            _lblAdminTicketBreakdownFooter.Click += (_, _) => RequestNavigation("SupportTickets");
+            _cardTicketBreakdown.Click += (_, _) => RequestNavigation("SupportTickets");
+
+            _cardTicketBreakdown.Controls.Add(lblTicketTitle);
+            _cardTicketBreakdown.Controls.Add(lblTicketSub);
+            _cardTicketBreakdown.Controls.Add(_plotAdminTicketBreakdown);
+            _cardTicketBreakdown.Controls.Add(_lblAdminTicketBreakdownFooter);
+
+            // 3. Commission Trend Card
+            _cardCommissionTrend = new Panel { BackColor = Color.White };
+            UiRadiusHelper.StyleCard(_cardCommissionTrend, 12);
+
+            var lblCommTitle = new Label
+            {
+                Text = "Commission Trend",
+                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
+                ForeColor = Theme.TextPrimary,
+                Location = new Point(16, 14),
+                AutoSize = true
+            };
+            var lblCommSub = new Label
+            {
+                Text = "Commission Earned — Last 6 Months",
+                Font = new Font("Segoe UI", 8.5f),
+                ForeColor = Theme.TextSecondary,
+                Location = new Point(17, 36),
+                AutoSize = true
+            };
+            _plotAdminCommissionTrend = new ScottPlot.WinForms.FormsPlot
+            {
+                Location = new Point(12, 54)
+            };
+            BiDisplayConstants.ConfigureStandardPlot(_plotAdminCommissionTrend);
+
+            _lblAdminCommissionFooter = new Label
+            {
+                Text = "View Commission Report →",
+                Font = new Font("Segoe UI Semibold", 8.5f),
+                ForeColor = Theme.Primary,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Cursor = Cursors.Hand
+            };
+            _lblAdminCommissionFooter.Click += (_, _) => RequestNavigation("Reports:Commission");
+            _cardCommissionTrend.Click += (_, _) => RequestNavigation("Reports:Commission");
+
+            _cardCommissionTrend.Controls.Add(lblCommTitle);
+            _cardCommissionTrend.Controls.Add(lblCommSub);
+            _cardCommissionTrend.Controls.Add(_plotAdminCommissionTrend);
+            _cardCommissionTrend.Controls.Add(_lblAdminCommissionFooter);
+
+            // 4. Tickets Needing Attention Card
+            _cardTicketsAttention = new Panel { BackColor = Color.White };
+            UiRadiusHelper.StyleCard(_cardTicketsAttention, 12);
+
+            var lblAttnTitle = new Label
+            {
+                Text = "Tickets Needing Attention",
+                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
+                ForeColor = Theme.TextPrimary,
+                Location = new Point(16, 14),
+                AutoSize = true
+            };
+            var lblAttnSub = new Label
+            {
+                Name = "lblAttnSub",
+                Text = "Oldest open support tickets",
+                Font = new Font("Segoe UI", 8.5f),
+                ForeColor = Theme.TextSecondary,
+                Location = new Point(17, 36),
+                AutoSize = true
+            };
+            var btnAttnViewAll = new Label
+            {
+                Name = "btnAttnViewAll",
+                Text = "View Support Tickets →",
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+                ForeColor = Theme.Primary,
+                Cursor = Cursors.Hand,
+                AutoSize = true
+            };
+            btnAttnViewAll.Click += (_, _) => RequestNavigation("SupportTickets");
+
+            _pnlTicketsAttentionList = new Panel
+            {
+                AutoScroll = true,
+                Location = new Point(16, 58)
+            };
+
+            _cardTicketsAttention.Controls.Add(lblAttnTitle);
+            _cardTicketsAttention.Controls.Add(lblAttnSub);
+            _cardTicketsAttention.Controls.Add(btnAttnViewAll);
+            _cardTicketsAttention.Controls.Add(_pnlTicketsAttentionList);
+
+            // 5. Recent System Activity Card
+            _cardRecentActivity = new Panel { BackColor = Color.White, Visible = false };
+            UiRadiusHelper.StyleCard(_cardRecentActivity, 12);
+
+            var lblActTitle = new Label
+            {
+                Text = "Recent System Activity",
+                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
+                ForeColor = Theme.TextPrimary,
+                Location = new Point(16, 14),
+                AutoSize = true
+            };
+            var lblActSub = new Label
+            {
+                Text = "Live system audit events & configuration updates",
+                Font = new Font("Segoe UI", 8.5f),
+                ForeColor = Theme.TextSecondary,
+                Location = new Point(17, 36),
+                AutoSize = true
+            };
+            _pnlRecentActivityList = new Panel
+            {
+                AutoScroll = true,
+                Location = new Point(16, 58)
+            };
+
+            _cardRecentActivity.Controls.Add(lblActTitle);
+            _cardRecentActivity.Controls.Add(lblActSub);
+            _cardRecentActivity.Controls.Add(_pnlRecentActivityList);
+
+            // Add all cards to _pnlAdminContainer
+            _pnlAdminContainer.Controls.Add(_cardTeamRoster);
+            _pnlAdminContainer.Controls.Add(_cardTicketBreakdown);
+            _pnlAdminContainer.Controls.Add(_cardCommissionTrend);
+            _pnlAdminContainer.Controls.Add(_cardTicketsAttention);
+            _pnlAdminContainer.Controls.Add(_cardRecentActivity);
+
+            Controls.Add(_pnlAdminContainer);
+            _pnlAdminContainer.BringToFront();
+
+            _pnlAdminContainer.Resize += (_, _) => LayoutAdminControls();
+
+            return _pnlAdminContainer;
+        }
+
+        private void LayoutAdminControls()
+        {
+            if (_pnlAdminContainer == null || !_pnlAdminContainer.Visible) return;
+
+            _pnlAdminContainer.SuspendLayout();
+            try
+            {
+                int scrollY = -_pnlAdminContainer.AutoScrollPosition.Y;
+                _pnlAdminContainer.AutoScrollPosition = Point.Empty;
+
+                int totalWidth = _pnlAdminContainer.ClientSize.Width;
+                if (totalWidth <= 0) return;
+
+                int gap = 16;
+                int colWidth = Math.Max(280, (totalWidth - gap) / 2);
+
+                int y = 0;
+
+                // Row 1: [Team Roster | Ticket Breakdown]
+                int row1Height = 350;
+                if (_cardTeamRoster != null)
+                {
+                    _cardTeamRoster.Location = new Point(0, y);
+                    _cardTeamRoster.Size = new Size(colWidth, row1Height);
+
+                    if (_cardTeamRoster.Controls["btnRosterViewAll"] is Label btnViewAll)
+                    {
+                        btnViewAll.Location = new Point(_cardTeamRoster.Width - btnViewAll.Width - 16, 16);
+                    }
+                    if (_pnlTeamRosterList != null)
+                    {
+                        _pnlTeamRosterList.Size = new Size(_cardTeamRoster.Width - 32, _cardTeamRoster.Height - 74);
+                        ResizeListItems(_pnlTeamRosterList);
+                    }
+                }
+                if (_cardTicketBreakdown != null)
+                {
+                    _cardTicketBreakdown.Location = new Point(colWidth + gap, y);
+                    _cardTicketBreakdown.Size = new Size(colWidth, row1Height);
+
+                    if (_plotAdminTicketBreakdown != null)
+                    {
+                        _plotAdminTicketBreakdown.Size = new Size(_cardTicketBreakdown.Width - 24, _cardTicketBreakdown.Height - 90);
+                    }
+                    if (_lblAdminTicketBreakdownFooter != null)
+                    {
+                        _lblAdminTicketBreakdownFooter.Location = new Point(12, _cardTicketBreakdown.Height - 30);
+                        _lblAdminTicketBreakdownFooter.Size = new Size(_cardTicketBreakdown.Width - 24, 22);
+                    }
+                }
+                y += row1Height + gap;
+
+                // Row 2: [Commission Trend | Tickets Needing Attention]
+                int row2Height = 280;
+                if (_cardCommissionTrend != null)
+                {
+                    _cardCommissionTrend.Location = new Point(0, y);
+                    _cardCommissionTrend.Size = new Size(colWidth, row2Height);
+
+                    if (_plotAdminCommissionTrend != null)
+                    {
+                        _plotAdminCommissionTrend.Size = new Size(_cardCommissionTrend.Width - 24, _cardCommissionTrend.Height - 90);
+                    }
+                    if (_lblAdminCommissionFooter != null)
+                    {
+                        _lblAdminCommissionFooter.Location = new Point(12, _cardCommissionTrend.Height - 30);
+                        _lblAdminCommissionFooter.Size = new Size(_cardCommissionTrend.Width - 24, 22);
+                    }
+                }
+                if (_cardTicketsAttention != null)
+                {
+                    _cardTicketsAttention.Location = new Point(colWidth + gap, y);
+                    _cardTicketsAttention.Size = new Size(colWidth, row2Height);
+
+                    if (_cardTicketsAttention.Controls["btnAttnViewAll"] is Label btnAttnViewAll)
+                    {
+                        btnAttnViewAll.Location = new Point(_cardTicketsAttention.Width - btnAttnViewAll.Width - 16, 16);
+                    }
+                    if (_pnlTicketsAttentionList != null)
+                    {
+                        _pnlTicketsAttentionList.Size = new Size(_cardTicketsAttention.Width - 32, _cardTicketsAttention.Height - 74);
+                        ResizeListItems(_pnlTicketsAttentionList);
+                    }
+                }
+                y += row2Height + gap;
+
+                // Row 3: [Recent System Activity] (rendered if real data exists, omitted otherwise)
+                if (_cardRecentActivity != null && _cardRecentActivity.Visible)
+                {
+                    int row3Height = 260;
+                    _cardRecentActivity.Location = new Point(0, y);
+                    _cardRecentActivity.Size = new Size(totalWidth, row3Height);
+
+                    if (_pnlRecentActivityList != null)
+                    {
+                        _pnlRecentActivityList.Size = new Size(_cardRecentActivity.Width - 32, _cardRecentActivity.Height - 74);
+                        ResizeListItems(_pnlRecentActivityList);
+                    }
+                    y += row3Height + gap;
+                }
+
+                if (scrollY > 0)
+                {
+                    _pnlAdminContainer.AutoScrollPosition = new Point(0, scrollY);
+                }
+            }
+            finally
+            {
+                _pnlAdminContainer.ResumeLayout(true);
+            }
+        }
+
+        private Panel CreateTeamRosterRow(AdminTeamRosterItemDto item, Action onClick)
+        {
+            var panel = new Panel
+            {
+                Height = 50,
+                BackColor = Color.White,
+                Cursor = Cursors.Hand
+            };
+            UiRadiusHelper.ApplyRoundedCorners(panel, 8);
+
+            var avatar = new AvatarLabel(item.FullName, item.RoleName)
+            {
+                Location = new Point(8, 6),
+                Height = 38,
+                AvatarSize = 32,
+                Cursor = Cursors.Hand
+            };
+            panel.Controls.Add(avatar);
+
+            var status = new StatusText(item.Status)
+            {
+                Cursor = Cursors.Hand
+            };
+            panel.Controls.Add(status);
+
+            void Reposition()
+            {
+                avatar.Width = Math.Max(120, panel.Width - status.PreferredWidth - 28);
+                status.Location = new Point(panel.Width - status.PreferredWidth - 14, (panel.Height - status.Height) / 2);
+            }
+
+            panel.SizeChanged += (_, _) => Reposition();
+            Reposition();
+
+            panel.Paint += (s, e) =>
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using var pen = new Pen(Color.FromArgb(226, 232, 240), 1f);
+                using var path = UiRadiusHelper.CreateRoundedPath(new Rectangle(0, 0, panel.Width - 1, panel.Height - 1), 8);
+                e.Graphics.DrawPath(pen, path);
+            };
+
+            void SetHover(bool hovered)
+            {
+                panel.BackColor = hovered ? Color.FromArgb(248, 250, 252) : Color.White;
+            }
+
+            panel.MouseEnter += (_, _) => SetHover(true);
+            panel.MouseLeave += (_, _) => SetHover(false);
+            avatar.MouseEnter += (_, _) => SetHover(true);
+            avatar.MouseLeave += (_, _) => SetHover(false);
+            status.MouseEnter += (_, _) => SetHover(true);
+            status.MouseLeave += (_, _) => SetHover(false);
+
+            panel.Click += (_, _) => onClick();
+            avatar.Click += (_, _) => onClick();
+            status.Click += (_, _) => onClick();
+
+            return panel;
+        }
+
+        private Panel CreateTicketAttentionRow(AdminTicketAttentionItemDto item, Action onClick)
+        {
+            var panel = new Panel
+            {
+                Height = 54,
+                BackColor = Color.White,
+                Cursor = Cursors.Hand
+            };
+            UiRadiusHelper.ApplyRoundedCorners(panel, 8);
+
+            string sub = $"#{item.TicketNumber} · {item.Category} · {item.OpenedAgoText}";
+            var avatar = new AvatarLabel(item.CustomerName, sub)
+            {
+                Location = new Point(8, 7),
+                Height = 40,
+                AvatarSize = 32,
+                Cursor = Cursors.Hand
+            };
+            panel.Controls.Add(avatar);
+
+            var status = new StatusText(item.Priority)
+            {
+                Cursor = Cursors.Hand
+            };
+            panel.Controls.Add(status);
+
+            void Reposition()
+            {
+                avatar.Width = Math.Max(120, panel.Width - status.PreferredWidth - 28);
+                status.Location = new Point(panel.Width - status.PreferredWidth - 14, (panel.Height - status.Height) / 2);
+            }
+
+            panel.SizeChanged += (_, _) => Reposition();
+            Reposition();
+
+            panel.Paint += (s, e) =>
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using var pen = new Pen(Color.FromArgb(226, 232, 240), 1f);
+                using var path = UiRadiusHelper.CreateRoundedPath(new Rectangle(0, 0, panel.Width - 1, panel.Height - 1), 8);
+                e.Graphics.DrawPath(pen, path);
+            };
+
+            void SetHover(bool hovered)
+            {
+                panel.BackColor = hovered ? Color.FromArgb(248, 250, 252) : Color.White;
+            }
+
+            panel.MouseEnter += (_, _) => SetHover(true);
+            panel.MouseLeave += (_, _) => SetHover(false);
+            avatar.MouseEnter += (_, _) => SetHover(true);
+            avatar.MouseLeave += (_, _) => SetHover(false);
+            status.MouseEnter += (_, _) => SetHover(true);
+            status.MouseLeave += (_, _) => SetHover(false);
+
+            panel.Click += (_, _) => onClick();
+            avatar.Click += (_, _) => onClick();
+            status.Click += (_, _) => onClick();
+
+            return panel;
+        }
+
+        private void RenderAdminTicketDonut(int open, int inProgress, int resolved)
+        {
+            if (_plotAdminTicketBreakdown == null) return;
+
+            _plotAdminTicketBreakdown.Plot.Clear();
+            BiDisplayConstants.ConfigureStandardPlot(_plotAdminTicketBreakdown);
+
+            if (open == 0 && inProgress == 0 && resolved == 0)
+            {
+                BiDisplayConstants.ShowPlotEmpty(_plotAdminTicketBreakdown, "No support tickets recorded");
+                return;
+            }
+
+            var slices = new List<(string label, double value, Color color)>
+            {
+                ("Open", open, BiDisplayConstants.StatusNeutral),
+                ("In Progress", inProgress, BiDisplayConstants.StatusPending),
+                ("Resolved", resolved, BiDisplayConstants.StatusWon)
+            };
+            BiDisplayConstants.RenderDonutPlot(_plotAdminTicketBreakdown, slices, 3);
+        }
+
+        private void RenderAdminCommissionTrend(List<AdminCommissionTrendPointDto> trend)
+        {
+            if (_plotAdminCommissionTrend == null) return;
+
+            _plotAdminCommissionTrend.Plot.Clear();
+            BiDisplayConstants.ConfigureStandardPlot(_plotAdminCommissionTrend);
+
+            if (trend == null || trend.Count == 0 || trend.All(t => t.CommissionAmount <= 0.0001))
+            {
+                BiDisplayConstants.ShowPlotEmpty(_plotAdminCommissionTrend, "No commission recorded in past 6 months");
+                return;
+            }
+
+            var bars = new List<ScottPlot.Bar>();
+            var ticks = new List<ScottPlot.Tick>();
+
+            for (int i = 0; i < trend.Count; i++)
+            {
+                bars.Add(new ScottPlot.Bar
+                {
+                    Position = i,
+                    Value = trend[i].CommissionAmount,
+                    FillColor = ScottPlot.Color.FromColor(Theme.Primary),
+                    LineWidth = 0
+                });
+                ticks.Add(new ScottPlot.Tick(i, trend[i].MonthLabel));
+            }
+
+            _plotAdminCommissionTrend.Plot.Add.Bars(bars);
+            var tickGen = new ScottPlot.TickGenerators.NumericManual(ticks.ToArray());
+            _plotAdminCommissionTrend.Plot.Axes.Bottom.TickGenerator = tickGen;
+            _plotAdminCommissionTrend.Plot.Axes.Bottom.MinimumSize = 25;
+
+            // Frameless, glanceable visual without Y axis labels or grid clutter
+            _plotAdminCommissionTrend.Plot.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.EmptyTickGenerator();
+            _plotAdminCommissionTrend.Plot.Axes.Left.MinimumSize = 0;
+            _plotAdminCommissionTrend.Plot.Axes.Frameless();
+            _plotAdminCommissionTrend.Plot.HideGrid();
+
+            double maxVal = trend.Max(t => t.CommissionAmount);
+            _plotAdminCommissionTrend.Plot.Axes.SetLimits(-0.6, trend.Count - 0.4, 0, Math.Max(1.0, maxVal * 1.15));
+            _plotAdminCommissionTrend.Refresh();
         }
 
         // =========================================================================
@@ -724,7 +1342,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             pnlContentSplit.ResumeLayout(true);
         }
 
-        private static void ConfigureKpiCard(KpiCard card, string title, object value, string subtitle, Color accentColor, KpiIconType icon, Action onClick, Color? valueColor = null)
+        private static void ConfigureKpiCard(KpiCard card, string title, object value, string subtitle, Color accentColor, KpiIconType icon, Action onClick, Color? valueColor = null, Color? subtitleColor = null)
         {
             card.SetTitle(title);
             if (value is int intVal)
@@ -745,7 +1363,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                 card.SetValueColor(Color.FromArgb(15, 23, 42));
             }
 
-            card.SetSubtitle(subtitle);
+            card.SetSubtitle(subtitle, subtitleColor);
             card.SetIcon(icon, accentColor);
             card.Cursor = Cursors.Hand;
             card.SetAction(onClick);
@@ -978,11 +1596,31 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
 
             int splitTop = pnlKpiContainer.Bottom + 16;
             int splitHeight = Math.Max(200, ClientSize.Height - splitTop - 24);
-            pnlContentSplit.Location = new Point(leftMargin, splitTop);
-            pnlContentSplit.Size = new Size(totalWidth - leftMargin - rightMargin, splitHeight);
 
-            ResizeListItems(pnlLeftList);
-            ResizeListItems(pnlRightList);
+            if (_currentRole == UserRole.Admin)
+            {
+                pnlContentSplit.Visible = false;
+                if (_pnlAdminContainer != null)
+                {
+                    _pnlAdminContainer.Visible = true;
+                    _pnlAdminContainer.Location = new Point(leftMargin, splitTop);
+                    _pnlAdminContainer.Size = new Size(totalWidth - leftMargin - rightMargin, splitHeight);
+                    LayoutAdminControls();
+                }
+            }
+            else
+            {
+                if (_pnlAdminContainer != null)
+                {
+                    _pnlAdminContainer.Visible = false;
+                }
+                pnlContentSplit.Visible = true;
+                pnlContentSplit.Location = new Point(leftMargin, splitTop);
+                pnlContentSplit.Size = new Size(totalWidth - leftMargin - rightMargin, splitHeight);
+
+                ResizeListItems(pnlLeftList);
+                ResizeListItems(pnlRightList);
+            }
         }
 
         private void RequestNavigation(string module)

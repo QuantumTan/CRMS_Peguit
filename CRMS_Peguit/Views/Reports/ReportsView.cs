@@ -117,6 +117,37 @@ namespace CRMS_Peguit.winforms.Views.Reports
             UpdateSecondaryFilter();
         }
 
+        public void SelectReport(string reportNameOrKeyword, string? dateRange = null)
+        {
+            if (string.IsNullOrWhiteSpace(reportNameOrKeyword)) return;
+
+            for (int i = 0; i < cboReportType.Items.Count; i++)
+            {
+                var itemText = cboReportType.Items[i]?.ToString() ?? "";
+                if (itemText.Contains(reportNameOrKeyword, StringComparison.OrdinalIgnoreCase))
+                {
+                    cboReportType.SelectedIndex = i;
+                    break;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(dateRange))
+            {
+                for (int i = 0; i < cboDateRange.Items.Count; i++)
+                {
+                    var dtText = cboDateRange.Items[i]?.ToString() ?? "";
+                    if (dtText.Contains(dateRange, StringComparison.OrdinalIgnoreCase))
+                    {
+                        cboDateRange.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            UpdateSecondaryFilter();
+            BtnRunReport_Click(this, EventArgs.Empty);
+        }
+
         private void WireEvents()
         {
             cboReportType.SelectedIndexChanged += (s, e) =>
@@ -201,11 +232,11 @@ namespace CRMS_Peguit.winforms.Views.Reports
                     pnlCharts.Visible = true;
                     pnlGrid.Visible = true;
 
-                    int chartHeight = 285;
+                    int chartHeight = 345;
                     pnlCharts.Location = new Point(0, 0);
                     pnlCharts.Size = new Size(containerWidth, chartHeight);
 
-                    int gridHeight = Math.Max(380, containerHeight - chartHeight);
+                    int gridHeight = Math.Max(350, containerHeight - chartHeight);
                     pnlGrid.Location = new Point(0, pnlCharts.Bottom);
                     pnlGrid.Size = new Size(containerWidth, gridHeight);
 
@@ -218,8 +249,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
                     pnlGrid.Visible = false;
 
                     // Prevent charts from stretching to abnormal vertical heights when "Chart Only" is active
-                    // Cap with reasonable MinHeight (280px) and MaxHeight (480px)
-                    int chartHeight = Math.Clamp(containerHeight > 0 ? containerHeight : 380, 280, 480);
+                    int chartHeight = Math.Clamp(containerHeight > 0 ? containerHeight : 450, 340, 560);
                     pnlCharts.Location = new Point(0, 0);
                     pnlCharts.Size = new Size(containerWidth, chartHeight);
 
@@ -246,13 +276,21 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 int pad = 20;
                 int totalChartWidth = pnlCharts.ClientSize.Width - (pad * 2);
                 int cardWidth = Math.Max(280, (totalChartWidth - 16) / 2);
-                int cardHeight = Math.Max(200, pnlCharts.ClientSize.Height - 20);
+                int cardHeight = Math.Max(220, pnlCharts.ClientSize.Height - 20);
 
                 pnlChartCard1.Location = new Point(pad, 10);
                 pnlChartCard1.Size = new Size(cardWidth, cardHeight);
 
                 pnlChartCard2.Location = new Point(pnlChartCard1.Right + 16, 10);
                 pnlChartCard2.Size = new Size(cardWidth, cardHeight);
+
+                // Explicitly size and position FormsPlots with comfortable margins below card title
+                int plotWidth = Math.Max(100, cardWidth - 24);
+                int plotHeight = Math.Max(100, cardHeight - 48);
+                plotReport1.Location = new Point(12, 36);
+                plotReport1.Size = new Size(plotWidth, plotHeight);
+                plotReport2.Location = new Point(12, 36);
+                plotReport2.Size = new Size(plotWidth, plotHeight);
             }
 
             pnlScrollableContent.AutoScrollMinSize = new Size(0, totalContentHeight + 10);
@@ -625,8 +663,8 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
                     var slices = new (string Label, double Value, Color Color)[]
                     {
-                        ($"Agent Payouts ({totalPayoutK:N0}k)", Math.Max(0.01, totalPayoutK), BiDisplayConstants.StatusWon),
-                        ($"Brokerage Net ({totalBrokerageK:N0}k)", Math.Max(0.01, totalBrokerageK), BiDisplayConstants.PrimaryAccent)
+                        ("Agent Payouts", Math.Max(0.01, totalPayoutK), BiDisplayConstants.StatusWon),
+                        ("Brokerage Net", Math.Max(0.01, totalBrokerageK), BiDisplayConstants.PrimaryAccent)
                     };
                     BiDisplayConstants.RenderDonutPlot(plotReport2, slices);
                 }
@@ -742,9 +780,9 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 int pending = tickets.Count(t => t.SlaMet != "Yes" && t.SlaMet != "No");
 
                 var slices = new List<(string Label, double Value, Color Color)>();
-                if (met > 0) slices.Add(($"Met SLA ({met})", (double)met, BiDisplayConstants.StatusWon));
-                if (missed > 0) slices.Add(($"Breached ({missed})", (double)missed, BiDisplayConstants.StatusLost));
-                if (pending > 0) slices.Add(($"In Progress ({pending})", (double)pending, BiDisplayConstants.StatusNeutral));
+                if (met > 0) slices.Add(("Met SLA", (double)met, BiDisplayConstants.StatusWon));
+                if (missed > 0) slices.Add(("Breached", (double)missed, BiDisplayConstants.StatusLost));
+                if (pending > 0) slices.Add(("In Progress", (double)pending, BiDisplayConstants.StatusNeutral));
 
                 BiDisplayConstants.RenderDonutPlot(plotReport2, slices);
             }

@@ -67,7 +67,8 @@ namespace CRMS_Peguit.winforms.Controllers
                 var startDate = range.StartDate;
                 var endDate = range.EndDate;
 
-                var closedDeals = dealsQuery.Where(d => d.Stage.ToLower() == "closed" && d.CreatedAt >= startDate && d.CreatedAt <= endDate).ToList();
+                var closedDeals = dealsQuery.Where(d => (d.Stage.ToLower() == "closed" || d.Stage.ToLower() == "closed-won" || d.Stage.ToLower() == "won") &&
+                                                         (d.ContractSignedDate ?? d.CreatedAt) >= startDate && (d.ContractSignedDate ?? d.CreatedAt) <= endDate).ToList();
                 
                 var totalDealsClosed = closedDeals.Count;
                 var totalSalesVolume = closedDeals.Sum(d => d.Value);
@@ -75,7 +76,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 var averageDealSize = totalDealsClosed == 0 ? 0 : totalSalesVolume / totalDealsClosed;
 
                 // Active Pipeline: Deals currently open / in progress
-                var openDeals = dealsQuery.Where(d => d.Stage.ToLower() != "closed" && d.Stage.ToLower() != "lost").ToList();
+                var openDeals = dealsQuery.Where(d => d.Stage.ToLower() != "closed" && d.Stage.ToLower() != "closed-won" && d.Stage.ToLower() != "won" && d.Stage.ToLower() != "lost").ToList();
                 var activePipelineValue = openDeals.Sum(d => d.Value);
 
                 var activeLeads = leadsQuery.Count(l => l.Stage.ToLower() != "converted" && l.Stage.ToLower() != "lost");
@@ -91,7 +92,7 @@ namespace CRMS_Peguit.winforms.Controllers
 
                 var openSupportTickets = ticketsQuery.Count(t => t.Status.ToLower() != "resolved" && t.Status.ToLower() != "closed");
 
-                var closedDealsWithDates = dealsQuery.Where(d => d.Stage.ToLower() == "closed" && d.ContractSignedDate != null).ToList();
+                var closedDealsWithDates = dealsQuery.Where(d => (d.Stage.ToLower() == "closed" || d.Stage.ToLower() == "closed-won" || d.Stage.ToLower() == "won") && d.ContractSignedDate != null).ToList();
                 var averageDaysToClose = closedDealsWithDates.Any() ? closedDealsWithDates.Average(d => ((d.ContractSignedDate ?? d.CreatedAt) - d.CreatedAt).TotalDays) : 0;
 
                 // Active property inventory
@@ -143,7 +144,8 @@ namespace CRMS_Peguit.winforms.Controllers
                 var endDate = range.EndDate;
 
                 var deals = GetDealsQuery()
-                    .Where(d => d.Stage.ToLower() == "closed" && d.CreatedAt >= startDate && d.CreatedAt <= endDate)
+                    .Where(d => (d.Stage.ToLower() == "closed" || d.Stage.ToLower() == "closed-won" || d.Stage.ToLower() == "won") &&
+                                (d.ContractSignedDate ?? d.CreatedAt) >= startDate && (d.ContractSignedDate ?? d.CreatedAt) <= endDate)
                     .ToList();
 
                 var durationDays = (endDate - startDate).TotalDays;
@@ -151,7 +153,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 if (durationDays <= 31)
                 {
                     // Daily/Weekly breakdown for short ranges
-                    var groupedDaily = deals.GroupBy(d => d.CreatedAt.Date)
+                    var groupedDaily = deals.GroupBy(d => (d.ContractSignedDate ?? d.CreatedAt).Date)
                         .OrderBy(g => g.Key)
                         .Select(g => new MonthlyMetric
                         {
@@ -164,7 +166,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 }
                 else
                 {
-                    var grouped = deals.GroupBy(d => new { d.CreatedAt.Year, d.CreatedAt.Month })
+                    var grouped = deals.GroupBy(d => new { (d.ContractSignedDate ?? d.CreatedAt).Year, (d.ContractSignedDate ?? d.CreatedAt).Month })
                         .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
                         .Select(g => new MonthlyMetric
                         {
@@ -256,7 +258,8 @@ namespace CRMS_Peguit.winforms.Controllers
 
                 var deals = GetDealsQuery()
                     .Include(d => d.Agent)
-                    .Where(d => d.Stage.ToLower() == "closed" && d.CreatedAt >= range.StartDate && d.CreatedAt <= range.EndDate)
+                    .Where(d => (d.Stage.ToLower() == "closed" || d.Stage.ToLower() == "closed-won" || d.Stage.ToLower() == "won") &&
+                                (d.ContractSignedDate ?? d.CreatedAt) >= range.StartDate && (d.ContractSignedDate ?? d.CreatedAt) <= range.EndDate)
                     .ToList();
 
                 var grouped = deals.GroupBy(d => d.Agent)

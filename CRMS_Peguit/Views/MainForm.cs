@@ -713,6 +713,10 @@ namespace CRMS_Peguit.winforms
                     BtnFollowUpsClick(btnFollowUps, EventArgs.Empty);
                     break;
                 case "reports":
+                case "reports:commission":
+                case "commission":
+                case "commissionreport":
+                case "commission-report":
                     if (!CurrentSession.CanAccess("Reports") || RbacService.IsAgent) return;
                     SetActiveNavButton(btnReports);
                     ShowViewCached("Reports", () =>
@@ -721,6 +725,21 @@ namespace CRMS_Peguit.winforms
                         rpt.NavigationRequested += m => NavigateTo(m);
                         return rpt;
                     });
+
+                    if (_viewCache.TryGetValue("Reports", out var cachedRpt) && cachedRpt is CRMS_Peguit.winforms.Views.Reports.ReportsView rptView)
+                    {
+                        string modLower = module.ToLowerInvariant();
+                        if (modLower.Contains("commission"))
+                        {
+                            rptView.SelectReport("Commission");
+                        }
+                        else if (modLower.Contains(':'))
+                        {
+                            var subReport = module.Split(':', 2)[1].Trim();
+                            if (!string.IsNullOrEmpty(subReport))
+                                rptView.SelectReport(subReport);
+                        }
+                    }
                     break;
                 case "analytics":
                 case "teamperformance":
@@ -734,6 +753,32 @@ namespace CRMS_Peguit.winforms
                         ana.NavigationRequested += m => NavigateTo(m);
                         return ana;
                     });
+                    break;
+                case "salesstaff":
+                case "manageagents":
+                case "agents":
+                    if (!CurrentSession.CanAccess("SalesStaff")) return;
+                    SetActiveNavButton(btnManageAgents);
+                    BtnManageAgentsClick(btnManageAgents, EventArgs.Empty);
+                    break;
+                case "managemanagers":
+                case "managers":
+                    if (!CurrentSession.CanAccess("Managers")) return;
+                    SetActiveNavButton(btnManageManagers);
+                    BtnManageManagersClick(btnManageManagers, EventArgs.Empty);
+                    break;
+                case "manageusers":
+                case "users":
+                    if (CurrentSession.CanAccess("SalesStaff"))
+                    {
+                        SetActiveNavButton(btnManageAgents);
+                        BtnManageAgentsClick(btnManageAgents, EventArgs.Empty);
+                    }
+                    else if (CurrentSession.CanAccess("Managers"))
+                    {
+                        SetActiveNavButton(btnManageManagers);
+                        BtnManageManagersClick(btnManageManagers, EventArgs.Empty);
+                    }
                     break;
             }
         }

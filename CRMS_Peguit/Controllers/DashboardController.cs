@@ -253,16 +253,35 @@ namespace CRMS_Peguit.winforms.Controllers
             try
             {
                 int totalActiveUsers = UserCtrl.GetActiveUsersCount();
+                var (managersCount, agentsCount) = UserCtrl.GetActiveStaffCounts();
+                string activeUsersSub = $"{managersCount} Manager{(managersCount == 1 ? "" : "s")} · {agentsCount} Agent{(agentsCount == 1 ? "" : "s")}";
+
+                var ticketKpis = SupportTicketCtrl.GetKpiCounts();
                 int openTickets = SupportTicketCtrl.GetOpenTicketsCount();
+                int overdueTickets = ticketKpis.Overdue;
+                string openTicketsSub = overdueTickets > 0 ? $"{overdueTickets} overdue" : string.Empty;
+
                 int dealsClosed = DealCtrl.GetDealsClosedThisMonthCount();
+                decimal commEarned = DealCtrl.GetCommissionEarnedThisMonth();
+                string dealsClosedSub = $"{AppFormat.FormatCurrency(commEarned)} commission earned";
+
                 var (subStatus, subExpiry) = GetSubscriptionDetails();
 
-                // Glanceable Chart: Ticket Status Breakdown (Open / In Progress / Resolved)
-                int openT = _db.SupportTickets.AsNoTracking().Count(t => t.Status == "Open" || t.Status == "New");
-                int inProgT = _db.SupportTickets.AsNoTracking().Count(t => t.Status == "In Progress" || t.Status == "InProgress");
-                int resT = _db.SupportTickets.AsNoTracking().Count(t => t.Status == "Resolved" || t.Status == "Closed");
+                // Glanceable Chart 1: Ticket Status Breakdown (Open / In Progress / Resolved)
+                int openT = _db.SupportTickets.AsNoTracking().Count(t => !t.IsDeleted && (t.Status == "Open" || t.Status == "New"));
+                int inProgT = _db.SupportTickets.AsNoTracking().Count(t => !t.IsDeleted && (t.Status == "In Progress" || t.Status == "InProgress"));
+                int resT = _db.SupportTickets.AsNoTracking().Count(t => !t.IsDeleted && (t.Status == "Resolved" || t.Status == "Closed"));
 
-                // Recent System Activity from BackupLogs and SystemSettings
+                // Team Roster Snapshot (6-8 Managers and Agents)
+                var teamRoster = UserCtrl.GetTeamRoster(8);
+
+                // Glanceable Chart 2: Commission Trend (Last 6 Months)
+                var commTrend = DealCtrl.GetCommissionTrendLast6Months(6);
+
+                // Tickets Needing Attention (Top 3 oldest open tickets)
+                var ticketsAttention = SupportTicketCtrl.GetTicketsNeedingAttention(3);
+
+                // Recent System Activity: Real entries only (omitted completely if empty)
                 var systemLogs = new List<SystemActivityItemDto>();
 
                 try
@@ -284,7 +303,8 @@ namespace CRMS_Peguit.winforms.Controllers
                             Status = b.Status,
                             Timestamp = b.BackupDate,
                             TimeAgo = FormatTimeAgo(b.BackupDate),
-                            Icon = "💾"
+                            Icon = "💾",
+                            UseAvatar = false
                         });
                     }
 
@@ -298,14 +318,41 @@ namespace CRMS_Peguit.winforms.Controllers
                     foreach (var s in settings)
                     {
                         string user = s.UpdatedByUser?.FullName ?? "Admin";
+                        string title = s.SettingKey.Contains("Subscription", StringComparison.OrdinalIgnoreCase)
+                            ? "Subscription Configuration"
+                            : $"Setting: {s.SettingKey}";
                         systemLogs.Add(new SystemActivityItemDto
                         {
-                            Title = $"Setting: {s.SettingKey}",
-                            Details = $"Updated by {user}",
+                            Title = title,
+                            Details = $"Value: {s.SettingValue} · Updated by {user}",
                             Status = "Active",
                             Timestamp = s.UpdatedAt,
                             TimeAgo = FormatTimeAgo(s.UpdatedAt),
-                            Icon = "⚙️"
+                            Icon = "⚙️",
+                            UseAvatar = false
+                        });
+                    }
+
+                    var recentUsers = _db.Users
+                        .AsNoTracking()
+                        .Include(u => u.Role)
+                        .Include(u => u.Person)
+                        .OrderByDescending(u => u.CreatedAt)
+                        .Take(3)
+                        .ToList();
+
+                    foreach (var u in recentUsers)
+                    {
+                        systemLogs.Add(new SystemActivityItemDto
+                        {
+                            Title = u.FullName,
+                            Details = $"Role: {u.Role?.RoleName ?? "Staff"} · Created by Administrator",
+                            Status = string.Equals(u.Status, "active", StringComparison.OrdinalIgnoreCase) ? "Active" : "Inactive",
+                            Timestamp = u.CreatedAt,
+                            TimeAgo = FormatTimeAgo(u.CreatedAt),
+                            Icon = "👤",
+                            UseAvatar = true,
+                            AvatarName = u.FullName
                         });
                     }
                 }
@@ -321,13 +368,21 @@ namespace CRMS_Peguit.winforms.Controllers
                     Greeting = $"Welcome back, {firstName}",
                     DateText = todayText,
                     TotalActiveUsersCount = totalActiveUsers,
+                    ActiveUsersSubtext = activeUsersSub,
                     OpenTicketsCount = openTickets,
+                    OverdueTicketsCount = overdueTickets,
+                    OpenTicketsSubtext = openTicketsSub,
+                    DealsClosedThisMonthCount = dealsClosed,
+                    CommissionEarnedThisMonth = commEarned,
+                    DealsClosedSubtext = dealsClosedSub,
                     SubscriptionStatus = subStatus,
                     SubscriptionExpiryText = subExpiry,
-                    DealsClosedThisMonthCount = dealsClosed,
                     OpenTicketsBreakdown = openT,
                     InProgressTicketsBreakdown = inProgT,
                     ResolvedTicketsBreakdown = resT,
+                    TeamRoster = teamRoster,
+                    CommissionTrendLast6Months = commTrend,
+                    TicketsNeedingAttention = ticketsAttention,
                     RecentSystemActivities = systemLogs
                 };
             }
@@ -339,7 +394,7 @@ namespace CRMS_Peguit.winforms.Controllers
                     Greeting = $"Welcome back, {firstName}",
                     DateText = todayText,
                     SubscriptionStatus = "Active",
-                    SubscriptionExpiryText = $"Expires {DateTime.UtcNow.AddMonths(9):MMM dd, yyyy}"
+                    SubscriptionExpiryText = "Expires Jun 19, 2027"
                 };
             }
         }
@@ -444,22 +499,28 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             try
             {
-                var setting = _db.SystemSettings
+                var settings = _db.SystemSettings
                     .AsNoTracking()
-                    .FirstOrDefault(s => s.SettingKey == "SubscriptionStatus" || s.SettingKey == "SubscriptionExpiry");
+                    .Where(s => s.SettingKey == "SubscriptionStatus" || s.SettingKey == "SubscriptionExpiry")
+                    .ToDictionary(s => s.SettingKey, s => s.SettingValue);
 
                 string status = "Active";
-                string expiry = $"Expires {DateTime.UtcNow.AddMonths(9):MMM dd, yyyy}";
-
-                if (setting != null && !string.IsNullOrWhiteSpace(setting.SettingValue))
+                if (settings.TryGetValue("SubscriptionStatus", out var sVal) && !string.IsNullOrWhiteSpace(sVal))
                 {
-                    if (setting.SettingKey == "SubscriptionStatus")
+                    status = sVal.Trim();
+                }
+
+                string expiry = "Expires Jun 19, 2027";
+                if (settings.TryGetValue("SubscriptionExpiry", out var eVal) && !string.IsNullOrWhiteSpace(eVal))
+                {
+                    if (DateTime.TryParse(eVal, out var expDate))
                     {
-                        status = setting.SettingValue;
+                        var daysLeft = (int)(expDate.Date - DateTime.UtcNow.Date).TotalDays;
+                        expiry = daysLeft > 0 && daysLeft <= 90 ? $"Renews in {daysLeft} days" : $"Expires {expDate:MMM dd, yyyy}";
                     }
                     else
                     {
-                        expiry = $"Expires {setting.SettingValue}";
+                        expiry = eVal.StartsWith("Expires", StringComparison.OrdinalIgnoreCase) ? eVal : $"Expires {eVal}";
                     }
                 }
 
@@ -467,7 +528,7 @@ namespace CRMS_Peguit.winforms.Controllers
             }
             catch
             {
-                return ("Active", $"Expires {DateTime.UtcNow.AddMonths(9):MMM dd, yyyy}");
+                return ("Active", "Expires Jun 19, 2027");
             }
         }
 

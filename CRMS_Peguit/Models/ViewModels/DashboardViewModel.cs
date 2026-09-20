@@ -103,20 +103,62 @@ namespace CRMS_Peguit.winforms.Models.ViewModels
         public string Greeting { get; set; } = string.Empty;
         public string DateText { get; set; } = string.Empty;
 
-        // KPI Counts
+        // KPI Counts & Contextual Subtext
         public int TotalActiveUsersCount { get; set; }
+        public string ActiveUsersSubtext { get; set; } = string.Empty;
+
         public int OpenTicketsCount { get; set; }
+        public int OverdueTicketsCount { get; set; }
+        public string OpenTicketsSubtext { get; set; } = string.Empty;
+
+        public int DealsClosedThisMonthCount { get; set; }
+        public decimal CommissionEarnedThisMonth { get; set; }
+        public string DealsClosedSubtext { get; set; } = string.Empty;
+
         public string SubscriptionStatus { get; set; } = "Active";
         public string SubscriptionExpiryText { get; set; } = string.Empty;
-        public int DealsClosedThisMonthCount { get; set; }
 
-        // Glanceable Chart (Donut: Ticket Status Breakdown: Open / In Progress / Resolved)
+        // Glanceable Chart 1 (Donut: Ticket Status Breakdown: Open / In Progress / Resolved)
         public int OpenTicketsBreakdown { get; set; }
         public int InProgressTicketsBreakdown { get; set; }
         public int ResolvedTicketsBreakdown { get; set; }
 
-        // Short Lists (max 5 items, empty/omitted if no logs exist)
+        // Glanceable Chart 2 (Bar/Sparkline: Commission Earned — Last 6 Months)
+        public List<AdminCommissionTrendPointDto> CommissionTrendLast6Months { get; set; } = new();
+
+        // Team Roster Snapshot (Short list: max 6–8 rows)
+        public List<AdminTeamRosterItemDto> TeamRoster { get; set; } = new();
+
+        // Tickets Needing Attention (Top 3 oldest still-open tickets)
+        public List<AdminTicketAttentionItemDto> TicketsNeedingAttention { get; set; } = new();
+
+        // Short Lists (real data only; empty/omitted if no logs exist)
         public List<SystemActivityItemDto> RecentSystemActivities { get; set; } = new();
+    }
+
+    public class AdminTeamRosterItemDto
+    {
+        public int UserId { get; set; }
+        public string FullName { get; set; } = string.Empty;
+        public string RoleName { get; set; } = string.Empty;
+        public string Status { get; set; } = "Active";
+    }
+
+    public class AdminCommissionTrendPointDto
+    {
+        public string MonthLabel { get; set; } = string.Empty;
+        public double CommissionAmount { get; set; }
+    }
+
+    public class AdminTicketAttentionItemDto
+    {
+        public int TicketId { get; set; }
+        public string TicketNumber { get; set; } = string.Empty;
+        public string CustomerName { get; set; } = string.Empty;
+        public string Category { get; set; } = string.Empty;
+        public string Priority { get; set; } = "Medium";
+        public string Status { get; set; } = "Open";
+        public string OpenedAgoText { get; set; } = string.Empty;
     }
 
     public class SystemActivityItemDto
@@ -127,6 +169,8 @@ namespace CRMS_Peguit.winforms.Models.ViewModels
         public DateTime Timestamp { get; set; }
         public string TimeAgo { get; set; } = string.Empty;
         public string Icon { get; set; } = "⚙️";
+        public bool UseAvatar { get; set; }
+        public string AvatarName { get; set; } = string.Empty;
     }
 
     // =========================================================================

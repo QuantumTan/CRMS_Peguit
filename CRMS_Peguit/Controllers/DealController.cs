@@ -373,6 +373,67 @@ namespace CRMS_Peguit.winforms.Controllers
             }
         }
 
+        public decimal GetCommissionEarnedThisMonth()
+        {
+            try
+            {
+                var now = DateTime.UtcNow;
+                var closedDealsThisMonth = _db.Deals
+                    .AsNoTracking()
+                    .Where(d => d.Stage.ToLower() == "closed" &&
+                               ((d.ContractSignedDate.HasValue && d.ContractSignedDate.Value.Year == now.Year && d.ContractSignedDate.Value.Month == now.Month) ||
+                                (d.CreatedAt.Year == now.Year && d.CreatedAt.Month == now.Month)))
+                    .ToList();
+
+                return closedDealsThisMonth.Sum(d => d.Value * (d.CommissionRate > 1m ? d.CommissionRate / 100m : d.CommissionRate));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DealController.GetCommissionEarnedThisMonth] Error: {ex.Message}");
+                return 0m;
+            }
+        }
+
+        public List<CRMS_Peguit.winforms.Models.ViewModels.AdminCommissionTrendPointDto> GetCommissionTrendLast6Months(int months = 6)
+        {
+            try
+            {
+                var result = new List<CRMS_Peguit.winforms.Models.ViewModels.AdminCommissionTrendPointDto>();
+                var now = DateTime.UtcNow;
+                var startMonth = new DateTime(now.Year, now.Month, 1).AddMonths(-(months - 1));
+
+                var deals = _db.Deals
+                    .AsNoTracking()
+                    .Where(d => d.Stage.ToLower() == "closed" && ((d.ContractSignedDate ?? d.CreatedAt) >= startMonth))
+                    .ToList();
+
+                for (int i = 0; i < months; i++)
+                {
+                    var targetMonth = startMonth.AddMonths(i);
+                    var monthDeals = deals.Where(d =>
+                    {
+                        var dt = d.ContractSignedDate ?? d.CreatedAt;
+                        return dt.Year == targetMonth.Year && dt.Month == targetMonth.Month;
+                    }).ToList();
+
+                    decimal comm = monthDeals.Sum(d => d.Value * (d.CommissionRate > 1m ? d.CommissionRate / 100m : d.CommissionRate));
+
+                    result.Add(new CRMS_Peguit.winforms.Models.ViewModels.AdminCommissionTrendPointDto
+                    {
+                        MonthLabel = targetMonth.ToString("MMM"),
+                        CommissionAmount = (double)comm
+                    });
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DealController.GetCommissionTrendLast6Months] Error: {ex.Message}");
+                return new List<CRMS_Peguit.winforms.Models.ViewModels.AdminCommissionTrendPointDto>();
+            }
+        }
+
         public void Dispose()
         {
             _db.Dispose();
