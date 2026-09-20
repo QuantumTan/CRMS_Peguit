@@ -73,6 +73,14 @@ namespace CRMS_Peguit.winforms.Views.Deals
         private void ApplyStyling()
         {
             UiRadiusHelper.StyleCard(pnlCard, 12);
+
+            // Pill widths
+            btnFilterAll.Width = 80;
+            btnFilterOffer.Width = 105;
+            btnFilterContract.Width = 105;
+            btnFilterClosed.Width = 100;
+            btnFilterLost.Width = 100;
+
             UiRadiusHelper.ApplyPillShape(btnFilterAll);
             UiRadiusHelper.ApplyPillShape(btnFilterOffer);
             UiRadiusHelper.ApplyPillShape(btnFilterContract);

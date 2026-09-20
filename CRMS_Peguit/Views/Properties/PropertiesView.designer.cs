@@ -106,7 +106,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
             this.btnFilterAll.ForeColor = System.Drawing.Color.White;
             this.btnFilterAll.Location = new System.Drawing.Point(660, 88);
             this.btnFilterAll.Name = "btnFilterAll";
-            this.btnFilterAll.Size = new System.Drawing.Size(55, 28);
+            this.btnFilterAll.Size = new System.Drawing.Size(85, 28);
             this.btnFilterAll.TabIndex = 4;
             this.btnFilterAll.Text = "All";
             this.btnFilterAll.UseVisualStyleBackColor = false;
@@ -121,7 +121,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
             this.btnFilterAvailable.ForeColor = System.Drawing.Color.FromArgb(71, 85, 105);
             this.btnFilterAvailable.Location = new System.Drawing.Point(721, 88);
             this.btnFilterAvailable.Name = "btnFilterAvailable";
-            this.btnFilterAvailable.Size = new System.Drawing.Size(85, 28);
+            this.btnFilterAvailable.Size = new System.Drawing.Size(105, 28);
             this.btnFilterAvailable.TabIndex = 5;
             this.btnFilterAvailable.Text = "Available";
             this.btnFilterAvailable.UseVisualStyleBackColor = false;
@@ -136,7 +136,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
             this.btnFilterPending.ForeColor = System.Drawing.Color.FromArgb(71, 85, 105);
             this.btnFilterPending.Location = new System.Drawing.Point(812, 88);
             this.btnFilterPending.Name = "btnFilterPending";
-            this.btnFilterPending.Size = new System.Drawing.Size(85, 28);
+            this.btnFilterPending.Size = new System.Drawing.Size(105, 28);
             this.btnFilterPending.TabIndex = 6;
             this.btnFilterPending.Text = "Pending";
             this.btnFilterPending.UseVisualStyleBackColor = false;
@@ -151,7 +151,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
             this.btnFilterSold.ForeColor = System.Drawing.Color.FromArgb(71, 85, 105);
             this.btnFilterSold.Location = new System.Drawing.Point(903, 88);
             this.btnFilterSold.Name = "btnFilterSold";
-            this.btnFilterSold.Size = new System.Drawing.Size(97, 28);
+            this.btnFilterSold.Size = new System.Drawing.Size(125, 28);
             this.btnFilterSold.TabIndex = 7;
             this.btnFilterSold.Text = "Sold/Inactive";
             this.btnFilterSold.UseVisualStyleBackColor = false;

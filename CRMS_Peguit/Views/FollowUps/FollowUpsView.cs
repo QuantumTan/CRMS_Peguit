@@ -193,11 +193,43 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
         {
             UiRadiusHelper.StyleCard(pnlCard, 12);
             UiRadiusHelper.StyleButton(btnAdd, 8);
+
+            // Pill widths (wide enough for counts like "Completed (128)")
+            btnFilterAll.Width = 105;
+            btnFilterOverdue.Width = 115;
+            btnFilterToday.Width = 105;
+            btnFilterUpcoming.Width = 125;
+            btnFilterCompleted.Width = 130;
+
+            LayoutPills();
+
+            UiRadiusHelper.ApplyPillShape(btnFilterAll);
             UiRadiusHelper.ApplyPillShape(btnFilterOverdue);
             UiRadiusHelper.ApplyPillShape(btnFilterToday);
             UiRadiusHelper.ApplyPillShape(btnFilterUpcoming);
-            UiRadiusHelper.ApplyPillShape(btnFilterAll);
             UiRadiusHelper.ApplyPillShape(btnFilterCompleted);
+
+            this.Load += (_, _) => LayoutPills();
+            this.Resize += (_, _) => LayoutPills();
+            pnlCard.SizeChanged += (_, _) => LayoutPills();
+        }
+
+        private void LayoutPills()
+        {
+            // On-screen order, left to right
+            var pills = new[] { btnFilterAll, btnFilterOverdue, btnFilterToday, btnFilterUpcoming, btnFilterCompleted };
+
+            // Right-align: last pill ends at the card's right edge, others stack leftward
+            int x = pnlCard.Right;
+            for (int i = pills.Length - 1; i >= 0; i--)
+            {
+                var p = pills[i];
+                p.AutoSize = false;
+                p.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+                p.Top = txtSearch.Top + (txtSearch.Height - p.Height) / 2;
+                p.Left = x - p.Width;
+                x = p.Left - 8;
+            }
         }
 
         private void BindEvents()
@@ -494,7 +526,7 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
 
                 // 2. Snooze Quick Action Submenu
                 var snoozeMenu = new ToolStripMenuItem("⏱  Snooze");
-                
+
                 var snooze1Day = new ToolStripMenuItem("+1 Day (Tomorrow)");
                 snooze1Day.Click += (_, _) =>
                 {
