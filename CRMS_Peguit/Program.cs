@@ -55,8 +55,17 @@ namespace CRMS_Peguit.winforms
                 int tixOpen = snap?.TicketBreakdown?.Open ?? 0;
                 int tixRes = snap?.TicketBreakdown?.Resolved ?? 0;
                 Console.WriteLine($"[VERIFY] Analytics Closed Deals: {snap?.TotalDealsClosed}, Commission: ₱{snap?.TotalCommissionEarned:N2}, OverTime Months: {snap?.DealsOverTime.Count}, Tickets: Open={tixOpen}, Res={tixRes}");
+
+                using var dealCtrl = new CRMS_Peguit.winforms.Controllers.DealController();
+                var monthRange = CRMS_Peguit.winforms.Models.Analytics.DateRangeFilter.ThisMonth();
+                var monthComms = rptCtrl.GetCommissionReport(monthRange);
+                var monthEarnedDashboard = dealCtrl.GetCommissionEarnedThisMonth();
+                var monthEarnedReports = monthComms.Sum(c => c.GrossCommission);
+                Console.WriteLine($"[VERIFY] ThisMonth Comms: {monthComms.Count}, Reports: ₱{monthEarnedReports:N2}, Dashboard: ₱{monthEarnedDashboard:N2}, Matches: {monthEarnedReports == monthEarnedDashboard}");
                 return;
             }
+
+
 
             if (args.Contains("--verify-notifications"))
             {

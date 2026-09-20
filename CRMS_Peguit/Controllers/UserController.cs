@@ -197,6 +197,52 @@ namespace CRMS_Peguit.winforms.Controllers
             }
         }
 
+        public (int managers, int agents) GetActiveStaffCounts()
+        {
+            try
+            {
+                int managers = _db.Users.AsNoTracking().Count(u => u.Status.ToLower() == "active" && u.Role.RoleName == "Manager");
+                int agents = _db.Users.AsNoTracking().Count(u => u.Status.ToLower() == "active" && (u.Role.RoleName == "Agent" || u.Role.RoleName == "Sales Staff"));
+                return (managers, agents);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[UserController.GetActiveStaffCounts] Error: {ex.Message}");
+                return (0, 0);
+            }
+        }
+
+        public List<CRMS_Peguit.winforms.Models.ViewModels.AdminTeamRosterItemDto> GetTeamRoster(int maxCount = 8)
+        {
+            try
+            {
+                var managedRoles = new[] { "Manager", "Agent", "Sales Staff" };
+                var users = _db.Users
+                    .AsNoTracking()
+                    .Include(u => u.Role)
+                    .Include(u => u.Person)
+                    .Where(u => managedRoles.Contains(u.Role.RoleName))
+                    .OrderByDescending(u => u.Role.RoleName == "Manager")
+                    .ThenBy(u => u.Person.FirstName)
+                    .ThenBy(u => u.Person.LastName)
+                    .Take(maxCount)
+                    .ToList();
+
+                return users.Select(u => new CRMS_Peguit.winforms.Models.ViewModels.AdminTeamRosterItemDto
+                {
+                    UserId = u.UserId,
+                    FullName = u.FullName,
+                    RoleName = u.Role?.RoleName == "Sales Staff" ? "Agent" : (u.Role?.RoleName ?? "Agent"),
+                    Status = string.Equals(u.Status, "active", StringComparison.OrdinalIgnoreCase) ? "Active" : "Inactive"
+                }).ToList();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[UserController.GetTeamRoster] Error: {ex.Message}");
+                return new List<CRMS_Peguit.winforms.Models.ViewModels.AdminTeamRosterItemDto>();
+            }
+        }
+
         public void Dispose() => _db.Dispose();
     }
 }

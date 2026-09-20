@@ -145,7 +145,8 @@ namespace CRMS_Peguit.winforms.Controllers
                     .Include(d => d.Agent)
                     .Include(d => d.Property)
                     .Include(d => d.Customer)
-                    .Where(d => d.Stage.ToLower() == "closed" && d.CreatedAt >= range.Start && d.CreatedAt <= range.End);
+                    .Where(d => (d.Stage.ToLower() == "closed" || d.Stage.ToLower() == "closed-won" || d.Stage.ToLower() == "won") &&
+                                (d.ContractSignedDate ?? d.CreatedAt) >= range.Start && (d.ContractSignedDate ?? d.CreatedAt) <= range.End);
 
                 if (agentId.HasValue)
                     query = query.Where(d => d.AgentId == agentId.Value);
@@ -349,7 +350,9 @@ namespace CRMS_Peguit.winforms.Controllers
                     int leadsConverted = _db.Leads.Count(l => l.AssignedAgentId == agent.UserId && l.ConvertedCustomerId.HasValue && l.CreatedAt >= range.Start && l.CreatedAt <= range.End);
                     double convRate = activeLeads == 0 ? 0 : Math.Round(((double)leadsConverted / activeLeads) * 100, 1);
 
-                    var deals = _db.Deals.Where(d => d.AgentId == agent.UserId && d.Stage.ToLower() == "closed" && d.CreatedAt >= range.Start && d.CreatedAt <= range.End).ToList();
+                    var deals = _db.Deals.Where(d => d.AgentId == agent.UserId &&
+                        (d.Stage.ToLower() == "closed" || d.Stage.ToLower() == "closed-won" || d.Stage.ToLower() == "won") &&
+                        (d.ContractSignedDate ?? d.CreatedAt) >= range.Start && (d.ContractSignedDate ?? d.CreatedAt) <= range.End).ToList();
                     int dealsClosed = deals.Count;
                     decimal totalSalesVol = deals.Sum(d => d.Value);
                     decimal totalComm = deals.Sum(d => d.Value * (d.CommissionRate > 1m ? d.CommissionRate / 100m : d.CommissionRate));

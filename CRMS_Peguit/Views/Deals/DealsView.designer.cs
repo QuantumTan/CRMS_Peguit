@@ -6,6 +6,12 @@ namespace CRMS_Peguit.winforms.Views.Deals
 
         private System.Windows.Forms.Label lblTitle = null!;
         private System.Windows.Forms.Label lblSubtitle = null!;
+        private System.Windows.Forms.TableLayoutPanel pnlKpiContainer = null!;
+        private CRMS_Peguit.winforms.Controls.KpiCard kpiTotal = null!;
+        private CRMS_Peguit.winforms.Controls.KpiCard kpiOffer = null!;
+        private CRMS_Peguit.winforms.Controls.KpiCard kpiContract = null!;
+        private CRMS_Peguit.winforms.Controls.KpiCard kpiClosed = null!;
+        private CRMS_Peguit.winforms.Controls.KpiCard kpiLost = null!;
         private System.Windows.Forms.TextBox txtSearch = null!;
         private System.Windows.Forms.Button btnFilterAll = null!;
         private System.Windows.Forms.Button btnFilterOffer = null!;
@@ -30,6 +36,12 @@ namespace CRMS_Peguit.winforms.Views.Deals
         {
             this.lblTitle = new System.Windows.Forms.Label();
             this.lblSubtitle = new System.Windows.Forms.Label();
+            this.pnlKpiContainer = new System.Windows.Forms.TableLayoutPanel();
+            this.kpiTotal = new CRMS_Peguit.winforms.Controls.KpiCard("TOTAL DEALS", "all", CRMS_Peguit.winforms.Models.Services.Theme.Primary, CRMS_Peguit.winforms.Models.Services.KpiIconType.Briefcase, "All registered");
+            this.kpiOffer = new CRMS_Peguit.winforms.Controls.KpiCard("OFFER", "offer", System.Drawing.Color.FromArgb(217, 119, 6), CRMS_Peguit.winforms.Models.Services.KpiIconType.Target, "Initial offers");
+            this.kpiContract = new CRMS_Peguit.winforms.Controls.KpiCard("CONTRACT", "contract", System.Drawing.Color.FromArgb(37, 99, 235), CRMS_Peguit.winforms.Models.Services.KpiIconType.Briefcase, "Under contract");
+            this.kpiClosed = new CRMS_Peguit.winforms.Controls.KpiCard("CLOSED WON", "closed", System.Drawing.Color.FromArgb(22, 163, 74), CRMS_Peguit.winforms.Models.Services.KpiIconType.Currency, "Closed won");
+            this.kpiLost = new CRMS_Peguit.winforms.Controls.KpiCard("LOST", "lost", System.Drawing.Color.FromArgb(220, 38, 38), CRMS_Peguit.winforms.Models.Services.KpiIconType.AlertTriangle, "Lost / cancelled");
             this.txtSearch = new System.Windows.Forms.TextBox();
             this.btnFilterAll = new System.Windows.Forms.Button();
             this.btnFilterOffer = new System.Windows.Forms.Button();
@@ -38,6 +50,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
             this.btnFilterLost = new System.Windows.Forms.Button();
             this.pnlCard = new System.Windows.Forms.Panel();
             this.grid = new System.Windows.Forms.DataGridView();
+            this.pnlKpiContainer.SuspendLayout();
             this.pnlCard.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.grid)).BeginInit();
             this.SuspendLayout();
@@ -63,6 +76,73 @@ namespace CRMS_Peguit.winforms.Views.Deals
             this.lblSubtitle.Size = new System.Drawing.Size(120, 17);
             this.lblSubtitle.TabIndex = 1;
             this.lblSubtitle.Text = "0 total · ₱0.00 pipeline";
+            // 
+            // pnlKpiContainer
+            // 
+            this.pnlKpiContainer.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.pnlKpiContainer.ColumnCount = 5;
+            this.pnlKpiContainer.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 20F));
+            this.pnlKpiContainer.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 20F));
+            this.pnlKpiContainer.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 20F));
+            this.pnlKpiContainer.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 20F));
+            this.pnlKpiContainer.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 20F));
+            this.pnlKpiContainer.Controls.Add(this.kpiTotal, 0, 0);
+            this.pnlKpiContainer.Controls.Add(this.kpiOffer, 1, 0);
+            this.pnlKpiContainer.Controls.Add(this.kpiContract, 2, 0);
+            this.pnlKpiContainer.Controls.Add(this.kpiClosed, 3, 0);
+            this.pnlKpiContainer.Controls.Add(this.kpiLost, 4, 0);
+            this.pnlKpiContainer.Location = new System.Drawing.Point(30, 90);
+            this.pnlKpiContainer.Name = "pnlKpiContainer";
+            this.pnlKpiContainer.RowCount = 1;
+            this.pnlKpiContainer.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.pnlKpiContainer.Size = new System.Drawing.Size(970, 104);
+            this.pnlKpiContainer.TabIndex = 2;
+            // 
+            // kpiTotal
+            // 
+            this.kpiTotal.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.kpiTotal.Location = new System.Drawing.Point(0, 0);
+            this.kpiTotal.Margin = new System.Windows.Forms.Padding(0, 0, 8, 0);
+            this.kpiTotal.Name = "kpiTotal";
+            this.kpiTotal.Size = new System.Drawing.Size(186, 104);
+            this.kpiTotal.TabIndex = 0;
+            // 
+            // kpiOffer
+            // 
+            this.kpiOffer.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.kpiOffer.Location = new System.Drawing.Point(194, 0);
+            this.kpiOffer.Margin = new System.Windows.Forms.Padding(0, 0, 8, 0);
+            this.kpiOffer.Name = "kpiOffer";
+            this.kpiOffer.Size = new System.Drawing.Size(186, 104);
+            this.kpiOffer.TabIndex = 1;
+            // 
+            // kpiContract
+            // 
+            this.kpiContract.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.kpiContract.Location = new System.Drawing.Point(388, 0);
+            this.kpiContract.Margin = new System.Windows.Forms.Padding(0, 0, 8, 0);
+            this.kpiContract.Name = "kpiContract";
+            this.kpiContract.Size = new System.Drawing.Size(186, 104);
+            this.kpiContract.TabIndex = 2;
+            // 
+            // kpiClosed
+            // 
+            this.kpiClosed.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.kpiClosed.Location = new System.Drawing.Point(582, 0);
+            this.kpiClosed.Margin = new System.Windows.Forms.Padding(0, 0, 8, 0);
+            this.kpiClosed.Name = "kpiClosed";
+            this.kpiClosed.Size = new System.Drawing.Size(186, 104);
+            this.kpiClosed.TabIndex = 3;
+            // 
+            // kpiLost
+            // 
+            this.kpiLost.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.kpiLost.Location = new System.Drawing.Point(776, 0);
+            this.kpiLost.Margin = new System.Windows.Forms.Padding(0);
+            this.kpiLost.Name = "kpiLost";
+            this.kpiLost.Size = new System.Drawing.Size(194, 104);
+            this.kpiLost.TabIndex = 4;
             // 
             // txtSearch
             // 
@@ -186,6 +266,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.FromArgb(244, 247, 251);
+            this.Controls.Add(this.pnlKpiContainer);
             this.Controls.Add(this.pnlCard);
             this.Controls.Add(this.btnFilterLost);
             this.Controls.Add(this.btnFilterClosed);
@@ -197,6 +278,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
             this.Controls.Add(this.lblTitle);
             this.Name = "DealsView";
             this.Size = new System.Drawing.Size(1030, 700);
+            this.pnlKpiContainer.ResumeLayout(false);
             this.pnlCard.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.grid)).EndInit();
             this.ResumeLayout(false);

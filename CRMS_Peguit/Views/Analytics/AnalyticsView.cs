@@ -165,7 +165,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             kpiDealsClosed.SetValue(snapshot.TotalDealsClosed);
             kpiDealsClosed.SetSubtitle(snapshot.TotalSalesVolume > 0 ? $"Vol: {BiDisplayConstants.FormatCompactCurrency(snapshot.TotalSalesVolume)}" : "Closed in period");
 
-            kpiCommission.SetValue(BiDisplayConstants.FormatCurrency(snapshot.TotalCommissionEarned));
+            kpiCommission.SetCurrencyValue(snapshot.TotalCommissionEarned);
             kpiCommission.SetSubtitle(snapshot.AverageDealSize > 0 ? $"Avg: {BiDisplayConstants.FormatCompactCurrency(snapshot.AverageDealSize)}" : "Net earned");
 
             kpiActiveLeads.SetValue(snapshot.ActiveLeads);

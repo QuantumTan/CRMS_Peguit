@@ -143,8 +143,6 @@ namespace CRMS_Peguit.winforms
             notificationBell.NavigationRequested += m => NavigateTo(m);
             notificationBell.Initialize();
             mainToolTip.SetToolTip(txtGlobalSearch, "Global search (Ctrl+K or Ctrl+F)");
-            mainToolTip.SetToolTip(lblStatusDot, "Online — Active Session");
-            mainToolTip.SetToolTip(lblRoleBadge, "Current Role Scope");
 
             btnLogout.Click += BtnLogoutClick;
             btnDashboard.Click += (s, e) => { SetActiveNavButton(btnDashboard); BtnDashboardClick(s, e); };
@@ -214,7 +212,6 @@ namespace CRMS_Peguit.winforms
             if (_sidebarCollapsed)
             {
                 lblLogo.Visible = false;
-                pnlUserContainer.Visible = false;
                 lblSalesSection.Visible = false;
                 lblSupportSection.Visible = false;
                 lblInsightsSection.Visible = false;
@@ -269,7 +266,6 @@ namespace CRMS_Peguit.winforms
                 picLogo.Location = new Point(14, 9);
                 lblLogo.Visible = true;
                 mainToolTip.SetToolTip(picLogo, null);
-                pnlUserContainer.Visible = true;
                 lblSalesSection.Visible = true;
                 lblSupportSection.Visible = true;
                 lblInsightsSection.Visible = btnAnalytics.Visible || btnReports.Visible;
@@ -438,7 +434,6 @@ namespace CRMS_Peguit.winforms
         private void ApplyTheme()
         {
             sidebarPanel.BackColor = Theme.SidebarBackground;
-            pnlUserProfile.BackColor = Theme.SidebarProfileCard;
             topHeaderPanel.BackColor = Theme.HeaderBackground;
             mainPanel.BackColor = Theme.Background;
             BackColor = Theme.Background;
@@ -453,10 +448,7 @@ namespace CRMS_Peguit.winforms
             lblInsightsSection.ForeColor = Theme.SidebarTextMuted;
             lblAdminSection.ForeColor = Theme.SidebarTextMuted;
 
-            UiRadiusHelper.ApplyRoundedCorners(pnlUserProfile, 10);
-            UiRadiusHelper.MakeCircularAvatar(lblUserAvatar);
             UiRadiusHelper.MakeCircularAvatar(lblHeaderAvatar);
-            UiRadiusHelper.MakeStatusDot(lblStatusDot, Color.FromArgb(34, 197, 94));
             UiRadiusHelper.StyleButton(btnLogout, 6);
             UiRadiusHelper.StyleButton(btnToggleSidebar, 6);
 
@@ -464,7 +456,7 @@ namespace CRMS_Peguit.winforms
             _pnlSearchBox = new Panel
             {
                 Size = new Size(340, 34),
-                Location = new Point(lblRoleBadge.Right + 16, (topHeaderPanel.Height - 34) / 2),
+                Location = new Point(btnToggleSidebar.Right + 12, (topHeaderPanel.Height - 34) / 2),
                 BackColor = Color.FromArgb(241, 245, 249),
                 Cursor = Cursors.IBeam
             };
@@ -570,20 +562,15 @@ namespace CRMS_Peguit.winforms
                 _ => user.Role.ToString()
             };
 
-            lblUserAvatar.Text = initials;
-            lblUserName.Text = user.FullName;
-            lblUserRole.Text = roleDisplay;
-
             lblHeaderAvatar.Text = initials;
+            var (avatarBg, avatarFg) = CRMS_Peguit.winforms.Controls.AvatarLabel.GetDeterministicAvatarColors(user.FullName);
+            lblHeaderAvatar.BackColor = avatarBg;
+            lblHeaderAvatar.ForeColor = avatarFg;
             lblHeaderUserName.Text = $"{user.FullName}\r\n{roleDisplay}";
-            lblRoleBadge.Text = $"• {roleDisplay}";
-            var badgeSize = TextRenderer.MeasureText(lblRoleBadge.Text, lblRoleBadge.Font);
-            lblRoleBadge.Width = Math.Max(72, badgeSize.Width + 18);
-            UiRadiusHelper.ApplyPillShape(lblRoleBadge);
 
             if (_pnlSearchBox != null)
             {
-                _pnlSearchBox.Left = lblRoleBadge.Right + 16;
+                _pnlSearchBox.Left = btnToggleSidebar.Right + 12;
                 _pnlSearchBox.Top = (topHeaderPanel.Height - _pnlSearchBox.Height) / 2;
             }
 
@@ -726,6 +713,10 @@ namespace CRMS_Peguit.winforms
                     BtnFollowUpsClick(btnFollowUps, EventArgs.Empty);
                     break;
                 case "reports":
+                case "reports:commission":
+                case "commission":
+                case "commissionreport":
+                case "commission-report":
                     if (!CurrentSession.CanAccess("Reports") || RbacService.IsAgent) return;
                     SetActiveNavButton(btnReports);
                     ShowViewCached("Reports", () =>
@@ -734,6 +725,21 @@ namespace CRMS_Peguit.winforms
                         rpt.NavigationRequested += m => NavigateTo(m);
                         return rpt;
                     });
+
+                    if (_viewCache.TryGetValue("Reports", out var cachedRpt) && cachedRpt is CRMS_Peguit.winforms.Views.Reports.ReportsView rptView)
+                    {
+                        string modLower = module.ToLowerInvariant();
+                        if (modLower.Contains("commission"))
+                        {
+                            rptView.SelectReport("Commission");
+                        }
+                        else if (modLower.Contains(':'))
+                        {
+                            var subReport = module.Split(':', 2)[1].Trim();
+                            if (!string.IsNullOrEmpty(subReport))
+                                rptView.SelectReport(subReport);
+                        }
+                    }
                     break;
                 case "analytics":
                 case "teamperformance":
@@ -747,6 +753,32 @@ namespace CRMS_Peguit.winforms
                         ana.NavigationRequested += m => NavigateTo(m);
                         return ana;
                     });
+                    break;
+                case "salesstaff":
+                case "manageagents":
+                case "agents":
+                    if (!CurrentSession.CanAccess("SalesStaff")) return;
+                    SetActiveNavButton(btnManageAgents);
+                    BtnManageAgentsClick(btnManageAgents, EventArgs.Empty);
+                    break;
+                case "managemanagers":
+                case "managers":
+                    if (!CurrentSession.CanAccess("Managers")) return;
+                    SetActiveNavButton(btnManageManagers);
+                    BtnManageManagersClick(btnManageManagers, EventArgs.Empty);
+                    break;
+                case "manageusers":
+                case "users":
+                    if (CurrentSession.CanAccess("SalesStaff"))
+                    {
+                        SetActiveNavButton(btnManageAgents);
+                        BtnManageAgentsClick(btnManageAgents, EventArgs.Empty);
+                    }
+                    else if (CurrentSession.CanAccess("Managers"))
+                    {
+                        SetActiveNavButton(btnManageManagers);
+                        BtnManageManagersClick(btnManageManagers, EventArgs.Empty);
+                    }
                     break;
             }
         }

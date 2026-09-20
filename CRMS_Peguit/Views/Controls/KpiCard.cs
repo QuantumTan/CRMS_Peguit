@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using CRMS_Peguit.Models;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Controls
 {
@@ -27,6 +28,10 @@ namespace CRMS_Peguit.winforms.Controls
         private Color _accentBgColor;
         private KpiIconType _iconType = KpiIconType.None;
         private bool _isHovered;
+        private Action? _clickAction;
+
+        private readonly ToolTip _toolTip = new ToolTip();
+        private string _fullValueTooltip = string.Empty;
 
         // Visual layout metrics
         private const int CardRadius = 12;
@@ -120,6 +125,24 @@ namespace CRMS_Peguit.winforms.Controls
             LayoutCard();
         }
 
+        public void SetTitle(string title)
+        {
+            _lblTitle.Text = (title ?? string.Empty).ToUpperInvariant();
+            UpdateTooltips();
+            LayoutCard();
+        }
+
+        public void SetAction(Action? action)
+        {
+            _clickAction = action;
+        }
+
+        protected override void OnClick(EventArgs e)
+        {
+            base.OnClick(e);
+            _clickAction?.Invoke();
+        }
+
         public void SetIcon(KpiIconType icon, Color? accentColor = null, Color? accentBgColor = null)
         {
             _iconType = icon;
@@ -133,14 +156,36 @@ namespace CRMS_Peguit.winforms.Controls
 
         public void SetValue(int value)
         {
-            _lblValue.Text = value.ToString("N0");
+            SetValue(value.ToString("N0"), value.ToString("N0"));
+        }
+
+        public void SetValue(string value, string? fullTooltipValue = null)
+        {
+            _lblValue.Text = value ?? "0";
+            _fullValueTooltip = fullTooltipValue ?? value ?? string.Empty;
+            UpdateTooltips();
             LayoutCard();
         }
 
-        public void SetValue(string value)
+        public void SetCurrencyValue(decimal amount, bool compact = true)
         {
-            _lblValue.Text = value;
-            LayoutCard();
+            string compactText = compact ? AppFormat.FormatCompactCurrency(amount) : AppFormat.FormatCurrency(amount);
+            string fullText = AppFormat.FormatCurrency(amount);
+            SetValue(compactText, fullText);
+        }
+
+        public void SetValueColor(Color color)
+        {
+            _lblValue.ForeColor = color;
+        }
+
+        private void UpdateTooltips()
+        {
+            string tip = !string.IsNullOrWhiteSpace(_fullValueTooltip) ? _fullValueTooltip : _lblValue.Text;
+            _toolTip.SetToolTip(this, tip);
+            _toolTip.SetToolTip(_lblValue, tip);
+            _toolTip.SetToolTip(_lblTitle, tip);
+            _toolTip.SetToolTip(_lblSubtitle, tip);
         }
 
         public void SetSubtitle(string text, Color? textColor = null)
@@ -181,12 +226,35 @@ namespace CRMS_Peguit.winforms.Controls
             _lblTitle.Location = new Point(LeftPadding, TopPadding + 2);
             _lblTitle.Size = new Size(titleWidth, 18);
 
+            // Dynamic font auto-scaling for primary value
+            int maxValWidth = Math.Max(50, iconLeft - LeftPadding - 4);
+            float[] fontSizes = new float[] { 21f, 18f, 15f, 13f, 11f };
+            Font? chosenFont = null;
+            foreach (float sz in fontSizes)
+            {
+                var testFont = new Font("Segoe UI", sz, FontStyle.Bold);
+                var measured = TextRenderer.MeasureText(_lblValue.Text, testFont);
+                if (measured.Width <= maxValWidth || sz == fontSizes[^1])
+                {
+                    chosenFont = testFont;
+                    break;
+                }
+                testFont.Dispose();
+            }
+
+            if (chosenFont != null && Math.Abs(_lblValue.Font.Size - chosenFont.Size) > 0.1f)
+            {
+                var oldFont = _lblValue.Font;
+                _lblValue.Font = chosenFont;
+                oldFont?.Dispose();
+            }
+
             // Primary value beneath title
             int valueY = _lblTitle.Bottom + 2;
             _lblValue.Location = new Point(LeftPadding - 1, valueY);
 
             // Structured secondary metric / amount layout:
-            // If primary value is compact (like deals closed "85" or count), place secondary amount horizontally beside it with an 8px gap.
+            // If primary value is compact, place secondary amount horizontally beside it with an 8px gap.
             // Otherwise, stack it cleanly below the value with guaranteed spacing without vertical collision.
             const int horizontalGap = 8;
             int availableWidth = Width - RightPadding;

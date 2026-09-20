@@ -210,21 +210,7 @@ namespace CRMS_Peguit.winforms.Models.Services
         /// </summary>
         public static string ToTitleCase(string? text)
         {
-            if (string.IsNullOrWhiteSpace(text)) return string.Empty;
-            var words = text.Trim().Replace('_', ' ').Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            for (int i = 0; i < words.Length; i++)
-            {
-                string w = words[i];
-                if (w.Length == 1)
-                {
-                    words[i] = char.ToUpperInvariant(w[0]).ToString();
-                }
-                else
-                {
-                    words[i] = char.ToUpperInvariant(w[0]) + w.Substring(1).ToLowerInvariant();
-                }
-            }
-            return string.Join(" ", words);
+            return StatusColorHelper.ToTitleCase(text);
         }
 
         /// <summary>
@@ -241,48 +227,7 @@ namespace CRMS_Peguit.winforms.Models.Services
         /// </summary>
         public static (Color bg, Color fg, Color border) GetStatusColors(string? status)
         {
-            var s = (status ?? string.Empty).Trim().ToLowerInvariant();
-            switch (s)
-            {
-                case "active":
-                case "available":
-                case "converted":
-                case "approved":
-                    return (
-                        Color.FromArgb(220, 252, 231), // #DCFCE7
-                        Color.FromArgb(22, 163, 74),    // Green #16A34A
-                        Color.FromArgb(134, 239, 172)   // #86EFAC
-                    );
-
-                case "contacted":
-                case "qualified":
-                case "pending":
-                case "pending_review":
-                case "in_progress":
-                    return (
-                        Color.FromArgb(254, 243, 199), // #FEF3C7
-                        Color.FromArgb(217, 119, 6),    // Amber #D97706
-                        Color.FromArgb(253, 230, 138)   // #FDE68A
-                    );
-
-                case "inactive":
-                case "lost":
-                case "sold":
-                case "rejected":
-                case "archived":
-                    return (
-                        Color.FromArgb(254, 226, 226), // #FEE2E2
-                        Color.FromArgb(220, 38, 38),    // Red #DC2626
-                        Color.FromArgb(252, 165, 165)   // #FCA5A5
-                    );
-
-                default: // "new", neutral, unassigned
-                    return (
-                        Color.FromArgb(241, 245, 249), // #F1F5F9
-                        Color.FromArgb(107, 114, 128),  // Muted Gray #6B7280
-                        Color.FromArgb(226, 232, 240)   // #E2E8F0
-                    );
-            }
+            return StatusColorHelper.GetColors(status);
         }
 
         /// <summary>

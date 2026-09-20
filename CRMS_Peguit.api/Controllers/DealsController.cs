@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 
+using CRMS_Peguit.domain.Common;
+
 namespace CRMS_Peguit.api.Controllers
 {
     [ApiController]
@@ -17,9 +19,51 @@ namespace CRMS_Peguit.api.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll(
+            [FromQuery] int? page = null,
+            [FromQuery] int? pageSize = null,
+            [FromQuery] string? search = null,
+            [FromQuery] string? stage = null)
         {
-            var items = await _db.Deals.ToListAsync();
+            var query = _db.Deals
+                .Include(d => d.Customer).ThenInclude(c => c!.Person)
+                .Include(d => d.Property)
+                .Include(d => d.Agent).ThenInclude(u => u!.Person)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(stage) && !stage.Equals("All", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(d => d.Stage == stage);
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                string s = search.Trim();
+                query = query.Where(d =>
+                    (d.Customer != null && (d.Customer.Person.FirstName.Contains(s) || d.Customer.Person.LastName.Contains(s))) ||
+                    (d.Property != null && d.Property.Address.Contains(s)) ||
+                    d.Stage.Contains(s) ||
+                    (d.PaymentScheme != null && d.PaymentScheme.Contains(s)) ||
+                    (d.Agent != null && (d.Agent.Person.FirstName.Contains(s) || d.Agent.Person.LastName.Contains(s))));
+            }
+
+            if (page.HasValue || pageSize.HasValue)
+            {
+                int pageNum = page.GetValueOrDefault(1);
+                int size = pageSize.GetValueOrDefault(25);
+                if (pageNum < 1) pageNum = 1;
+                if (size < 1) size = 25;
+
+                int totalCount = await query.CountAsync();
+                var pagedList = await query.OrderByDescending(d => d.CreatedAt)
+                    .Skip((pageNum - 1) * size)
+                    .Take(size)
+                    .ToListAsync();
+
+                return Ok(new PagedResult<Deal>(pagedList, totalCount, pageNum, size));
+            }
+
+            var items = await query.ToListAsync();
             return Ok(items);
         }
 

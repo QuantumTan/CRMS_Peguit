@@ -15,22 +15,30 @@ namespace CRMS_Peguit.winforms.Views.Properties
         private Button? _btnExport;
         private Label _lblEmptyState = null!;
         private PaginationControl _pagination = null!;
-        private List<Property> _allProperties = new();
-        private List<Property> _filteredProperties = new();
+        private List<Property> _currentPageProperties = new();
         private Dictionary<int, string> _owners = new();
         private Dictionary<int, string> _agents = new();
+        private readonly System.Windows.Forms.Timer _searchDebounceTimer;
+        private bool _isLoading = false;
 
         public PropertiesView()
         {
             InitializeComponent();
             _controller = new PropertyController();
 
+            _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
+            _searchDebounceTimer.Tick += async (_, _) =>
+            {
+                _searchDebounceTimer.Stop();
+                await RefreshGridAsync(resetPage: true);
+            };
+
             InitPagination();
             InitEmptyState();
             ApplyStyling();
             BindEvents();
             UpdateFilterPillStyles();
-            RefreshGrid(reloadFromDb: true);
+            _ = RefreshGridAsync(resetPage: true);
 
             this.Load += (_, _) => LayoutToolbar();
             this.Resize += (_, _) => LayoutToolbar();
@@ -40,8 +48,8 @@ namespace CRMS_Peguit.winforms.Views.Properties
         {
             _pagination = new PaginationControl();
             _pagination.SetItemLabel("properties");
-            _pagination.PageChanged += (_, _) => BindCurrentPage();
-            _pagination.PageSizeChanged += (_, _) => BindCurrentPage();
+            _pagination.PageChanged += async (_, _) => await RefreshGridAsync(resetPage: false);
+            _pagination.PageSizeChanged += async (_, _) => await RefreshGridAsync(resetPage: true);
             pnlCard.Controls.Add(_pagination);
             _pagination.BringToFront();
         }
@@ -106,6 +114,11 @@ namespace CRMS_Peguit.winforms.Views.Properties
             grid.ShowCellErrors = false;
             grid.ShowRowErrors = false;
             UiRadiusHelper.SetPadding(txtSearch, 10, 10);
+            txtSearch.TextChanged += (_, _) =>
+            {
+                _searchDebounceTimer.Stop();
+                _searchDebounceTimer.Start();
+            };
 
             grid.CellPainting += Grid_CellPainting;
             grid.CellContentClick += GridCellContentClick;
@@ -117,11 +130,18 @@ namespace CRMS_Peguit.winforms.Views.Properties
             };
         }
 
-        private void SetFilter(string filter)
+        private async void SetFilter(string filter)
         {
-            _filterStatus = filter;
+            if (string.Equals(_filterStatus, filter, StringComparison.OrdinalIgnoreCase) && !string.Equals(filter, "All", StringComparison.OrdinalIgnoreCase))
+            {
+                _filterStatus = "All";
+            }
+            else
+            {
+                _filterStatus = filter;
+            }
             UpdateFilterPillStyles();
-            RefreshGrid(reloadFromDb: false);
+            await RefreshGridAsync(resetPage: true);
         }
 
         private void UpdateFilterPillStyles()
@@ -141,52 +161,43 @@ namespace CRMS_Peguit.winforms.Views.Properties
             }
         }
 
-        private void RefreshGrid(bool reloadFromDb = true)
+        public void RefreshGrid(bool reloadFromDb = true)
         {
-            if (reloadFromDb || _allProperties.Count == 0)
-            {
-                _allProperties = _controller.GetAll().ToList();
-                _owners = _controller.GetOwnerCustomers()
-                    .ToDictionary(x => x.CustomerId, x => x.FullName);
-                _agents = _controller.GetAgents()
-                    .ToDictionary(x => x.UserId, x => x.FullName);
-            }
+            _ = RefreshGridAsync(resetPage: false);
+        }
 
-            int total = _allProperties.Count;
-            int available = _allProperties.Count(p => string.Equals(p.Status, "available", StringComparison.OrdinalIgnoreCase));
-            lblSubtitle.Text = $"{total} total · {available} available";
+        public async Task RefreshGridAsync(bool resetPage = false)
+        {
+            if (_isLoading) return;
+            _isLoading = true;
 
-            IEnumerable<Property> query = _allProperties;
+            try
+            {
+                int page = resetPage ? 1 : _pagination.CurrentPage;
+                int pageSize = _pagination.PageSize;
 
-            if (string.Equals(_filterStatus, "Available", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(p => string.Equals(p.Status, "available", StringComparison.OrdinalIgnoreCase));
-            }
-            else if (string.Equals(_filterStatus, "Pending", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(p => string.Equals(p.Status, "pending", StringComparison.OrdinalIgnoreCase) ||
-                                         string.Equals(p.Status, "reserved", StringComparison.OrdinalIgnoreCase));
-            }
-            else if (string.Equals(_filterStatus, "Sold", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(p => string.Equals(p.Status, "sold", StringComparison.OrdinalIgnoreCase) ||
-                                         string.Equals(p.Status, "inactive", StringComparison.OrdinalIgnoreCase));
-            }
+                var counts = await _controller.GetPropertyCountsAsync();
+                lblSubtitle.Text = $"{counts.Total:N0} total · {counts.Available:N0} available";
 
-            string search = txtSearch.Text.Trim();
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                query = query.Where(property =>
-                    ContainsText(property.Address, search) ||
-                    ContainsText(property.PropertyType, search) ||
-                    ContainsText(property.Status, search) ||
-                    ContainsText(GetName(_owners, property.OwnerCustomerId), search) ||
-                    ContainsText(GetName(_agents, property.ListedByAgentId), search));
-            }
+                var pagedResult = await _controller.GetPagedAsync(page, pageSize, txtSearch.Text, _filterStatus);
+                _currentPageProperties = pagedResult.Items;
 
-            _filteredProperties = query.ToList();
-            _pagination.UpdatePagination(_filteredProperties.Count, 1, _pagination.PageSize);
-            BindCurrentPage();
+                if (_owners.Count == 0)
+                {
+                    _owners = _controller.GetOwnerCustomers().ToDictionary(x => x.CustomerId, x => x.FullName);
+                }
+                if (_agents.Count == 0)
+                {
+                    _agents = _controller.GetAgents().ToDictionary(x => x.UserId, x => x.FullName);
+                }
+
+                _pagination.UpdatePagination(pagedResult.TotalCount, pagedResult.PageNumber, pagedResult.PageSize);
+                BindCurrentPage();
+            }
+            finally
+            {
+                _isLoading = false;
+            }
         }
 
         private void BindCurrentPage()
@@ -194,9 +205,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
             grid.Columns.Clear();
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
 
-            var pageItems = _filteredProperties
-                .Skip((_pagination.CurrentPage - 1) * _pagination.PageSize)
-                .Take(_pagination.PageSize)
+            var pageItems = _currentPageProperties
                 .Select(property => new
                 {
                     property.PropertyId,
@@ -205,8 +214,8 @@ namespace CRMS_Peguit.winforms.Views.Properties
                     Price = $"₱{property.Price:N2}",
                     Status = property.Status.ToUpper(),
                     Assignment = string.IsNullOrWhiteSpace(property.AssignmentStatus) ? "-" : property.AssignmentStatus,
-                    Owner = GetName(_owners, property.OwnerCustomerId),
-                    ListedBy = GetName(_agents, property.ListedByAgentId)
+                    Owner = property.OwnerCustomer != null ? property.OwnerCustomer.FullName : GetName(_owners, property.OwnerCustomerId),
+                    ListedBy = property.ListedByAgent != null ? property.ListedByAgent.FullName : GetName(_agents, property.ListedByAgentId)
                 })
                 .ToList();
 
@@ -274,8 +283,9 @@ namespace CRMS_Peguit.winforms.Views.Properties
             }
 
             UiGridHelper.AddActionsColumn(grid, 64);
+            UiGridHelper.EnforceTableStandards(grid);
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-            _lblEmptyState.Visible = (_filteredProperties.Count == 0);
+            _lblEmptyState.Visible = (_currentPageProperties.Count == 0);
         }
 
         private void Grid_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
@@ -333,7 +343,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
                 return null;
             }
 
-            return _allProperties.FirstOrDefault(property => property.PropertyId == propertyId) ?? _controller.GetById(propertyId);
+            return _currentPageProperties.FirstOrDefault(property => property.PropertyId == propertyId) ?? _controller.GetById(propertyId);
         }
 
         private Property? GetSelectedProperty()

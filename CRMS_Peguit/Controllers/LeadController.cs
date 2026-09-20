@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
@@ -49,6 +51,139 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 System.Diagnostics.Debug.WriteLine($"[LeadController.GetAll] Error: {ex.Message}");
                 return new List<Lead>();
+            }
+        }
+
+        public async Task<PagedResult<Lead>> GetPagedAsync(
+            int pageNumber = 1,
+            int pageSize = 25,
+            string? search = null,
+            string? stage = null,
+            string? sortColumn = null,
+            bool isAscending = true)
+        {
+            try
+            {
+                using var db = LocalDb.CreateContext(TenantId);
+                var query = db.Leads
+                    .Include(l => l.Person)
+                    .AsNoTracking()
+                    .Where(l => !l.IsDeleted);
+
+                if (!RbacService.HasFullOversight && RbacService.IsAgent)
+                {
+                    int currentUserId = CurrentSession.UserId;
+                    query = query.Where(l =>
+                        (l.AssignedAgentId.HasValue && l.AssignedAgentId.Value > 0)
+                            ? l.AssignedAgentId.Value == currentUserId
+                            : l.CreatedByUserId == currentUserId);
+                }
+
+                if (!string.IsNullOrWhiteSpace(stage) && !string.Equals(stage, "All", StringComparison.OrdinalIgnoreCase))
+                {
+                    string s = stage.Trim().ToLower();
+                    query = query.Where(l => l.Stage.ToLower() == s);
+                }
+
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    string s = search.Trim();
+                    query = query.Where(l =>
+                        l.Person.FirstName.Contains(s) ||
+                        (l.Person.MiddleName != null && l.Person.MiddleName.Contains(s)) ||
+                        l.Person.LastName.Contains(s) ||
+                        (l.Person.Suffix != null && l.Person.Suffix.Contains(s)) ||
+                        (l.Person.Email != null && l.Person.Email.Contains(s)) ||
+                        (l.Person.Phone != null && l.Person.Phone.Contains(s)));
+                }
+
+                int totalCount = await query.CountAsync();
+
+                // Sort
+                if (string.Equals(sortColumn, "Name", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = isAscending
+                        ? query.OrderBy(x => x.Person.LastName).ThenBy(x => x.Person.FirstName)
+                        : query.OrderByDescending(x => x.Person.LastName).ThenByDescending(x => x.Person.FirstName);
+                }
+                else if (string.Equals(sortColumn, "Stage", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = isAscending ? query.OrderBy(x => x.Stage) : query.OrderByDescending(x => x.Stage);
+                }
+                else if (string.Equals(sortColumn, "Source", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = isAscending ? query.OrderBy(x => x.Source) : query.OrderByDescending(x => x.Source);
+                }
+                else if (string.Equals(sortColumn, "ExpectedValue", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = isAscending ? query.OrderBy(x => x.ExpectedValue) : query.OrderByDescending(x => x.ExpectedValue);
+                }
+                else if (string.Equals(sortColumn, "Priority", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = isAscending ? query.OrderBy(x => x.Priority) : query.OrderByDescending(x => x.Priority);
+                }
+                else
+                {
+                    query = isAscending ? query.OrderBy(x => x.CreatedAt) : query.OrderByDescending(x => x.CreatedAt);
+                }
+
+                int validPage = Math.Max(1, pageNumber);
+                int validPageSize = Math.Max(1, pageSize);
+
+                var items = await query
+                    .Skip((validPage - 1) * validPageSize)
+                    .Take(validPageSize)
+                    .ToListAsync();
+
+                return new PagedResult<Lead>(items, totalCount, validPage, validPageSize);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LeadController.GetPagedAsync] Error: {ex.Message}");
+                return new PagedResult<Lead>(new List<Lead>(), 0, pageNumber, pageSize);
+            }
+        }
+
+        public async Task<LeadStageCounts> GetStageCountsAsync()
+        {
+            try
+            {
+                using var db = LocalDb.CreateContext(TenantId);
+                var query = db.Leads.AsNoTracking().Where(l => !l.IsDeleted);
+
+                if (!RbacService.HasFullOversight && RbacService.IsAgent)
+                {
+                    int currentUserId = CurrentSession.UserId;
+                    query = query.Where(l =>
+                        (l.AssignedAgentId.HasValue && l.AssignedAgentId.Value > 0)
+                            ? l.AssignedAgentId.Value == currentUserId
+                            : l.CreatedByUserId == currentUserId);
+                }
+
+                var groups = await query
+                    .GroupBy(l => l.Stage)
+                    .Select(g => new { Stage = g.Key, Count = g.Count() })
+                    .ToListAsync();
+
+                int total = groups.Sum(g => g.Count);
+                int countNew = groups.FirstOrDefault(g => string.Equals(g.Stage, "new", StringComparison.OrdinalIgnoreCase))?.Count ?? 0;
+                int countContacted = groups.FirstOrDefault(g => string.Equals(g.Stage, "contacted", StringComparison.OrdinalIgnoreCase))?.Count ?? 0;
+                int countQualified = groups.FirstOrDefault(g => string.Equals(g.Stage, "qualified", StringComparison.OrdinalIgnoreCase))?.Count ?? 0;
+                int countConverted = groups.FirstOrDefault(g => string.Equals(g.Stage, "converted", StringComparison.OrdinalIgnoreCase))?.Count ?? 0;
+
+                return new LeadStageCounts
+                {
+                    Total = total,
+                    New = countNew,
+                    Contacted = countContacted,
+                    Qualified = countQualified,
+                    Converted = countConverted
+                };
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LeadController.GetStageCountsAsync] Error: {ex.Message}");
+                return new LeadStageCounts();
             }
         }
 
@@ -579,5 +714,14 @@ namespace CRMS_Peguit.winforms.Controllers
         }
 
         public void Dispose() => _db.Dispose();
+    }
+
+    public class LeadStageCounts
+    {
+        public int Total { get; set; }
+        public int New { get; set; }
+        public int Contacted { get; set; }
+        public int Qualified { get; set; }
+        public int Converted { get; set; }
     }
 }

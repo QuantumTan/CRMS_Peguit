@@ -27,6 +27,13 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
         private System.Windows.Forms.Label lblRightSubtitle = null!;
         private System.Windows.Forms.Panel pnlRightList = null!;
         private System.Windows.Forms.Label lblRightEmpty = null!;
+
+        private System.Windows.Forms.Panel pnlChartCard = null!;
+        private System.Windows.Forms.Label lblChartTitle = null!;
+        private System.Windows.Forms.Label lblChartSubtitle = null!;
+        private ScottPlot.WinForms.FormsPlot plotGlanceable = null!;
+        private System.Windows.Forms.Label lblChartFooter = null!;
+
         private System.Windows.Forms.Label lblLoading = null!;
 
         protected override void Dispose(bool disposing)
@@ -67,10 +74,17 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             this.pnlRightList = new System.Windows.Forms.Panel();
             this.lblRightEmpty = new System.Windows.Forms.Label();
 
+            this.pnlChartCard = new System.Windows.Forms.Panel();
+            this.lblChartTitle = new System.Windows.Forms.Label();
+            this.lblChartSubtitle = new System.Windows.Forms.Label();
+            this.plotGlanceable = new ScottPlot.WinForms.FormsPlot();
+            this.lblChartFooter = new System.Windows.Forms.Label();
+
             this.pnlKpiContainer.SuspendLayout();
             this.pnlContentSplit.SuspendLayout();
             this.pnlLeftCard.SuspendLayout();
             this.pnlRightCard.SuspendLayout();
+            this.pnlChartCard.SuspendLayout();
             this.SuspendLayout();
 
             // 
@@ -188,11 +202,13 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             this.pnlContentSplit.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
             | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.pnlContentSplit.ColumnCount = 2;
-            this.pnlContentSplit.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 52F));
-            this.pnlContentSplit.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 48F));
+            this.pnlContentSplit.ColumnCount = 3;
+            this.pnlContentSplit.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 38F));
+            this.pnlContentSplit.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 34F));
+            this.pnlContentSplit.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 28F));
             this.pnlContentSplit.Controls.Add(this.pnlLeftCard, 0, 0);
             this.pnlContentSplit.Controls.Add(this.pnlRightCard, 1, 0);
+            this.pnlContentSplit.Controls.Add(this.pnlChartCard, 2, 0);
             this.pnlContentSplit.Location = new System.Drawing.Point(30, 206);
             this.pnlContentSplit.Name = "pnlContentSplit";
             this.pnlContentSplit.RowCount = 1;
@@ -335,6 +351,71 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             this.lblRightEmpty.Visible = false;
 
             // 
+            // pnlChartCard
+            // 
+            this.pnlChartCard.BackColor = System.Drawing.Color.White;
+            this.pnlChartCard.Controls.Add(this.lblChartFooter);
+            this.pnlChartCard.Controls.Add(this.plotGlanceable);
+            this.pnlChartCard.Controls.Add(this.lblChartSubtitle);
+            this.pnlChartCard.Controls.Add(this.lblChartTitle);
+            this.pnlChartCard.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.pnlChartCard.Margin = new System.Windows.Forms.Padding(8, 0, 0, 0);
+            this.pnlChartCard.Name = "pnlChartCard";
+            this.pnlChartCard.Padding = new System.Windows.Forms.Padding(16);
+            this.pnlChartCard.Size = new System.Drawing.Size(270, 470);
+            this.pnlChartCard.TabIndex = 2;
+
+            // 
+            // lblChartTitle
+            // 
+            this.lblChartTitle.AutoSize = true;
+            this.lblChartTitle.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold);
+            this.lblChartTitle.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
+            this.lblChartTitle.Location = new System.Drawing.Point(16, 16);
+            this.lblChartTitle.Name = "lblChartTitle";
+            this.lblChartTitle.Size = new System.Drawing.Size(120, 21);
+            this.lblChartTitle.TabIndex = 0;
+            this.lblChartTitle.Text = "Glanceable Chart";
+
+            // 
+            // lblChartSubtitle
+            // 
+            this.lblChartSubtitle.AutoSize = true;
+            this.lblChartSubtitle.Font = new System.Drawing.Font("Segoe UI", 8.5F);
+            this.lblChartSubtitle.ForeColor = System.Drawing.Color.FromArgb(100, 116, 139);
+            this.lblChartSubtitle.Location = new System.Drawing.Point(17, 40);
+            this.lblChartSubtitle.Name = "lblChartSubtitle";
+            this.lblChartSubtitle.Size = new System.Drawing.Size(140, 15);
+            this.lblChartSubtitle.TabIndex = 1;
+            this.lblChartSubtitle.Text = "Trend & overview";
+
+            // 
+            // plotGlanceable
+            // 
+            this.plotGlanceable.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.plotGlanceable.Location = new System.Drawing.Point(12, 64);
+            this.plotGlanceable.Name = "plotGlanceable";
+            this.plotGlanceable.Size = new System.Drawing.Size(246, 360);
+            this.plotGlanceable.TabIndex = 2;
+
+            // 
+            // lblChartFooter
+            // 
+            this.lblChartFooter.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.lblChartFooter.Font = new System.Drawing.Font("Segoe UI Semibold", 8.5F);
+            this.lblChartFooter.ForeColor = System.Drawing.Color.FromArgb(37, 103, 156);
+            this.lblChartFooter.Location = new System.Drawing.Point(16, 432);
+            this.lblChartFooter.Name = "lblChartFooter";
+            this.lblChartFooter.Size = new System.Drawing.Size(240, 22);
+            this.lblChartFooter.TabIndex = 3;
+            this.lblChartFooter.Text = "Click for full analytics →";
+            this.lblChartFooter.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.lblChartFooter.Cursor = System.Windows.Forms.Cursors.Hand;
+
+            // 
             // DashboardView
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
@@ -354,6 +435,8 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             this.pnlLeftCard.PerformLayout();
             this.pnlRightCard.ResumeLayout(false);
             this.pnlRightCard.PerformLayout();
+            this.pnlChartCard.ResumeLayout(false);
+            this.pnlChartCard.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
         }

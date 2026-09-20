@@ -208,11 +208,11 @@ namespace CRMS_Peguit.winforms.Models.Services
         }
 
         /// <summary>
-        /// Renders minimalist status indicator: 6px circular dot + clean colored text.
-        /// Strictly NO rounded badge pills, NO background pill fills, NO outer stroke boxes.
-        /// Defaults to left-aligned (center: false) with uniform 12px margin for perfect vertical column alignment.
+        /// Renders status in table cell as bold colored TEXT only — strictly NO background pill shape, NO border, and NO container.
+        /// Title Case text with spaces (no snake_case or raw DB enums).
+        /// Shared 4-tier semantic color palette: Green (Won/Closed/Active), Amber (Pending/In-Progress), Red (Lost/Overdue), Gray (New/Unassigned).
         /// </summary>
-        public static void PaintStatusIndicator(DataGridView grid, DataGridViewCellPaintingEventArgs e, string status, bool center = false)
+        public static void PaintStatusText(DataGridView grid, DataGridViewCellPaintingEventArgs e, string rawStatus, bool center = false)
         {
             if (e.Graphics == null || e.RowIndex < 0 || e.ColumnIndex < 0) return;
 
@@ -226,34 +226,22 @@ namespace CRMS_Peguit.winforms.Models.Services
                 e.Graphics.FillRectangle(bgBrush, e.CellBounds);
             }
 
-            Color statusColor = GetStatusColor(status);
-            string displayText = status.Trim();
+            string displayText = StatusColorHelper.ToTitleCase(rawStatus);
+            Color textColor = StatusColorHelper.GetTextColor(rawStatus);
 
-            using var font = new Font("Segoe UI", 9f, FontStyle.Bold);
-            var textSize = TextRenderer.MeasureText(displayText, font);
+            using var font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold);
 
-            int dotSize = 6;
-            int spacing = 8;
-            int totalWidth = dotSize + spacing + textSize.Width;
+            int leftPad = center ? 0 : 12;
+            var textRect = new Rectangle(
+                e.CellBounds.X + leftPad,
+                e.CellBounds.Y,
+                Math.Max(10, e.CellBounds.Width - leftPad - (center ? 0 : 8)),
+                e.CellBounds.Height);
 
-            int startX = center
-                ? e.CellBounds.X + (e.CellBounds.Width - totalWidth) / 2
-                : e.CellBounds.X + 12;
-            int dotY = e.CellBounds.Y + (e.CellBounds.Height - dotSize) / 2;
+            var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis;
+            flags |= center ? TextFormatFlags.HorizontalCenter : TextFormatFlags.Left;
 
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-
-            // 6px circular dot indicator
-            using (var dotBrush = new SolidBrush(statusColor))
-            {
-                e.Graphics.FillEllipse(dotBrush, startX, dotY, dotSize, dotSize);
-            }
-
-            // Clean colored text
-            int textX = startX + dotSize + spacing;
-            var textRect = new Rectangle(textX, e.CellBounds.Y, Math.Max(10, e.CellBounds.Right - textX - 8), e.CellBounds.Height);
-            TextRenderer.DrawText(e.Graphics, displayText, font, textRect, statusColor,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            TextRenderer.DrawText(e.Graphics, displayText, font, textRect, textColor, flags);
 
             // Bottom grid line
             using (var linePen = new Pen(GridBorder, 1f))
@@ -262,6 +250,22 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
 
             e.Handled = true;
+        }
+
+        /// <summary>
+        /// Status indicator alias: forwards to PaintStatusText to enforce APP-WIDE colored bold text standard.
+        /// </summary>
+        public static void PaintStatusBadge(DataGridView grid, DataGridViewCellPaintingEventArgs e, string rawStatus, bool center = false)
+        {
+            PaintStatusText(grid, e, rawStatus, center);
+        }
+
+        /// <summary>
+        /// Legacy status indicator alias: forwards to PaintStatusText to enforce APP-WIDE colored bold text standard.
+        /// </summary>
+        public static void PaintStatusIndicator(DataGridView grid, DataGridViewCellPaintingEventArgs e, string status, bool center = false)
+        {
+            PaintStatusText(grid, e, status, center);
         }
 
         /// <summary>
@@ -298,8 +302,9 @@ namespace CRMS_Peguit.winforms.Models.Services
 
         /// <summary>
         /// Paints an avatar with initials at exact 12px inset followed by bold primary text.
+        /// Derives initials and deterministic avatar color automatically if not provided.
         /// </summary>
-        public static void PaintAvatarCell(DataGridView grid, DataGridViewCellPaintingEventArgs e, string name, string initials, Color avatarBg, Color avatarText)
+        public static void PaintAvatarCell(DataGridView grid, DataGridViewCellPaintingEventArgs e, string name, string? initials = null, Color? avatarBg = null, Color? avatarText = null)
         {
             if (e.Graphics == null || e.RowIndex < 0 || e.ColumnIndex < 0) return;
 
@@ -312,20 +317,29 @@ namespace CRMS_Peguit.winforms.Models.Services
                 e.Graphics.FillRectangle(bgBrush, e.CellBounds);
             }
 
+            string safeName = string.IsNullOrWhiteSpace(name) ? "—" : name.Trim();
+            string actualInitials = string.IsNullOrWhiteSpace(initials)
+                ? Controls.AvatarLabel.GetInitials(safeName)
+                : initials.Trim();
+
+            var (defBg, defFg) = Controls.AvatarLabel.GetDeterministicAvatarColors(safeName);
+            Color bg = (avatarBg.HasValue && !avatarBg.Value.IsEmpty) ? avatarBg.Value : defBg;
+            Color fg = (avatarText.HasValue && !avatarText.Value.IsEmpty) ? avatarText.Value : defFg;
+
             int avatarSize = 28;
             int avatarX = e.CellBounds.X + 12;
             int avatarY = e.CellBounds.Y + (e.CellBounds.Height - avatarSize) / 2;
             var avatarRect = new Rectangle(avatarX, avatarY, avatarSize, avatarSize);
 
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (var brush = new SolidBrush(avatarBg))
+            using (var brush = new SolidBrush(bg))
             {
                 e.Graphics.FillEllipse(brush, avatarRect);
             }
 
             using (var font = new Font("Segoe UI", 8f, FontStyle.Bold))
             {
-                TextRenderer.DrawText(e.Graphics, initials, font, avatarRect, avatarText,
+                TextRenderer.DrawText(e.Graphics, actualInitials, font, avatarRect, fg,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             }
 
@@ -335,7 +349,7 @@ namespace CRMS_Peguit.winforms.Models.Services
 
             using (var font = new Font("Segoe UI", 9.5f, FontStyle.Bold))
             {
-                TextRenderer.DrawText(e.Graphics, name, font, textRect, Theme.TextPrimary,
+                TextRenderer.DrawText(e.Graphics, safeName, font, textRect, Theme.TextPrimary,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             }
 
@@ -345,6 +359,52 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
 
             e.Handled = true;
+        }
+
+        /// <summary>
+        /// Right-aligns column cells and column header with proper 14px right margin padding.
+        /// </summary>
+        public static void AlignNumericColumn(DataGridView grid, string? columnName)
+        {
+            if (grid == null || string.IsNullOrWhiteSpace(columnName)) return;
+            if (!grid.Columns.Contains(columnName)) return;
+
+            var col = grid.Columns[columnName];
+            if (col == null) return;
+            col.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+            col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight;
+            col.DefaultCellStyle.Padding = new Padding(8, 0, 14, 0);
+            col.HeaderCell.Style.Padding = new Padding(8, 0, 14, 0);
+        }
+
+        /// <summary>
+        /// Automatically applies alignment standards across the grid:
+        /// Right-aligns numbers/amounts/currencies and their headers, enforces Action button widths.
+        /// </summary>
+        public static void EnforceTableStandards(DataGridView grid)
+        {
+            if (grid == null) return;
+
+            foreach (DataGridViewColumn col in grid.Columns)
+            {
+                string header = col.HeaderText?.ToLowerInvariant() ?? "";
+                string name = col.Name?.ToLowerInvariant() ?? "";
+
+                bool isNumeric = header.Contains("value") || header.Contains("amount") ||
+                                 header.Contains("commission") || header.Contains("price") ||
+                                 header.Contains("balance") || header.Contains("total") ||
+                                 header.Contains("budget") || header.Contains("rate") ||
+                                 header.Contains("count") || header.Contains("score") ||
+                                 name.Contains("value") || name.Contains("amount") ||
+                                 name.Contains("commission") || name.Contains("price") ||
+                                 name.Contains("balance") || name.Contains("total");
+
+                if (isNumeric && !name.Contains("id") && !name.Contains("ref") && !name.Contains("number"))
+                {
+                    if (!string.IsNullOrEmpty(col.Name))
+                        AlignNumericColumn(grid, col.Name);
+                }
+            }
         }
 
         public static Color GetRowBackgroundColor(DataGridView grid, int rowIndex, int hoveredRowIndex)

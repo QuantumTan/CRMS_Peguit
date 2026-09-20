@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
@@ -48,6 +50,113 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 System.Diagnostics.Debug.WriteLine($"[PropertyController.GetAll] Error: {ex.Message}");
                 return new List<Property>();
+            }
+        }
+
+        public async Task<PagedResult<Property>> GetPagedAsync(
+            int pageNumber = 1,
+            int pageSize = 25,
+            string? search = null,
+            string? filterStatus = null)
+        {
+            try
+            {
+                using var db = LocalDb.CreateContext(TenantId);
+                var query = db.Properties
+                    .Include(p => p.OwnerCustomer).ThenInclude(c => c!.Person)
+                    .Include(p => p.ListedByAgent).ThenInclude(u => u!.Person)
+                    .AsNoTracking();
+
+                if (!RbacService.HasFullOversight && RbacService.IsAgent)
+                {
+                    int currentUserId = CurrentSession.UserId;
+                    query = query.Where(p =>
+                        (p.ListedByAgentId.HasValue && p.ListedByAgentId.Value > 0)
+                            ? p.ListedByAgentId.Value == currentUserId
+                            : p.CreatedByUserId == currentUserId);
+                }
+
+                if (!string.IsNullOrWhiteSpace(filterStatus) && !string.Equals(filterStatus, "All", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.Equals(filterStatus, "Available", StringComparison.OrdinalIgnoreCase))
+                    {
+                        query = query.Where(p => p.Status.ToLower() == "available");
+                    }
+                    else if (string.Equals(filterStatus, "Pending", StringComparison.OrdinalIgnoreCase))
+                    {
+                        query = query.Where(p => p.Status.ToLower() == "pending" || p.Status.ToLower() == "reserved");
+                    }
+                    else if (string.Equals(filterStatus, "Sold", StringComparison.OrdinalIgnoreCase))
+                    {
+                        query = query.Where(p => p.Status.ToLower() == "sold" || p.Status.ToLower() == "inactive");
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    string s = search.Trim();
+                    query = query.Where(p =>
+                        p.Address.Contains(s) ||
+                        (p.PropertyType != null && p.PropertyType.Contains(s)) ||
+                        (p.Status != null && p.Status.Contains(s)) ||
+                        (p.OwnerCustomer != null && (p.OwnerCustomer.Person.FirstName.Contains(s) || p.OwnerCustomer.Person.LastName.Contains(s))) ||
+                        (p.ListedByAgent != null && (p.ListedByAgent.Person.FirstName.Contains(s) || p.ListedByAgent.Person.LastName.Contains(s))));
+                }
+
+                int totalCount = await query.CountAsync();
+
+                int validPage = Math.Max(1, pageNumber);
+                int validPageSize = Math.Max(1, pageSize);
+
+                var items = await query
+                    .OrderByDescending(x => x.CreatedAt)
+                    .ThenBy(x => x.Address)
+                    .Skip((validPage - 1) * validPageSize)
+                    .Take(validPageSize)
+                    .ToListAsync();
+
+                return new PagedResult<Property>(items, totalCount, validPage, validPageSize);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PropertyController.GetPagedAsync] Error: {ex.Message}");
+                return new PagedResult<Property>(new List<Property>(), 0, pageNumber, pageSize);
+            }
+        }
+
+        public async Task<PropertyCounts> GetPropertyCountsAsync()
+        {
+            try
+            {
+                using var db = LocalDb.CreateContext(TenantId);
+                var query = db.Properties.AsNoTracking();
+
+                if (!RbacService.HasFullOversight && RbacService.IsAgent)
+                {
+                    int currentUserId = CurrentSession.UserId;
+                    query = query.Where(p =>
+                        (p.ListedByAgentId.HasValue && p.ListedByAgentId.Value > 0)
+                            ? p.ListedByAgentId.Value == currentUserId
+                            : p.CreatedByUserId == currentUserId);
+                }
+
+                int total = await query.CountAsync();
+                int available = await query.CountAsync(p => p.Status.ToLower() == "available");
+                int pending = await query.CountAsync(p => p.Status.ToLower() == "pending" || p.Status.ToLower() == "reserved");
+                int sold = await query.CountAsync(p => p.Status.ToLower() == "sold" || p.Status.ToLower() == "inactive");
+
+                return new PropertyCounts
+                {
+                    Total = total,
+                    Available = available,
+                    Pending = pending,
+                    Sold = sold
+                };
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PropertyController.GetPropertyCountsAsync] Error: {ex.Message}");
+                return new PropertyCounts();
             }
         }
 
@@ -358,5 +467,13 @@ namespace CRMS_Peguit.winforms.Controllers
     public sealed record AgentPickerItem(int UserId, string FullName, string Email)
     {
         public override string ToString() => FullName;
+    }
+
+    public class PropertyCounts
+    {
+        public int Total { get; set; }
+        public int Available { get; set; }
+        public int Pending { get; set; }
+        public int Sold { get; set; }
     }
 }

@@ -8,6 +8,7 @@ using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Analytics;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 using Color = System.Drawing.Color;
 
 namespace CRMS_Peguit.winforms.Views.Reports
@@ -18,8 +19,10 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
         private readonly ReportsController _controller;
         private object? _currentData;
+        private object? _unfilteredData;
         private ReportHeader? _currentHeader;
         private ViewDisplayMode _viewMode = ViewDisplayMode.Both;
+        private int _selectedKpiIndex = 0;
 
         public event Action<string>? NavigationRequested;
 
@@ -55,6 +58,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
         {
             this.BackColor = Theme.Background;
             UiGridHelper.ApplyModernGridStyle(gridData, 48);
+            gridData.CellPainting += GridData_CellPainting;
 
             UiRadiusHelper.StyleCard(pnlChartCard1, 10);
             UiRadiusHelper.StyleCard(pnlChartCard2, 10);
@@ -113,6 +117,37 @@ namespace CRMS_Peguit.winforms.Views.Reports
             UpdateSecondaryFilter();
         }
 
+        public void SelectReport(string reportNameOrKeyword, string? dateRange = null)
+        {
+            if (string.IsNullOrWhiteSpace(reportNameOrKeyword)) return;
+
+            for (int i = 0; i < cboReportType.Items.Count; i++)
+            {
+                var itemText = cboReportType.Items[i]?.ToString() ?? "";
+                if (itemText.Contains(reportNameOrKeyword, StringComparison.OrdinalIgnoreCase))
+                {
+                    cboReportType.SelectedIndex = i;
+                    break;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(dateRange))
+            {
+                for (int i = 0; i < cboDateRange.Items.Count; i++)
+                {
+                    var dtText = cboDateRange.Items[i]?.ToString() ?? "";
+                    if (dtText.Contains(dateRange, StringComparison.OrdinalIgnoreCase))
+                    {
+                        cboDateRange.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            UpdateSecondaryFilter();
+            BtnRunReport_Click(this, EventArgs.Empty);
+        }
+
         private void WireEvents()
         {
             cboReportType.SelectedIndexChanged += (s, e) =>
@@ -136,6 +171,11 @@ namespace CRMS_Peguit.winforms.Views.Reports
             btnViewBoth.Click += (_, _) => SetViewMode(ViewDisplayMode.Both);
             btnViewCharts.Click += (_, _) => SetViewMode(ViewDisplayMode.ChartsOnly);
             btnViewTable.Click += (_, _) => SetViewMode(ViewDisplayMode.TableOnly);
+
+            kpi1.Click += (_, _) => ToggleKpiFilter(1);
+            kpi2.Click += (_, _) => ToggleKpiFilter(2);
+            kpi3.Click += (_, _) => ToggleKpiFilter(3);
+            kpi4.Click += (_, _) => ToggleKpiFilter(4);
 
             btnGoToAnalytics.Click += (_, _) =>
             {
@@ -192,11 +232,11 @@ namespace CRMS_Peguit.winforms.Views.Reports
                     pnlCharts.Visible = true;
                     pnlGrid.Visible = true;
 
-                    int chartHeight = 285;
+                    int chartHeight = 345;
                     pnlCharts.Location = new Point(0, 0);
                     pnlCharts.Size = new Size(containerWidth, chartHeight);
 
-                    int gridHeight = Math.Max(380, containerHeight - chartHeight);
+                    int gridHeight = Math.Max(350, containerHeight - chartHeight);
                     pnlGrid.Location = new Point(0, pnlCharts.Bottom);
                     pnlGrid.Size = new Size(containerWidth, gridHeight);
 
@@ -209,8 +249,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
                     pnlGrid.Visible = false;
 
                     // Prevent charts from stretching to abnormal vertical heights when "Chart Only" is active
-                    // Cap with reasonable MinHeight (280px) and MaxHeight (480px)
-                    int chartHeight = Math.Clamp(containerHeight > 0 ? containerHeight : 380, 280, 480);
+                    int chartHeight = Math.Clamp(containerHeight > 0 ? containerHeight : 450, 340, 560);
                     pnlCharts.Location = new Point(0, 0);
                     pnlCharts.Size = new Size(containerWidth, chartHeight);
 
@@ -237,13 +276,21 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 int pad = 20;
                 int totalChartWidth = pnlCharts.ClientSize.Width - (pad * 2);
                 int cardWidth = Math.Max(280, (totalChartWidth - 16) / 2);
-                int cardHeight = Math.Max(200, pnlCharts.ClientSize.Height - 20);
+                int cardHeight = Math.Max(220, pnlCharts.ClientSize.Height - 20);
 
                 pnlChartCard1.Location = new Point(pad, 10);
                 pnlChartCard1.Size = new Size(cardWidth, cardHeight);
 
                 pnlChartCard2.Location = new Point(pnlChartCard1.Right + 16, 10);
                 pnlChartCard2.Size = new Size(cardWidth, cardHeight);
+
+                // Explicitly size and position FormsPlots with comfortable margins below card title
+                int plotWidth = Math.Max(100, cardWidth - 24);
+                int plotHeight = Math.Max(100, cardHeight - 48);
+                plotReport1.Location = new Point(12, 36);
+                plotReport1.Size = new Size(plotWidth, plotHeight);
+                plotReport2.Location = new Point(12, 36);
+                plotReport2.Size = new Size(plotWidth, plotHeight);
             }
 
             pnlScrollableContent.AutoScrollMinSize = new Size(0, totalContentHeight + 10);
@@ -330,12 +377,11 @@ namespace CRMS_Peguit.winforms.Views.Reports
                         data = _controller.GetAgentActivityReport(dr, agentId);
                 });
 
-                _currentData = data;
-                gridData.DataSource = _currentData;
-                FormatGrid(rpt);
+                _unfilteredData = data;
+                _selectedKpiIndex = 0;
+                UpdateKpiSelectionStates();
+                ApplyKpiFilter();
 
-                lblReportHeader.Text = $"{_currentHeader.ReportName} · {_currentHeader.DateRange} · Generated by {_currentHeader.GeneratedBy} at {_currentHeader.GeneratedAt:g}";
-                
                 bool isFinancialReport = rpt.Contains("Commission");
                 if (isFinancialReport && !RbacService.CanExportFinancialSettlements)
                 {
@@ -353,10 +399,10 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 }
 
                 // Update dynamic KPI summary cards
-                UpdateReportKpis(rpt, _currentData);
+                UpdateReportKpis(rpt, _unfilteredData);
 
                 // Render accompanying charts
-                RenderReportCharts(rpt, _currentData);
+                RenderReportCharts(rpt, _unfilteredData);
             }
             catch (Exception ex)
             {
@@ -617,8 +663,8 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
                     var slices = new (string Label, double Value, Color Color)[]
                     {
-                        ($"Agent Payouts ({totalPayoutK:N0}k)", Math.Max(0.01, totalPayoutK), BiDisplayConstants.StatusWon),
-                        ($"Brokerage Net ({totalBrokerageK:N0}k)", Math.Max(0.01, totalBrokerageK), BiDisplayConstants.PrimaryAccent)
+                        ("Agent Payouts", Math.Max(0.01, totalPayoutK), BiDisplayConstants.StatusWon),
+                        ("Brokerage Net", Math.Max(0.01, totalBrokerageK), BiDisplayConstants.PrimaryAccent)
                     };
                     BiDisplayConstants.RenderDonutPlot(plotReport2, slices);
                 }
@@ -734,9 +780,9 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 int pending = tickets.Count(t => t.SlaMet != "Yes" && t.SlaMet != "No");
 
                 var slices = new List<(string Label, double Value, Color Color)>();
-                if (met > 0) slices.Add(($"Met SLA ({met})", (double)met, BiDisplayConstants.StatusWon));
-                if (missed > 0) slices.Add(($"Breached ({missed})", (double)missed, BiDisplayConstants.StatusLost));
-                if (pending > 0) slices.Add(($"In Progress ({pending})", (double)pending, BiDisplayConstants.StatusNeutral));
+                if (met > 0) slices.Add(("Met SLA", (double)met, BiDisplayConstants.StatusWon));
+                if (missed > 0) slices.Add(("Breached", (double)missed, BiDisplayConstants.StatusLost));
+                if (pending > 0) slices.Add(("In Progress", (double)pending, BiDisplayConstants.StatusNeutral));
 
                 BiDisplayConstants.RenderDonutPlot(plotReport2, slices);
             }
@@ -862,6 +908,8 @@ namespace CRMS_Peguit.winforms.Views.Reports
                     col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight;
                 }
             }
+
+            UiGridHelper.EnforceTableStandards(gridData);
         }
 
         private static string FormatGridHeader(string propName)
@@ -979,6 +1027,162 @@ namespace CRMS_Peguit.winforms.Views.Reports
             {
                 if (isCsv) _controller.ExportToCsv((List<AgentActivityRow>)_currentData, filePath, _currentHeader);
                 else _controller.ExportToPdf((List<AgentActivityRow>)_currentData, filePath, _currentHeader);
+            }
+        }
+
+        private void ToggleKpiFilter(int kpiIndex)
+        {
+            if (_unfilteredData == null) return;
+
+            if (_selectedKpiIndex == kpiIndex)
+            {
+                _selectedKpiIndex = 0;
+            }
+            else
+            {
+                _selectedKpiIndex = kpiIndex;
+            }
+
+            UpdateKpiSelectionStates();
+            ApplyKpiFilter();
+        }
+
+        private void UpdateKpiSelectionStates()
+        {
+            kpi1.SetSelected(_selectedKpiIndex == 1);
+            kpi2.SetSelected(_selectedKpiIndex == 2);
+            kpi3.SetSelected(_selectedKpiIndex == 3);
+            kpi4.SetSelected(_selectedKpiIndex == 4);
+        }
+
+        private void ApplyKpiFilter()
+        {
+            if (_unfilteredData == null) return;
+            var rpt = cboReportType.SelectedItem?.ToString() ?? "Sales & Revenue Report";
+
+            object? displayData = _unfilteredData;
+
+            if (_selectedKpiIndex > 0)
+            {
+                if (rpt.Contains("Sales") && _unfilteredData is List<SalesReportRow> sales)
+                {
+                    displayData = _selectedKpiIndex switch
+                    {
+                        1 => sales,
+                        2 => sales.Where(s => s.Stage.Contains("Closed", StringComparison.OrdinalIgnoreCase) || s.Stage.Contains("Won", StringComparison.OrdinalIgnoreCase)).ToList(),
+                        3 => sales.Where(s => s.Commission > 0).ToList(),
+                        4 => sales.Where(s => s.DealValue >= (sales.Count == 0 ? 0 : sales.Average(x => x.DealValue))).ToList(),
+                        _ => sales
+                    };
+                }
+                else if (rpt.Contains("Commission") && _unfilteredData is List<CommissionReportRow> comms)
+                {
+                    displayData = _selectedKpiIndex switch
+                    {
+                        1 => comms,
+                        2 => comms.Where(c => c.GrossCommission > 0).ToList(),
+                        3 => comms.Where(c => c.AgentPayoutAmount > 0).ToList(),
+                        4 => comms.Where(c => c.BrokerageRetainedAmount > 0).ToList(),
+                        _ => comms
+                    };
+                }
+                else if (rpt.Contains("Property") && _unfilteredData is List<PropertyInventoryReportRow> props)
+                {
+                    displayData = _selectedKpiIndex switch
+                    {
+                        1 => props,
+                        2 => props.Where(p => p.Status.Contains("Available", StringComparison.OrdinalIgnoreCase) || p.Status.Contains("Active", StringComparison.OrdinalIgnoreCase)).ToList(),
+                        3 => props.Where(p => p.DaysOnMarket >= 30).ToList(),
+                        4 => props.Where(p => p.AssociatedDeals > 0).ToList(),
+                        _ => props
+                    };
+                }
+                else if (rpt.Contains("Lead") && _unfilteredData is List<LeadProgressRow> leads)
+                {
+                    displayData = _selectedKpiIndex switch
+                    {
+                        1 => leads,
+                        2 => leads.Where(l => string.Equals(l.ConvertedToCustomer, "Yes", StringComparison.OrdinalIgnoreCase)).ToList(),
+                        3 => leads.Where(l => l.DaysInPipeline > 14).ToList(),
+                        4 => leads.Where(l => l.EstimatedBudget > 0).ToList(),
+                        _ => leads
+                    };
+                }
+                else if (rpt.Contains("Ticket") && _unfilteredData is List<TicketResolutionRow> tickets)
+                {
+                    displayData = _selectedKpiIndex switch
+                    {
+                        1 => tickets,
+                        2 => tickets.Where(t => string.Equals(t.Status, "Resolved", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Status, "Closed", StringComparison.OrdinalIgnoreCase)).ToList(),
+                        3 => tickets.Where(t => string.Equals(t.SlaMet, "Yes", StringComparison.OrdinalIgnoreCase)).ToList(),
+                        4 => tickets.Where(t => string.Equals(t.SlaMet, "No", StringComparison.OrdinalIgnoreCase)).ToList(),
+                        _ => tickets
+                    };
+                }
+                else if (rpt.Contains("Agent") && _unfilteredData is List<AgentActivityRow> acts)
+                {
+                    displayData = _selectedKpiIndex switch
+                    {
+                        1 => acts,
+                        2 => acts.Where(a => a.DealsClosed > 0).ToList(),
+                        3 => acts.Where(a => a.TotalSalesVolume > 0).ToList(),
+                        4 => acts.Where(a => a.TicketsResolved > 0).ToList(),
+                        _ => acts
+                    };
+                }
+            }
+
+            _currentData = displayData;
+            gridData.DataSource = null;
+            gridData.DataSource = _currentData;
+            FormatGrid(rpt);
+
+            if (_currentHeader != null)
+            {
+                string filterSuffix = _selectedKpiIndex switch
+                {
+                    1 => " (All Items)",
+                    2 => " (KPI 2 Filter)",
+                    3 => " (KPI 3 Filter)",
+                    4 => " (KPI 4 Filter)",
+                    _ => ""
+                };
+                lblReportHeader.Text = $"{_currentHeader.ReportName}{filterSuffix} · {_currentHeader.DateRange} · Generated by {_currentHeader.GeneratedBy} at {_currentHeader.GeneratedAt:g}";
+            }
+        }
+
+        private void GridData_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+
+            var col = gridData.Columns[e.ColumnIndex];
+            string colName = col.Name;
+            object? rawVal = e.Value;
+            string text = rawVal?.ToString() ?? string.Empty;
+
+            // 1. Status & Stage pill badges
+            if (colName is "Status" or "Stage" or "SettlementStatus" or "Priority" or "SlaMet")
+            {
+                e.Handled = true;
+                UiGridHelper.PaintStatusBadge(gridData, e, text);
+                return;
+            }
+
+            // 2. Avatar cells with initials and bold text for persons
+            if (colName.Contains("Customer") || colName.Contains("Agent") || colName.Contains("Lead") || colName == "ListingAgent")
+            {
+                e.Handled = true;
+                UiGridHelper.PaintAvatarCell(gridData, e, text);
+                return;
+            }
+
+            // 3. Bold identifiers
+            if (colName.EndsWith("Ref") || colName == "TicketNumber" || colName.EndsWith("Id"))
+            {
+                e.Handled = true;
+                using var boldFont = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+                UiGridHelper.PaintTextCell(gridData, e, text, boldFont, Theme.TextPrimary);
+                return;
             }
         }
     }

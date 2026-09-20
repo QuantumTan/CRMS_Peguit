@@ -201,6 +201,7 @@ namespace CRMS_Peguit.winforms.Views.Users
                 }
 
                 grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+                UiGridHelper.EnforceTableStandards(grid);
                 _lblEmptyState.Visible = (grid.Rows.Count == 0);
             }
             catch (Exception ex)
@@ -214,7 +215,12 @@ namespace CRMS_Peguit.winforms.Views.Users
             if (e.RowIndex < 0 || e.Graphics is null) return;
             string colName = grid.Columns[e.ColumnIndex].Name;
 
-            if (colName == "Status" && e.Value != null)
+            if (colName == "Name" && e.Value != null)
+            {
+                string name = e.Value.ToString() ?? "";
+                UiGridHelper.PaintAvatarCell(grid, e, name);
+            }
+            else if (colName == "Status" && e.Value != null)
             {
                 string status = e.Value.ToString() ?? "";
                 UiGridHelper.PaintStatusIndicator(grid, e, status, center: false);

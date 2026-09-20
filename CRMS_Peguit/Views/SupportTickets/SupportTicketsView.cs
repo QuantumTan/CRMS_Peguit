@@ -20,21 +20,28 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
         private Button? _btnExport;
         private Panel _pnlEmptyState = null!;
         private PaginationControl _pagination = null!;
-        private List<SupportTicket> _allTickets = new();
-        private List<SupportTicket> _filteredTickets = new();
+        private List<SupportTicket> _currentPageTickets = new();
         private Dictionary<int, string> _agentDict = new();
+        private readonly System.Windows.Forms.Timer _searchDebounceTimer;
+        private bool _isLoading = false;
 
         public SupportTicketsView()
         {
             InitializeComponent();
             _controller = new SupportTicketController();
 
+            _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
+            _searchDebounceTimer.Tick += async (_, _) =>
+            {
+                _searchDebounceTimer.Stop();
+                await RefreshGridAsync(resetPage: true);
+            };
+
             InitPagination();
             InitEmptyState();
             ApplyStyling();
             BindEvents();
-            UpdateFilterPillStyles();
-            RefreshGrid(reloadFromDb: true);
+            _ = RefreshGridAsync(resetPage: true);
 
             this.Load += (_, _) => LayoutToolbar();
             this.Resize += (_, _) => LayoutToolbar();
@@ -44,8 +51,8 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
         {
             _pagination = new PaginationControl();
             _pagination.SetItemLabel("tickets");
-            _pagination.PageChanged += (_, _) => BindCurrentPage();
-            _pagination.PageSizeChanged += (_, _) => BindCurrentPage();
+            _pagination.PageChanged += async (_, _) => await RefreshGridAsync(resetPage: false);
+            _pagination.PageSizeChanged += async (_, _) => await RefreshGridAsync(resetPage: true);
             pnlCard.Controls.Add(_pagination);
             _pagination.BringToFront();
         }
@@ -150,7 +157,11 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             // Business Rule: Admin has read-only oversight; Agent & Manager can log tickets
             btnAdd.Visible = RbacService.CanCreateSalesRecord;
             btnAdd.Click += BtnAddClick;
-            txtSearch.TextChanged += (_, _) => RefreshGrid(reloadFromDb: false);
+            txtSearch.TextChanged += (_, _) =>
+            {
+                _searchDebounceTimer.Stop();
+                _searchDebounceTimer.Start();
+            };
 
             if (RbacService.CanExportData)
             {
@@ -198,16 +209,22 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             };
         }
 
-        private void SetFilter(string filter)
+        private async void SetFilter(string filter)
         {
-            _filterStatus = filter;
-            UpdateFilterPillStyles();
-            RefreshGrid(reloadFromDb: false);
+            if (string.Equals(_filterStatus, filter, StringComparison.OrdinalIgnoreCase) && !string.Equals(filter, "All", StringComparison.OrdinalIgnoreCase))
+            {
+                _filterStatus = "All";
+            }
+            else
+            {
+                _filterStatus = filter;
+            }
+            await RefreshGridAsync(resetPage: true);
         }
 
-        private void UpdateFilterPillStyles()
+        private void UpdateFilterPillStyles(SupportTicketKpiCounts? kpis = null)
         {
-            var kpis = _controller.GetKpiCounts();
+            kpis ??= _controller.GetKpiCounts();
 
             // Refresh KPI card values and context subtitles
             kpiTotal.SetValue(kpis.Total);
@@ -259,50 +276,44 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             }
         }
 
+        private async System.Threading.Tasks.Task RefreshGridAsync(bool resetPage = false)
+        {
+            if (_isLoading) return;
+            _isLoading = true;
+
+            try
+            {
+                int pageNumber = resetPage ? 1 : _pagination.CurrentPage;
+                int pageSize = _pagination.PageSize;
+                string search = txtSearch.Text.Trim();
+
+                var kpiTask = _controller.GetKpiCountsAsync();
+                var pagedTask = _controller.GetPagedAsync(pageNumber, pageSize, search, _filterStatus);
+                var agentDictTask = System.Threading.Tasks.Task.Run(() => _controller.GetAgentDictionary());
+
+                await System.Threading.Tasks.Task.WhenAll(kpiTask, pagedTask, agentDictTask);
+
+                var kpis = await kpiTask;
+                var pagedResult = await pagedTask;
+                _agentDict = await agentDictTask;
+
+                UpdateFilterPillStyles(kpis);
+
+                _currentPageTickets = pagedResult.Items;
+                _pagination.UpdatePagination(pagedResult.TotalCount, pagedResult.PageNumber, pagedResult.PageSize);
+                BindCurrentPage();
+
+                _pnlEmptyState.Visible = pagedResult.TotalCount == 0;
+            }
+            finally
+            {
+                _isLoading = false;
+            }
+        }
+
         private void RefreshGrid(bool reloadFromDb = true)
         {
-            if (reloadFromDb || _allTickets.Count == 0)
-            {
-                _allTickets = _controller.GetAll();
-                _agentDict = _controller.GetAgentDictionary();
-            }
-
-            var now = DateTime.UtcNow;
-
-            IEnumerable<SupportTicket> query = _allTickets;
-
-            if (string.Equals(_filterStatus, "Open", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(t => string.Equals(t.Status, "Open", StringComparison.OrdinalIgnoreCase));
-            }
-            else if (string.Equals(_filterStatus, "In Progress", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(t => string.Equals(t.Status, "In Progress", StringComparison.OrdinalIgnoreCase));
-            }
-            else if (string.Equals(_filterStatus, "Resolved", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(t => string.Equals(t.Status, "Resolved", StringComparison.OrdinalIgnoreCase));
-            }
-            else if (string.Equals(_filterStatus, "Overdue", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(t => !string.Equals(t.Status, "Resolved", StringComparison.OrdinalIgnoreCase)
-                                         && t.DueDate.HasValue && t.DueDate.Value < now);
-            }
-
-            string search = txtSearch.Text.Trim();
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                query = query.Where(t =>
-                    ContainsText(t.TicketNumber, search) ||
-                    ContainsText(t.Category, search) ||
-                    ContainsText(t.Description, search) ||
-                    ContainsText(t.Customer?.FullName, search) ||
-                    ContainsText(t.Customer?.Email, search));
-            }
-
-            _filteredTickets = query.ToList();
-            _pagination.UpdatePagination(_filteredTickets.Count, 1, _pagination.PageSize);
-            BindCurrentPage();
+            _ = RefreshGridAsync(resetPage: false);
         }
 
         private void BindCurrentPage()
@@ -312,9 +323,7 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
 
             var now = DateTime.UtcNow;
 
-            var pageItems = _filteredTickets
-                .Skip((_pagination.CurrentPage - 1) * _pagination.PageSize)
-                .Take(_pagination.PageSize)
+            var pageItems = _currentPageTickets
                 .Select(t => new
                 {
                     t.TicketId,
@@ -396,8 +405,9 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             }
 
             UiGridHelper.AddActionsColumn(grid, 64);
+            UiGridHelper.EnforceTableStandards(grid);
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-            _pnlEmptyState.Visible = (_filteredTickets.Count == 0);
+            _pnlEmptyState.Visible = (_currentPageTickets.Count == 0);
         }
 
         private void Grid_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
@@ -614,28 +624,26 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             if (rowIndex < 0 || rowIndex >= grid.Rows.Count) return null;
             if (grid.Rows[rowIndex].Cells["TicketId"].Value is int id)
             {
-                return _allTickets.FirstOrDefault(t => t.TicketId == id) ?? _controller.GetById(id);
+                return _currentPageTickets.FirstOrDefault(t => t.TicketId == id) ?? _controller.GetById(id);
             }
             return null;
         }
 
-        private void BtnAddClick(object? sender, EventArgs e)
+        private async void BtnAddClick(object? sender, EventArgs e)
         {
             using var form = new SupportTicketInputForm(_controller);
             if (form.ShowDialog() == DialogResult.OK && form.Result is not null)
             {
                 _controller.Add(form.Result);
-                UpdateFilterPillStyles();
-                RefreshGrid();
+                await RefreshGridAsync(resetPage: true);
             }
         }
 
-        private void ViewTicket(SupportTicket ticket)
+        private async void ViewTicket(SupportTicket ticket)
         {
             using var form = new SupportTicketDetailForm(ticket, _controller);
             form.ShowDialog();
-            UpdateFilterPillStyles();
-            RefreshGrid();
+            await RefreshGridAsync(resetPage: false);
         }
 
         private void ExportToCsv()

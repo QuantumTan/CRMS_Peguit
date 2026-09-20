@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
@@ -6,6 +7,7 @@ using CRMS_Peguit.winforms.Models.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace CRMS_Peguit.winforms.Controllers
 {
@@ -45,6 +47,122 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 System.Diagnostics.Debug.WriteLine($"[DealController.GetAll] Error: {ex.Message}");
                 return new List<Deal>();
+            }
+        }
+
+        public async Task<PagedResult<Deal>> GetPagedAsync(
+            int pageNumber = 1,
+            int pageSize = 25,
+            string? search = null,
+            string? filterStage = null)
+        {
+            try
+            {
+                using var db = LocalDb.CreateContext(tenantId: TenantId);
+                var query = db.Deals
+                    .Include(d => d.Customer).ThenInclude(c => c!.Person)
+                    .Include(d => d.Property)
+                    .Include(d => d.Agent).ThenInclude(u => u!.Person)
+                    .AsNoTracking();
+
+                if (!RbacService.HasFullOversight && RbacService.IsAgent)
+                {
+                    int currentUserId = CurrentSession.UserId;
+                    query = query.Where(d => d.AgentId == currentUserId);
+                }
+
+                if (!string.IsNullOrWhiteSpace(filterStage) && !string.Equals(filterStage, "All", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.Equals(filterStage, "Offer", StringComparison.OrdinalIgnoreCase))
+                    {
+                        query = query.Where(d => d.Stage.ToLower() == "offer" || d.Stage.ToLower() == "reservation");
+                    }
+                    else if (string.Equals(filterStage, "Contract", StringComparison.OrdinalIgnoreCase))
+                    {
+                        query = query.Where(d => d.Stage.ToLower() == "contractsigned" || d.Stage.ToLower() == "contract");
+                    }
+                    else if (string.Equals(filterStage, "Closed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        query = query.Where(d => d.Stage.ToLower() == "closed");
+                    }
+                    else if (string.Equals(filterStage, "Lost", StringComparison.OrdinalIgnoreCase))
+                    {
+                        query = query.Where(d => d.Stage.ToLower() == "lost");
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    string s = search.Trim();
+                    query = query.Where(d =>
+                        (d.Customer != null && (d.Customer.Person.FirstName.Contains(s) || d.Customer.Person.LastName.Contains(s))) ||
+                        (d.Property != null && d.Property.Address.Contains(s)) ||
+                        d.Stage.Contains(s) ||
+                        (d.PaymentScheme != null && d.PaymentScheme.Contains(s)) ||
+                        (d.Agent != null && (d.Agent.Person.FirstName.Contains(s) || d.Agent.Person.LastName.Contains(s))));
+                }
+
+                int totalCount = await query.CountAsync();
+
+                int validPage = Math.Max(1, pageNumber);
+                int validPageSize = Math.Max(1, pageSize);
+
+                var items = await query
+                    .OrderByDescending(x => x.CreatedAt)
+                    .Skip((validPage - 1) * validPageSize)
+                    .Take(validPageSize)
+                    .ToListAsync();
+
+                return new PagedResult<Deal>(items, totalCount, validPage, validPageSize);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DealController.GetPagedAsync] Error: {ex.Message}");
+                return new PagedResult<Deal>(new List<Deal>(), 0, pageNumber, pageSize);
+            }
+        }
+
+        public async Task<DealKpiResult> GetDealKpisAsync()
+        {
+            try
+            {
+                using var db = LocalDb.CreateContext(tenantId: TenantId);
+                var query = db.Deals.AsNoTracking();
+
+                if (!RbacService.HasFullOversight && RbacService.IsAgent)
+                {
+                    int currentUserId = CurrentSession.UserId;
+                    query = query.Where(d => d.AgentId == currentUserId);
+                }
+
+                var list = await query.Select(d => new { d.Stage, d.Value }).ToListAsync();
+
+                int total = list.Count;
+                int offer = list.Count(d => string.Equals(d.Stage, "Offer", StringComparison.OrdinalIgnoreCase) || string.Equals(d.Stage, "Reservation", StringComparison.OrdinalIgnoreCase));
+                int contract = list.Count(d => string.Equals(d.Stage, "ContractSigned", StringComparison.OrdinalIgnoreCase) || string.Equals(d.Stage, "Contract", StringComparison.OrdinalIgnoreCase));
+                int closed = list.Count(d => string.Equals(d.Stage, "Closed", StringComparison.OrdinalIgnoreCase));
+                int lost = list.Count(d => string.Equals(d.Stage, "Lost", StringComparison.OrdinalIgnoreCase));
+
+                decimal totalVol = list.Sum(d => d.Value);
+                decimal closedVol = list.Where(d => string.Equals(d.Stage, "Closed", StringComparison.OrdinalIgnoreCase)).Sum(d => d.Value);
+                decimal contractVol = list.Where(d => string.Equals(d.Stage, "ContractSigned", StringComparison.OrdinalIgnoreCase) || string.Equals(d.Stage, "Contract", StringComparison.OrdinalIgnoreCase)).Sum(d => d.Value);
+
+                return new DealKpiResult
+                {
+                    Total = total,
+                    Offer = offer,
+                    Contract = contract,
+                    Closed = closed,
+                    Lost = lost,
+                    TotalVolume = totalVol,
+                    ClosedVolume = closedVol,
+                    ContractVolume = contractVol
+                };
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DealController.GetDealKpisAsync] Error: {ex.Message}");
+                return new DealKpiResult();
             }
         }
 
@@ -373,6 +491,67 @@ namespace CRMS_Peguit.winforms.Controllers
             }
         }
 
+        public decimal GetCommissionEarnedThisMonth()
+        {
+            try
+            {
+                var now = DateTime.UtcNow;
+                var closedDealsThisMonth = _db.Deals
+                    .AsNoTracking()
+                    .Where(d => d.Stage.ToLower() == "closed" &&
+                               ((d.ContractSignedDate.HasValue && d.ContractSignedDate.Value.Year == now.Year && d.ContractSignedDate.Value.Month == now.Month) ||
+                                (d.CreatedAt.Year == now.Year && d.CreatedAt.Month == now.Month)))
+                    .ToList();
+
+                return closedDealsThisMonth.Sum(d => d.Value * (d.CommissionRate > 1m ? d.CommissionRate / 100m : d.CommissionRate));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DealController.GetCommissionEarnedThisMonth] Error: {ex.Message}");
+                return 0m;
+            }
+        }
+
+        public List<CRMS_Peguit.winforms.Models.ViewModels.AdminCommissionTrendPointDto> GetCommissionTrendLast6Months(int months = 6)
+        {
+            try
+            {
+                var result = new List<CRMS_Peguit.winforms.Models.ViewModels.AdminCommissionTrendPointDto>();
+                var now = DateTime.UtcNow;
+                var startMonth = new DateTime(now.Year, now.Month, 1).AddMonths(-(months - 1));
+
+                var deals = _db.Deals
+                    .AsNoTracking()
+                    .Where(d => d.Stage.ToLower() == "closed" && ((d.ContractSignedDate ?? d.CreatedAt) >= startMonth))
+                    .ToList();
+
+                for (int i = 0; i < months; i++)
+                {
+                    var targetMonth = startMonth.AddMonths(i);
+                    var monthDeals = deals.Where(d =>
+                    {
+                        var dt = d.ContractSignedDate ?? d.CreatedAt;
+                        return dt.Year == targetMonth.Year && dt.Month == targetMonth.Month;
+                    }).ToList();
+
+                    decimal comm = monthDeals.Sum(d => d.Value * (d.CommissionRate > 1m ? d.CommissionRate / 100m : d.CommissionRate));
+
+                    result.Add(new CRMS_Peguit.winforms.Models.ViewModels.AdminCommissionTrendPointDto
+                    {
+                        MonthLabel = targetMonth.ToString("MMM"),
+                        CommissionAmount = (double)comm
+                    });
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DealController.GetCommissionTrendLast6Months] Error: {ex.Message}");
+                return new List<CRMS_Peguit.winforms.Models.ViewModels.AdminCommissionTrendPointDto>();
+            }
+        }
+
         public void Dispose()
         {
             _db.Dispose();
@@ -385,5 +564,17 @@ namespace CRMS_Peguit.winforms.Controllers
         public decimal BalanceAmount { get; set; }
         public string DownPaymentDisplay { get; set; } = string.Empty;
         public string BalanceDisplay { get; set; } = string.Empty;
+    }
+
+    public class DealKpiResult
+    {
+        public int Total { get; set; }
+        public int Offer { get; set; }
+        public int Contract { get; set; }
+        public int Closed { get; set; }
+        public int Lost { get; set; }
+        public decimal TotalVolume { get; set; }
+        public decimal ClosedVolume { get; set; }
+        public decimal ContractVolume { get; set; }
     }
 }

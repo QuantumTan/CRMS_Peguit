@@ -110,9 +110,16 @@ namespace CRMS_Peguit.winforms.Models.Services
                 plot.Plot.FigureBackground.Color = ScottPlot.Color.FromColor(Color.White);
                 plot.Plot.DataBackground.Color = ScottPlot.Color.FromColor(Color.White);
                 plot.Plot.Axes.Color(ScottPlot.Color.FromColor(Theme.TextSecondary));
+                plot.Plot.Axes.Left.IsVisible = true;
+                plot.Plot.Axes.Bottom.IsVisible = true;
+                plot.Plot.Axes.Top.IsVisible = false;
+                plot.Plot.Axes.Right.IsVisible = false;
                 plot.Plot.Axes.Bottom.MinimumSize = 45;
-                plot.Plot.Axes.Left.MinimumSize = 40;
+                plot.Plot.Axes.Left.MinimumSize = 48;
+                plot.Plot.Axes.Left.TickLabelStyle.ForeColor = ScottPlot.Color.FromColor(Theme.TextSecondary);
+                plot.Plot.Axes.Bottom.TickLabelStyle.ForeColor = ScottPlot.Color.FromColor(Theme.TextSecondary);
                 plot.Plot.Grid.MajorLineColor = ScottPlot.Color.FromHex("#F1F5F9");
+                plot.Plot.ShowGrid();
             }
             catch { }
         }
@@ -145,6 +152,13 @@ namespace CRMS_Peguit.winforms.Models.Services
                 return;
             }
 
+            plot.Plot.Axes.Left.IsVisible = true;
+            plot.Plot.Axes.Bottom.IsVisible = true;
+            plot.Plot.Axes.Top.IsVisible = false;
+            plot.Plot.Axes.Right.IsVisible = false;
+            plot.Plot.ShowGrid();
+            plot.Plot.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic();
+
             var lineClr = lineColor ?? PrimaryAccent;
             var markClr = markerColor ?? PrimaryAccent;
 
@@ -167,12 +181,21 @@ namespace CRMS_Peguit.winforms.Models.Services
             plot.Plot.Axes.Bottom.TickGenerator = tickGen;
             plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = -30;
             plot.Plot.Axes.Bottom.TickLabelStyle.Alignment = Alignment.MiddleRight;
+            plot.Plot.Axes.Bottom.TickLabelStyle.ForeColor = ScottPlot.Color.FromColor(Theme.TextPrimary);
+            plot.Plot.Axes.Left.TickLabelStyle.ForeColor = ScottPlot.Color.FromColor(Theme.TextSecondary);
             plot.Plot.Axes.Bottom.MinimumSize = 55;
-            plot.Plot.Axes.Left.MinimumSize = 45;
+            plot.Plot.Axes.Left.MinimumSize = 48;
 
             double maxVal = ys.Length > 0 ? ys.Max() : 10;
-            plot.Plot.Axes.SetLimits(-0.3, xs.Length - 0.7, 0, Math.Max(1.0, maxVal * 1.15));
+            plot.Plot.Axes.SetLimits(-0.4, xs.Length - 0.6, 0, Math.Max(1.0, maxVal * 1.2));
             plot.Refresh();
+        }
+
+        private static string CleanDonutLabel(string rawLabel)
+        {
+            if (string.IsNullOrWhiteSpace(rawLabel)) return "";
+            int parenIdx = rawLabel.IndexOf('(');
+            return parenIdx > 0 ? rawLabel.Substring(0, parenIdx).Trim() : rawLabel.Trim();
         }
 
         /// <summary>
@@ -191,17 +214,22 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
 
             var activeSlices = sliceList.Where(s => s.value > 0.0001).OrderByDescending(s => s.value).ToList();
+            double totalSum = activeSlices.Sum(s => s.value);
 
             var slices = new List<PieSlice>();
             if (activeSlices.Count <= maxSlices)
             {
                 foreach (var (lbl, val, col) in activeSlices)
                 {
+                    double pct = totalSum > 0 ? (val / totalSum) * 100.0 : 0;
+                    string valStr = val >= 1_000 ? $"{val:N0}" : (val % 1 == 0 ? $"{val:N0}" : $"{val:N1}");
+                    string clean = CleanDonutLabel(lbl);
+
                     slices.Add(new PieSlice
                     {
                         Value = val,
                         FillColor = ScottPlot.Color.FromColor(col),
-                        Label = $"{lbl} ({val:N0})"
+                        Label = $"{clean}\n{valStr} ({pct:F0}%)"
                     });
                 }
             }
@@ -213,37 +241,64 @@ namespace CRMS_Peguit.winforms.Models.Services
 
                 foreach (var (lbl, val, col) in top)
                 {
+                    double pct = totalSum > 0 ? (val / totalSum) * 100.0 : 0;
+                    string valStr = val >= 1_000 ? $"{val:N0}" : (val % 1 == 0 ? $"{val:N0}" : $"{val:N1}");
+                    string clean = CleanDonutLabel(lbl);
+
                     slices.Add(new PieSlice
                     {
                         Value = val,
                         FillColor = ScottPlot.Color.FromColor(col),
-                        Label = $"{lbl} ({val:N0})"
+                        Label = $"{clean}\n{valStr} ({pct:F0}%)"
                     });
                 }
 
                 if (otherSum > 0)
                 {
+                    double pct = totalSum > 0 ? (otherSum / totalSum) * 100.0 : 0;
+                    string valStr = otherSum >= 1_000 ? $"{otherSum:N0}" : (otherSum % 1 == 0 ? $"{otherSum:N0}" : $"{otherSum:N1}");
+
                     slices.Add(new PieSlice
                     {
                         Value = otherSum,
                         FillColor = ScottPlot.Color.FromColor(StatusNeutral),
-                        Label = $"Other ({otherSum:N0})"
+                        Label = $"Other\n{valStr} ({pct:F0}%)"
                     });
                 }
             }
 
             var pie = plot.Plot.Add.Pie(slices);
             pie.DonutFraction = 0.52;
-            pie.SliceLabelDistance = 1.32;
+            pie.SliceLabelDistance = 1.30;
 
             plot.Plot.Axes.Frameless();
             plot.Plot.HideGrid();
-            plot.Plot.Axes.SetLimits(-1.45, 1.45, -1.45, 1.45);
+
+            // Calculate responsive bounds to prevent circle distortion or label truncation
+            double aspect = 1.6;
+            if (plot.ClientSize.Width > 20 && plot.ClientSize.Height > 20)
+            {
+                aspect = (double)plot.ClientSize.Width / plot.ClientSize.Height;
+            }
+
+            double xLim, yLim;
+            if (aspect >= 1.0)
+            {
+                yLim = 1.30;
+                xLim = yLim * aspect;
+            }
+            else
+            {
+                xLim = 1.30;
+                yLim = xLim / aspect;
+            }
+
+            plot.Plot.Axes.SetLimits(-xLim, xLim, -yLim, yLim);
             plot.Refresh();
         }
 
         /// <summary>
-        /// Renders a categorical Bar comparison chart with consistent styling.
+        /// Renders a categorical Bar comparison chart with consistent styling, visible axes, and data labels.
         /// </summary>
         public static void RenderBarPlot(FormsPlot plot, List<(string label, double value, Color color)> items, double rotation = 0)
         {
@@ -256,38 +311,86 @@ namespace CRMS_Peguit.winforms.Models.Services
                 return;
             }
 
+            // Ensure axes and grid are fully visible (ShowPlotEmpty or Frameless could have disabled them)
+            plot.Plot.Axes.Left.IsVisible = true;
+            plot.Plot.Axes.Bottom.IsVisible = true;
+            plot.Plot.Axes.Top.IsVisible = false;
+            plot.Plot.Axes.Right.IsVisible = false;
+            plot.Plot.ShowGrid();
+            plot.Plot.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic();
+
             var bars = new List<Bar>();
             var ticks = new List<ScottPlot.Tick>();
 
+            // Adapt bar width so 1 or 2 items don't stretch into massive blocks
+            double barSize = items.Count switch
+            {
+                1 => 0.35,
+                2 => 0.48,
+                3 => 0.58,
+                _ => 0.70
+            };
+
+            double maxY = 0;
+
             for (int i = 0; i < items.Count; i++)
             {
+                double val = items[i].value;
+                if (val > maxY) maxY = val;
+
                 bars.Add(new Bar
                 {
                     Position = i,
-                    Value = items[i].value,
+                    Value = val,
+                    Size = barSize,
                     FillColor = ScottPlot.Color.FromColor(items[i].color),
-                    LineWidth = 1
+                    LineWidth = 1,
+                    LineColor = ScottPlot.Color.FromColor(Color.FromArgb(50, 0, 0, 0))
                 });
                 ticks.Add(new ScottPlot.Tick(i, items[i].label));
+
+                // Add formatted value label above each bar
+                if (val > 0)
+                {
+                    string valDisplay = val >= 1_000 ? $"{val:N0}" : (val % 1 == 0 ? $"{val:N0}" : $"{val:N1}");
+                    var txt = plot.Plot.Add.Text(valDisplay, i, val);
+                    txt.LabelAlignment = Alignment.LowerCenter;
+                    txt.LabelFontSize = 10;
+                    txt.LabelFontColor = ScottPlot.Color.FromColor(Theme.TextPrimary);
+                    txt.LabelBold = true;
+                }
             }
 
             plot.Plot.Add.Bars(bars);
             var tickGen = new ScottPlot.TickGenerators.NumericManual(ticks.ToArray());
             plot.Plot.Axes.Bottom.TickGenerator = tickGen;
 
-            if (Math.Abs(rotation) > 0.01)
+            float effRotation = (float)rotation;
+            if (Math.Abs(effRotation) < 0.01f && items.Count > 4)
             {
-                plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = (float)rotation;
+                effRotation = -25f;
+            }
+
+            if (Math.Abs(effRotation) > 0.01f)
+            {
+                plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = effRotation;
                 plot.Plot.Axes.Bottom.TickLabelStyle.Alignment = Alignment.MiddleRight;
                 plot.Plot.Axes.Bottom.MinimumSize = 65;
             }
             else
             {
-                plot.Plot.Axes.Bottom.MinimumSize = 48;
+                plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = 0;
+                plot.Plot.Axes.Bottom.TickLabelStyle.Alignment = Alignment.UpperCenter;
+                plot.Plot.Axes.Bottom.MinimumSize = 45;
             }
 
-            plot.Plot.Axes.Left.MinimumSize = 45;
-            plot.Plot.Axes.Margins(bottom: 0, left: 0.05);
+            plot.Plot.Axes.Bottom.TickLabelStyle.ForeColor = ScottPlot.Color.FromColor(Theme.TextPrimary);
+            plot.Plot.Axes.Left.TickLabelStyle.ForeColor = ScottPlot.Color.FromColor(Theme.TextSecondary);
+            plot.Plot.Axes.Left.MinimumSize = 48;
+
+            // Frame chart nicely with headroom for top labels
+            double topHeadroom = maxY > 0 ? maxY * 1.25 : 10;
+            plot.Plot.Axes.SetLimits(-0.6, items.Count - 0.4, 0, topHeadroom);
             plot.Refresh();
         }
 
