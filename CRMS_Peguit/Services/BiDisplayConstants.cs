@@ -109,16 +109,27 @@ namespace CRMS_Peguit.winforms.Models.Services
                 plot.UserInputProcessor.Disable();
                 plot.Plot.FigureBackground.Color = ScottPlot.Color.FromColor(Color.White);
                 plot.Plot.DataBackground.Color = ScottPlot.Color.FromColor(Color.White);
-                plot.Plot.Axes.Color(ScottPlot.Color.FromColor(Theme.TextSecondary));
+
+                // Softer axis frame color (Slate 300)
+                plot.Plot.Axes.Color(ScottPlot.Color.FromHex("#CBD5E1"));
                 plot.Plot.Axes.Left.IsVisible = true;
                 plot.Plot.Axes.Bottom.IsVisible = true;
                 plot.Plot.Axes.Top.IsVisible = false;
                 plot.Plot.Axes.Right.IsVisible = false;
                 plot.Plot.Axes.Bottom.MinimumSize = 45;
-                plot.Plot.Axes.Left.MinimumSize = 48;
-                plot.Plot.Axes.Left.TickLabelStyle.ForeColor = ScottPlot.Color.FromColor(Theme.TextSecondary);
-                plot.Plot.Axes.Bottom.TickLabelStyle.ForeColor = ScottPlot.Color.FromColor(Theme.TextSecondary);
-                plot.Plot.Grid.MajorLineColor = ScottPlot.Color.FromHex("#F1F5F9");
+                plot.Plot.Axes.Left.MinimumSize = 52;
+
+                // Modern Segoe UI tick label styling
+                plot.Plot.Axes.Left.TickLabelStyle.ForeColor = ScottPlot.Color.FromHex("#64748B");
+                plot.Plot.Axes.Left.TickLabelStyle.FontName = "Segoe UI";
+                plot.Plot.Axes.Left.TickLabelStyle.FontSize = 10;
+                plot.Plot.Axes.Bottom.TickLabelStyle.ForeColor = ScottPlot.Color.FromHex("#475569");
+                plot.Plot.Axes.Bottom.TickLabelStyle.FontName = "Segoe UI";
+                plot.Plot.Axes.Bottom.TickLabelStyle.FontSize = 10;
+
+                // Softer grid lines (Slate 200, subtle)
+                plot.Plot.Grid.MajorLineColor = ScottPlot.Color.FromHex("#E2E8F0");
+                plot.Plot.Grid.MajorLineWidth = 1;
                 plot.Plot.ShowGrid();
             }
             catch { }
@@ -130,8 +141,10 @@ namespace CRMS_Peguit.winforms.Models.Services
             ConfigureStandardPlot(plot);
             var txt = plot.Plot.Add.Text($"📊  {message}", 0, 0);
             txt.LabelAlignment = Alignment.MiddleCenter;
-            txt.LabelFontSize = 13;
-            txt.LabelFontColor = ScottPlot.Color.FromColor(Theme.TextSecondary);
+            txt.LabelFontSize = 13.5f;
+            txt.LabelFontName = "Segoe UI";
+            txt.LabelFontColor = ScottPlot.Color.FromHex("#94A3B8");
+            txt.LabelItalic = true;
             plot.Plot.Axes.Frameless();
             plot.Plot.HideGrid();
             plot.Plot.Axes.SetLimits(-1, 1, -1, 1);
@@ -167,24 +180,30 @@ namespace CRMS_Peguit.winforms.Models.Services
 
             var scatter = plot.Plot.Add.Scatter(xs, ys);
             scatter.Color = ScottPlot.Color.FromColor(lineClr);
-            scatter.LineWidth = 2.5f;
+            scatter.LineWidth = 3.0f;
             scatter.MarkerSize = 8f;
             scatter.MarkerShape = MarkerShape.FilledCircle;
             scatter.MarkerFillColor = ScottPlot.Color.FromColor(markClr);
+            scatter.MarkerLineColor = ScottPlot.Color.FromColor(Color.White);
+            scatter.MarkerLineWidth = 1.5f;
 
-            // Shaded area under the line curve
+            // More visible shaded area under the line curve
             scatter.FillY = true;
-            scatter.FillYColor = ScottPlot.Color.FromColor(Color.FromArgb(35, lineClr.R, lineClr.G, lineClr.B));
+            scatter.FillYColor = ScottPlot.Color.FromColor(Color.FromArgb(45, lineClr.R, lineClr.G, lineClr.B));
 
             var ticks = data.Select((d, i) => new ScottPlot.Tick(i, d.label)).ToArray();
             var tickGen = new ScottPlot.TickGenerators.NumericManual(ticks);
             plot.Plot.Axes.Bottom.TickGenerator = tickGen;
             plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = -30;
             plot.Plot.Axes.Bottom.TickLabelStyle.Alignment = Alignment.MiddleRight;
-            plot.Plot.Axes.Bottom.TickLabelStyle.ForeColor = ScottPlot.Color.FromColor(Theme.TextPrimary);
-            plot.Plot.Axes.Left.TickLabelStyle.ForeColor = ScottPlot.Color.FromColor(Theme.TextSecondary);
-            plot.Plot.Axes.Bottom.MinimumSize = 55;
-            plot.Plot.Axes.Left.MinimumSize = 48;
+            plot.Plot.Axes.Bottom.TickLabelStyle.ForeColor = ScottPlot.Color.FromHex("#475569");
+            plot.Plot.Axes.Bottom.TickLabelStyle.FontName = "Segoe UI";
+            plot.Plot.Axes.Bottom.TickLabelStyle.FontSize = 10;
+            plot.Plot.Axes.Left.TickLabelStyle.ForeColor = ScottPlot.Color.FromHex("#64748B");
+            plot.Plot.Axes.Left.TickLabelStyle.FontName = "Segoe UI";
+            plot.Plot.Axes.Left.TickLabelStyle.FontSize = 10;
+            plot.Plot.Axes.Bottom.MinimumSize = 58;
+            plot.Plot.Axes.Left.MinimumSize = 52;
 
             double maxVal = ys.Length > 0 ? ys.Max() : 10;
             plot.Plot.Axes.SetLimits(-0.4, xs.Length - 0.6, 0, Math.Max(1.0, maxVal * 1.2));
@@ -268,8 +287,8 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
 
             var pie = plot.Plot.Add.Pie(slices);
-            pie.DonutFraction = 0.52;
-            pie.SliceLabelDistance = 1.30;
+            pie.DonutFraction = 0.58;
+            pie.SliceLabelDistance = 1.45;
 
             plot.Plot.Axes.Frameless();
             plot.Plot.HideGrid();
@@ -284,12 +303,12 @@ namespace CRMS_Peguit.winforms.Models.Services
             double xLim, yLim;
             if (aspect >= 1.0)
             {
-                yLim = 1.30;
+                yLim = 1.45;
                 xLim = yLim * aspect;
             }
             else
             {
-                xLim = 1.30;
+                xLim = 1.45;
                 yLim = xLim / aspect;
             }
 
@@ -344,19 +363,20 @@ namespace CRMS_Peguit.winforms.Models.Services
                     Value = val,
                     Size = barSize,
                     FillColor = ScottPlot.Color.FromColor(items[i].color),
-                    LineWidth = 1,
-                    LineColor = ScottPlot.Color.FromColor(Color.FromArgb(50, 0, 0, 0))
+                    LineWidth = 0.5f,
+                    LineColor = ScottPlot.Color.FromColor(Color.FromArgb(30, 0, 0, 0))
                 });
                 ticks.Add(new ScottPlot.Tick(i, items[i].label));
 
-                // Add formatted value label above each bar
+                // Add formatted value label above each bar (Segoe UI, Bold, Slate 900)
                 if (val > 0)
                 {
                     string valDisplay = val >= 1_000 ? $"{val:N0}" : (val % 1 == 0 ? $"{val:N0}" : $"{val:N1}");
                     var txt = plot.Plot.Add.Text(valDisplay, i, val);
                     txt.LabelAlignment = Alignment.LowerCenter;
                     txt.LabelFontSize = 10;
-                    txt.LabelFontColor = ScottPlot.Color.FromColor(Theme.TextPrimary);
+                    txt.LabelFontName = "Segoe UI";
+                    txt.LabelFontColor = ScottPlot.Color.FromHex("#0F172A");
                     txt.LabelBold = true;
                 }
             }
@@ -375,21 +395,25 @@ namespace CRMS_Peguit.winforms.Models.Services
             {
                 plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = effRotation;
                 plot.Plot.Axes.Bottom.TickLabelStyle.Alignment = Alignment.MiddleRight;
-                plot.Plot.Axes.Bottom.MinimumSize = 65;
+                plot.Plot.Axes.Bottom.MinimumSize = 68;
             }
             else
             {
                 plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = 0;
                 plot.Plot.Axes.Bottom.TickLabelStyle.Alignment = Alignment.UpperCenter;
-                plot.Plot.Axes.Bottom.MinimumSize = 45;
+                plot.Plot.Axes.Bottom.MinimumSize = 48;
             }
 
-            plot.Plot.Axes.Bottom.TickLabelStyle.ForeColor = ScottPlot.Color.FromColor(Theme.TextPrimary);
-            plot.Plot.Axes.Left.TickLabelStyle.ForeColor = ScottPlot.Color.FromColor(Theme.TextSecondary);
-            plot.Plot.Axes.Left.MinimumSize = 48;
+            plot.Plot.Axes.Bottom.TickLabelStyle.ForeColor = ScottPlot.Color.FromHex("#475569");
+            plot.Plot.Axes.Bottom.TickLabelStyle.FontName = "Segoe UI";
+            plot.Plot.Axes.Bottom.TickLabelStyle.FontSize = 10;
+            plot.Plot.Axes.Left.TickLabelStyle.ForeColor = ScottPlot.Color.FromHex("#64748B");
+            plot.Plot.Axes.Left.TickLabelStyle.FontName = "Segoe UI";
+            plot.Plot.Axes.Left.TickLabelStyle.FontSize = 10;
+            plot.Plot.Axes.Left.MinimumSize = 52;
 
             // Frame chart nicely with headroom for top labels
-            double topHeadroom = maxY > 0 ? maxY * 1.25 : 10;
+            double topHeadroom = maxY > 0 ? maxY * 1.30 : 10;
             plot.Plot.Axes.SetLimits(-0.6, items.Count - 0.4, 0, topHeadroom);
             plot.Refresh();
         }

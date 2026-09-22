@@ -794,7 +794,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                 int y = 0;
 
                 // Row 1: [Team Roster | Ticket Breakdown]
-                int row1Height = 350;
+                int row1Height = 360;
                 if (_cardTeamRoster != null)
                 {
                     _cardTeamRoster.Location = new Point(0, y);
@@ -817,7 +817,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
 
                     if (_plotAdminTicketBreakdown != null)
                     {
-                        _plotAdminTicketBreakdown.Size = new Size(_cardTicketBreakdown.Width - 24, _cardTicketBreakdown.Height - 90);
+                        _plotAdminTicketBreakdown.Size = new Size(_cardTicketBreakdown.Width - 24, _cardTicketBreakdown.Height - 82);
                     }
                     if (_lblAdminTicketBreakdownFooter != null)
                     {
@@ -828,7 +828,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                 y += row1Height + gap;
 
                 // Row 2: [Commission Trend | Tickets Needing Attention]
-                int row2Height = 280;
+                int row2Height = 300;
                 if (_cardCommissionTrend != null)
                 {
                     _cardCommissionTrend.Location = new Point(0, y);
@@ -836,7 +836,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
 
                     if (_plotAdminCommissionTrend != null)
                     {
-                        _plotAdminCommissionTrend.Size = new Size(_cardCommissionTrend.Width - 24, _cardCommissionTrend.Height - 90);
+                        _plotAdminCommissionTrend.Size = new Size(_cardCommissionTrend.Width - 24, _cardCommissionTrend.Height - 82);
                     }
                     if (_lblAdminCommissionFooter != null)
                     {
@@ -1171,10 +1171,10 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
 
             var scatter = plotGlanceable.Plot.Add.Scatter(xs, ys);
             scatter.Color = ScottPlot.Color.FromColor(Theme.Primary);
-            scatter.LineWidth = 2.5f;
+            scatter.LineWidth = 3.0f;
             scatter.MarkerSize = 0; // pure sparkline
             scatter.FillY = true;
-            scatter.FillYColor = ScottPlot.Color.FromColor(Color.FromArgb(25, Theme.Primary.R, Theme.Primary.G, Theme.Primary.B));
+            scatter.FillYColor = ScottPlot.Color.FromColor(Color.FromArgb(40, Theme.Primary.R, Theme.Primary.G, Theme.Primary.B));
 
             plotGlanceable.Plot.Axes.Frameless();
             plotGlanceable.Plot.HideGrid();
