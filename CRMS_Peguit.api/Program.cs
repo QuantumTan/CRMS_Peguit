@@ -58,9 +58,23 @@ builder.Services.AddScoped<RealEstateDbContext>(serviceProvider =>
     var tenantId =
         tenantResolver.GetTenantId();
 
+    string tenantConnection = masterConnection;
+    try
+    {
+        var scsb = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(masterConnection)
+        {
+            InitialCatalog = $"CRMS_Tenant_{tenantId}"
+        };
+        tenantConnection = scsb.ConnectionString;
+    }
+    catch
+    {
+        // fallback
+    }
+
     var options =
         new DbContextOptionsBuilder<RealEstateDbContext>()
-            .UseSqlServer(masterConnection)
+            .UseSqlServer(tenantConnection)
             .Options;
 
     return new RealEstateDbContext(

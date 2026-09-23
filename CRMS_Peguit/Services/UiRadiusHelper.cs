@@ -107,10 +107,19 @@ namespace CRMS_Peguit.winforms.Models.Services
             button.MouseLeave += (_, _) => { if (button.Enabled) button.BackColor = baseColor; };
         }
 
-        public static void StyleCard(Panel panel, int radius = 12)
+        public static void StyleCard(Panel panel, int radius = 12, Color? borderColor = null)
         {
             if (panel is null) return;
             ApplyRoundedCorners(panel, radius);
+            Color stroke = borderColor ?? Color.FromArgb(226, 232, 240); // Slate 200 hairline border
+            panel.Paint += (s, e) =>
+            {
+                if (panel.Width <= 2 || panel.Height <= 2) return;
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using var path = CreateRoundedPath(new Rectangle(0, 0, panel.Width - 1, panel.Height - 1), radius);
+                using var pen = new Pen(stroke, 1f);
+                e.Graphics.DrawPath(pen, path);
+            };
         }
 
         [System.Runtime.InteropServices.DllImport("user32.dll")]

@@ -70,6 +70,8 @@ namespace CRMS_Peguit.domain.entities
         public string? SpecialStipulations { get; set; }
         public DateTime? ContractSignedDate { get; set; }
 
+        public int? BranchId { get; set; }
+
         // --- Navigation Properties ---
         [JsonIgnore]
         public virtual Customer? Customer { get; set; }
@@ -79,5 +81,7 @@ namespace CRMS_Peguit.domain.entities
         public virtual User? Agent { get; set; }
         [JsonIgnore]
         public virtual User? CreatedByUser { get; set; }
+        [JsonIgnore]
+        public virtual Branch? Branch { get; set; }
     }
 }

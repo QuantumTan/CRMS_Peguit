@@ -32,6 +32,9 @@ namespace CRMS_Peguit.infrastructure.data
         public DbSet<Campaign> Campaigns => Set<Campaign>();
         public DbSet<Notification> Notifications => Set<Notification>();
         public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
+        public DbSet<AutomatedEmailSettings> AutomatedEmailSettings => Set<AutomatedEmailSettings>();
+        public DbSet<MarketUpdateLog> MarketUpdateLogs => Set<MarketUpdateLog>();
+        public DbSet<Branch> Branches => Set<Branch>();
 
         public RealEstateDbContext(
             DbContextOptions<RealEstateDbContext> options,
@@ -531,6 +534,62 @@ namespace CRMS_Peguit.infrastructure.data
             builder.Entity<Campaign>().HasQueryFilter(x => x.TenantId == _tenantId);
             builder.Entity<Notification>().HasQueryFilter(x => x.RecipientUser.Role.TenantId == _tenantId);
             builder.Entity<NotificationPreference>().HasQueryFilter(x => x.User.Role.TenantId == _tenantId);
+
+            builder.Entity<AutomatedEmailSettings>(entity =>
+            {
+                entity.HasKey(x => x.SettingsId);
+                entity.Property(x => x.SubjectTemplate).HasMaxLength(300).IsRequired();
+                entity.Property(x => x.BodyTemplate).IsRequired();
+            });
+            builder.Entity<AutomatedEmailSettings>().HasQueryFilter(x => x.TenantId == _tenantId);
+
+            builder.Entity<MarketUpdateLog>(entity =>
+            {
+                entity.HasKey(x => x.LogId);
+                entity.Property(x => x.CustomerName).HasMaxLength(150).IsRequired();
+                entity.Property(x => x.RecipientEmail).HasMaxLength(255).IsRequired();
+                entity.Property(x => x.PropertyAddress).HasMaxLength(300);
+                entity.Property(x => x.PropertyType).HasMaxLength(50);
+                entity.Property(x => x.EmailFormat).HasMaxLength(20);
+                entity.Property(x => x.Status).HasMaxLength(30);
+                entity.Property(x => x.TriggerType).HasMaxLength(30);
+
+                entity.HasOne(x => x.Customer)
+                    .WithMany()
+                    .HasForeignKey(x => x.CustomerId)
+                    .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            builder.Entity<Branch>(entity =>
+            {
+                entity.HasKey(x => x.BranchId);
+                entity.Property(x => x.BranchCode).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.BranchName).HasMaxLength(150).IsRequired();
+                entity.Property(x => x.Address).HasMaxLength(300);
+                entity.Property(x => x.Phone).HasMaxLength(50);
+
+                entity.HasMany(x => x.Users)
+                    .WithOne(x => x.Branch)
+                    .HasForeignKey(x => x.BranchId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasMany(x => x.Properties)
+                    .WithOne(x => x.Branch)
+                    .HasForeignKey(x => x.BranchId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasMany(x => x.Leads)
+                    .WithOne(x => x.Branch)
+                    .HasForeignKey(x => x.BranchId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasMany(x => x.Deals)
+                    .WithOne(x => x.Branch)
+                    .HasForeignKey(x => x.BranchId)
+                    .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            builder.Entity<MarketUpdateLog>().HasQueryFilter(x => x.TenantId == _tenantId);
         }
 
         public override int SaveChanges(bool acceptAllChangesOnSuccess)

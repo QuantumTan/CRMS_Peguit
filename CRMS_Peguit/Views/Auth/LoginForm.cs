@@ -1,6 +1,7 @@
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Models.Roles;
 using ReaLTaiizor.Forms;
 using System;
 using System.Drawing;
@@ -12,9 +13,11 @@ namespace CRMS_Peguit.winforms
     {
         private readonly AuthController _authController;
 
-        // Store main form and its FormClosed handler.
+        // Store main form or super admin form and their FormClosed handlers.
         private MainForm? _mainForm;
         private FormClosedEventHandler? _mainFormClosedHandler;
+        private SuperAdminForm? _superAdminForm;
+        private FormClosedEventHandler? _superAdminClosedHandler;
 
         // ==========================================================
         // DEFAULT CONSTRUCTOR
@@ -105,13 +108,23 @@ namespace CRMS_Peguit.winforms
                     );
                 }
 
-                // Create main form and store it.
-                _mainForm = new MainForm();
-
-                _mainFormClosedHandler = (s, args) => Close();
-                _mainForm.FormClosed += _mainFormClosedHandler;
-
-                _mainForm.Show();
+                // Route to the appropriate shell based on role.
+                // SuperAdmin gets the separate SuperAdminForm — never MainForm.
+                // All other roles get MainForm.
+                if (CurrentSession.CurrentUser?.Role == UserRole.SuperAdmin)
+                {
+                    _superAdminForm = new SuperAdminForm(this);
+                    _superAdminClosedHandler = (s, args) => Close();
+                    _superAdminForm.FormClosed += _superAdminClosedHandler;
+                    _superAdminForm.Show();
+                }
+                else
+                {
+                    _mainForm = new MainForm();
+                    _mainFormClosedHandler = (s, args) => Close();
+                    _mainForm.FormClosed += _mainFormClosedHandler;
+                    _mainForm.Show();
+                }
                 Hide();
             }
             catch (Exception ex)
@@ -174,6 +187,13 @@ namespace CRMS_Peguit.winforms
                 _mainForm.FormClosed -= _mainFormClosedHandler;
                 _mainForm = null;
                 _mainFormClosedHandler = null;
+            }
+
+            if (_superAdminForm != null && _superAdminClosedHandler != null)
+            {
+                _superAdminForm.FormClosed -= _superAdminClosedHandler;
+                _superAdminForm = null;
+                _superAdminClosedHandler = null;
             }
 
             Show();

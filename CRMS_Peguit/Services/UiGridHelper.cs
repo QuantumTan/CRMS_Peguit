@@ -63,8 +63,6 @@ namespace CRMS_Peguit.winforms.Models.Services
             grid.AlternatingRowsDefaultCellStyle.SelectionBackColor = SelectionBg;
             grid.AlternatingRowsDefaultCellStyle.SelectionForeColor = TextDark;
             grid.AlternatingRowsDefaultCellStyle.Font = new Font("Segoe UI", 9.5f);
-            grid.AlternatingRowsDefaultCellStyle.Padding = new Padding(12, 0, 12, 0);
-            grid.AlternatingRowsDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
 
             // Smooth Row Hover Tracking
             int hoverRow = -1;
@@ -362,7 +360,7 @@ namespace CRMS_Peguit.winforms.Models.Services
         }
 
         /// <summary>
-        /// Right-aligns column cells and column header with proper 14px right margin padding.
+        /// Right-aligns column cells and column header with consistent right margin padding.
         /// </summary>
         public static void AlignNumericColumn(DataGridView grid, string? columnName)
         {
@@ -373,8 +371,8 @@ namespace CRMS_Peguit.winforms.Models.Services
             if (col == null) return;
             col.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
             col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight;
-            col.DefaultCellStyle.Padding = new Padding(8, 0, 14, 0);
-            col.HeaderCell.Style.Padding = new Padding(8, 0, 14, 0);
+            col.DefaultCellStyle.Padding = new Padding(8, 0, 12, 0);
+            col.HeaderCell.Style.Padding = new Padding(8, 0, 12, 0);
         }
 
         /// <summary>

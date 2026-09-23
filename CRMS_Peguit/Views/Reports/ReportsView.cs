@@ -73,6 +73,12 @@ namespace CRMS_Peguit.winforms.Views.Reports
             btnExportCsv.Enabled = false;
             btnExportPdf.Enabled = false;
 
+            // Remove docking and anchor constraints so absolute sizing in LayoutReportControls works unhindered
+            pnlCharts.Dock = DockStyle.None;
+            pnlGrid.Dock = DockStyle.None;
+            plotReport1.Anchor = AnchorStyles.None;
+            plotReport2.Anchor = AnchorStyles.None;
+
             ConfigurePlot(plotReport1);
             ConfigurePlot(plotReport2);
 
@@ -232,11 +238,11 @@ namespace CRMS_Peguit.winforms.Views.Reports
                     pnlCharts.Visible = true;
                     pnlGrid.Visible = true;
 
-                    int chartHeight = 345;
+                    int chartHeight = 420;
                     pnlCharts.Location = new Point(0, 0);
                     pnlCharts.Size = new Size(containerWidth, chartHeight);
 
-                    int gridHeight = Math.Max(350, containerHeight - chartHeight);
+                    int gridHeight = Math.Max(380, containerHeight - chartHeight);
                     pnlGrid.Location = new Point(0, pnlCharts.Bottom);
                     pnlGrid.Size = new Size(containerWidth, gridHeight);
 
@@ -248,8 +254,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
                     pnlCharts.Visible = true;
                     pnlGrid.Visible = false;
 
-                    // Prevent charts from stretching to abnormal vertical heights when "Chart Only" is active
-                    int chartHeight = Math.Clamp(containerHeight > 0 ? containerHeight : 450, 340, 560);
+                    int chartHeight = Math.Max(520, containerHeight - 20);
                     pnlCharts.Location = new Point(0, 0);
                     pnlCharts.Size = new Size(containerWidth, chartHeight);
 
@@ -271,12 +276,12 @@ namespace CRMS_Peguit.winforms.Views.Reports
             }
 
             // Layout child chart cards inside pnlCharts if visible
-            if (pnlCharts.Visible && pnlCharts.ClientSize.Width > 0)
+            if (pnlCharts.Visible && containerWidth > 0)
             {
                 int pad = 20;
-                int totalChartWidth = pnlCharts.ClientSize.Width - (pad * 2);
-                int cardWidth = Math.Max(280, (totalChartWidth - 16) / 2);
-                int cardHeight = Math.Max(220, pnlCharts.ClientSize.Height - 20);
+                int totalChartWidth = containerWidth - (pad * 2);
+                int cardWidth = Math.Max(300, (totalChartWidth - 16) / 2);
+                int cardHeight = Math.Max(260, pnlCharts.Height - 20);
 
                 pnlChartCard1.Location = new Point(pad, 10);
                 pnlChartCard1.Size = new Size(cardWidth, cardHeight);
@@ -284,13 +289,20 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 pnlChartCard2.Location = new Point(pnlChartCard1.Right + 16, 10);
                 pnlChartCard2.Size = new Size(cardWidth, cardHeight);
 
-                // Explicitly size and position FormsPlots with comfortable margins below card title
+                // Explicitly size and position FormsPlots to generously fill the cards below title
                 int plotWidth = Math.Max(100, cardWidth - 24);
                 int plotHeight = Math.Max(100, cardHeight - 48);
                 plotReport1.Location = new Point(12, 36);
                 plotReport1.Size = new Size(plotWidth, plotHeight);
                 plotReport2.Location = new Point(12, 36);
                 plotReport2.Size = new Size(plotWidth, plotHeight);
+
+                try
+                {
+                    plotReport1.Refresh();
+                    plotReport2.Refresh();
+                }
+                catch { }
             }
 
             pnlScrollableContent.AutoScrollMinSize = new Size(0, totalContentHeight + 10);
@@ -1168,15 +1180,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 return;
             }
 
-            // 2. Avatar cells with initials and bold text for persons
-            if (colName.Contains("Customer") || colName.Contains("Agent") || colName.Contains("Lead") || colName == "ListingAgent")
-            {
-                e.Handled = true;
-                UiGridHelper.PaintAvatarCell(gridData, e, text);
-                return;
-            }
-
-            // 3. Bold identifiers
+            // 2. Bold identifiers
             if (colName.EndsWith("Ref") || colName == "TicketNumber" || colName.EndsWith("Id"))
             {
                 e.Handled = true;

@@ -21,13 +21,16 @@ namespace CRMS_Peguit.winforms.Models.Roles
             return new List<string>
             {
                 "Dashboard",
+                "AdminPanel",
+                "BusinessIntelligence",
+                "Subscription",
+                "Branching",
                 "Administrators",
                 "Roles",
                 "SystemAccess",
                 "SystemDataBackup",
                 "SystemSettings",
-                "Policies",
-                "Subscription"
+                "Policies"
             };
         }
 

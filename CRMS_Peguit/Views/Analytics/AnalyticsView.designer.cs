@@ -120,7 +120,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             this.lblLoading.Visible = false;
 
             // btnGoToReports
-            this.btnGoToReports.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnGoToReports.Anchor = System.Windows.Forms.AnchorStyles.None;
             this.btnGoToReports.BackColor = System.Drawing.Color.White;
             this.btnGoToReports.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(203, 213, 225);
             this.btnGoToReports.FlatAppearance.BorderSize = 1;
@@ -129,9 +129,9 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             this.btnGoToReports.ForeColor = System.Drawing.Color.FromArgb(37, 103, 156);
             this.btnGoToReports.Location = new System.Drawing.Point(360, 23);
             this.btnGoToReports.Name = "btnGoToReports";
-            this.btnGoToReports.Size = new System.Drawing.Size(150, 34);
+            this.btnGoToReports.Size = new System.Drawing.Size(140, 34);
             this.btnGoToReports.TabIndex = 0;
-            this.btnGoToReports.Text = "📋 Detailed Reports";
+            this.btnGoToReports.Text = "📋 View Reports";
             this.btnGoToReports.UseVisualStyleBackColor = false;
 
             // cboDateRange
@@ -140,7 +140,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             this.cboDateRange.Items.AddRange(new object[] { "This Month", "This Quarter", "This Year", "Past 12 Months", "All Time" });
             this.cboDateRange.Location = new System.Drawing.Point(525, 26);
             this.cboDateRange.Width = 150;
-            this.cboDateRange.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right;
+            this.cboDateRange.Anchor = System.Windows.Forms.AnchorStyles.None;
 
             // btnExport
             this.btnExport.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
@@ -148,7 +148,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             this.btnExport.Width = 130;
             this.btnExport.Height = 34;
             this.btnExport.Text = "📥 Export CSV";
-            this.btnExport.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right;
+            this.btnExport.Anchor = System.Windows.Forms.AnchorStyles.None;
 
             // pnlKpi
             this.pnlKpi.Dock = System.Windows.Forms.DockStyle.None;

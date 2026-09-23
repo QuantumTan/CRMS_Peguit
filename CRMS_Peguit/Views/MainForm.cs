@@ -13,6 +13,8 @@ using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
 using ReaLTaiizor.Forms;
 using System.Linq;
+using UserRole = CRMS_Peguit.winforms.Models.Roles.UserRole;
+using TenantTier = CRMS_Peguit.domain.entities.TenantTier;
 
 namespace CRMS_Peguit.winforms
 {
@@ -38,8 +40,19 @@ namespace CRMS_Peguit.winforms
             InitNavButtons();
             BindEvents();
             ApplyRolePermissions();
-            SetActiveNavButton(btnDashboard);
-            BtnDashboardClick(btnDashboard, EventArgs.Empty);
+            if (CurrentSession.CurrentUser?.Role == UserRole.SuperAdmin)
+            {
+                SetActiveNavButton(btnAdminPanel);
+                BtnAdminPanelClick(btnAdminPanel, EventArgs.Empty);
+            }
+            else
+            {
+                SetActiveNavButton(btnDashboard);
+                BtnDashboardClick(btnDashboard, EventArgs.Empty);
+            }
+
+            // Start automated market update background worker
+            MarketUpdateBackgroundService.Instance.Start();
         }
 
         private void ApplyBranding()
@@ -63,9 +76,11 @@ namespace CRMS_Peguit.winforms
         private void InitNavButtons()
         {
             _navButtonInfo[btnDashboard] = ("⊞", "Dashboard");
+            _navButtonInfo[btnAdminPanel] = ("👑", "Admin Panel");
             _navButtonInfo[btnLeads] = ("◎", "Leads");
             _navButtonInfo[btnCustomers] = ("👥", "Customers");
             _navButtonInfo[btnProperties] = ("🏢", "Properties");
+            _navButtonInfo[btnBranching] = ("🏢", "Branches");
             _navButtonInfo[btnDeals] = ("💼", "Deals");
             _navButtonInfo[btnCampaigns] = ("📣", "Campaigns");
             _navButtonInfo[btnActivities] = ("📈", "Activities");
@@ -159,6 +174,8 @@ namespace CRMS_Peguit.winforms
             btnReports.Click += (s, e) => { SetActiveNavButton(btnReports); BtnReportsClick(s, e); };
             btnApprovals.Click += (s, e) => { SetActiveNavButton(btnApprovals); BtnApprovalsClick(s, e); };
             btnSupportTickets.Click += (s, e) => { SetActiveNavButton(btnSupportTickets); BtnSupportTicketsClick(s, e); };
+            btnAdminPanel.Click += (s, e) => { SetActiveNavButton(btnAdminPanel); BtnAdminPanelClick(s, e); };
+            btnBranching.Click += (s, e) => { SetActiveNavButton(btnBranching); BtnBranchingClick(s, e); };
 
             // ── Global Search: debounced TextChanged → floating results dropdown ──
             _searchDebounce = new System.Windows.Forms.Timer { Interval = 300 };
@@ -269,7 +286,7 @@ namespace CRMS_Peguit.winforms
                 lblSalesSection.Visible = true;
                 lblSupportSection.Visible = true;
                 lblInsightsSection.Visible = btnAnalytics.Visible || btnReports.Visible;
-                lblAdminSection.Visible = btnManageManagers.Visible || btnManageAgents.Visible || btnApprovals.Visible;
+                lblAdminSection.Visible = btnManageManagers.Visible || btnManageAgents.Visible || btnApprovals.Visible || btnAdminPanel.Visible;
                 foreach (var btn in _navButtons)
                 {
                     if (_navButtonInfo.TryGetValue(btn, out var info))
@@ -574,20 +591,57 @@ namespace CRMS_Peguit.winforms
                 _pnlSearchBox.Top = (topHeaderPanel.Height - _pnlSearchBox.Height) / 2;
             }
 
-            btnApprovals.Visible = CurrentSession.CanAccess("Approvals") && RbacService.CanApproveAssignments;
+            // ── Tenant Tier Badge (Exam Requirements) ──
+            if (CurrentSession.CurrentUser?.Role == UserRole.SuperAdmin)
+            {
+                lblTenantTierBadge.Text = "👑 Master Admin • Platform Oversight";
+                lblTenantTierBadge.BackColor = Color.FromArgb(238, 242, 255);
+                lblTenantTierBadge.ForeColor = Color.FromArgb(67, 56, 202);
+            }
+            else if (CurrentSession.TenantTier == TenantTier.TenantC)
+            {
+                string branchStr = string.IsNullOrWhiteSpace(CurrentSession.ActiveBranchName) ? "All Branches" : CurrentSession.ActiveBranchName;
+                lblTenantTierBadge.Text = $"🏢 Tenant C (Enterprise) • {branchStr}";
+                lblTenantTierBadge.BackColor = Color.FromArgb(236, 253, 245);
+                lblTenantTierBadge.ForeColor = Color.FromArgb(4, 120, 87);
+            }
+            else if (CurrentSession.TenantTier == TenantTier.TenantB)
+            {
+                lblTenantTierBadge.Text = "💼 Tenant B (Professional) • BI & Actions";
+                lblTenantTierBadge.BackColor = Color.FromArgb(239, 246, 255);
+                lblTenantTierBadge.ForeColor = Color.FromArgb(29, 78, 216);
+            }
+            else
+            {
+                lblTenantTierBadge.Text = "📁 Tenant A (Standard) • Transactions & Data";
+                lblTenantTierBadge.BackColor = Color.FromArgb(241, 245, 249);
+                lblTenantTierBadge.ForeColor = Color.FromArgb(71, 85, 105);
+            }
+            lblTenantTierBadge.Visible = true;
+
+            // ── Master & Multi-Tenant Navigation Gating ──
+            btnAdminPanel.Visible = CurrentSession.CurrentUser?.Role == UserRole.SuperAdmin;
+            btnBranching.Visible = CurrentSession.CanAccessBranching;
+
+            btnApprovals.Visible = CurrentSession.CanAccess("Approvals") && RbacService.CanApproveAssignments && CurrentSession.CanAccessActions;
             btnManageManagers.Visible = CurrentSession.CanAccess("Managers");
             btnManageAgents.Visible = CurrentSession.CanAccess("SalesStaff");
             lblAdminSection.Text = RbacService.IsAdmin ? "ADMINISTRATION" : "MANAGEMENT";
-            lblAdminSection.Visible = btnManageManagers.Visible || btnManageAgents.Visible || btnApprovals.Visible;
+            lblAdminSection.Visible = btnManageManagers.Visible || btnManageAgents.Visible || btnApprovals.Visible || btnAdminPanel.Visible;
 
+            // Base Tier (Tenant A, B, C): Data Collection & Main Transaction
             btnCustomers.Visible = CurrentSession.CanAccess("Customers");
             btnLeads.Visible = CurrentSession.CanAccess("Leads");
             btnProperties.Visible = CurrentSession.CanAccess("Properties");
             btnDeals.Visible = CurrentSession.CanAccess("Deals");
-            btnCampaigns.Visible = CurrentSession.CanAccess("Campaigns");
+
+            // Actions: Gated to Tenant B and Tenant C
+            btnCampaigns.Visible = CurrentSession.CanAccess("Campaigns") && CurrentSession.CanAccessActions;
             btnActivities.Visible = CurrentSession.CanAccess("Activities");
-            btnFollowUps.Visible = CurrentSession.CanAccess("TasksReminders") && RbacService.IsAgent;
-            btnAnalytics.Visible = CurrentSession.CanAccess("Analytics") || CurrentSession.CanAccess("Reports");
+            btnFollowUps.Visible = CurrentSession.CanAccess("TasksReminders") && RbacService.IsAgent && CurrentSession.CanAccessActions;
+
+            // Business Intelligence: Gated to Tenant B and Tenant C
+            btnAnalytics.Visible = (CurrentSession.CanAccess("Analytics") || CurrentSession.CanAccess("Reports")) && CurrentSession.CanAccessBusinessIntelligence;
             if (RbacService.IsAgent)
             {
                 _navButtonInfo[btnAnalytics] = ("📊", "My Performance");
@@ -599,8 +653,8 @@ namespace CRMS_Peguit.winforms
                 btnAnalytics.Text = "  📊  Analytics";
             }
 
-            // Reports & Exports: restricted to Admin and Manager only
-            btnReports.Visible = CurrentSession.CanAccess("Reports") && !RbacService.IsAgent;
+            // Reports & Exports: restricted to Admin and Manager only + Tier B/C
+            btnReports.Visible = CurrentSession.CanAccess("Reports") && !RbacService.IsAgent && CurrentSession.CanAccessBusinessIntelligence;
             _navButtonInfo[btnReports] = ("📋", "Reports & Exports");
             btnReports.Text = "  📋  Reports & Exports";
 
@@ -780,6 +834,20 @@ namespace CRMS_Peguit.winforms
                         BtnManageManagersClick(btnManageManagers, EventArgs.Empty);
                     }
                     break;
+                case "adminpanel":
+                case "subscriptions":
+                case "master":
+                    if (CurrentSession.CurrentUser?.Role != UserRole.SuperAdmin) return;
+                    SetActiveNavButton(btnAdminPanel);
+                    BtnAdminPanelClick(btnAdminPanel, EventArgs.Empty);
+                    break;
+                case "branching":
+                case "branches":
+                case "branch":
+                    if (!CurrentSession.CanAccessBranching) return;
+                    SetActiveNavButton(btnBranching);
+                    BtnBranchingClick(btnBranching, EventArgs.Empty);
+                    break;
             }
         }
 
@@ -881,6 +949,26 @@ namespace CRMS_Peguit.winforms
         {
             if (!CurrentSession.CanAccess("SupportTickets")) return;
             ShowViewCached("SupportTickets", () => new CRMS_Peguit.winforms.Views.SupportTickets.SupportTicketsView());
+        }
+
+        private void BtnAdminPanelClick(object? sender, EventArgs e)
+        {
+            if (CurrentSession.CurrentUser?.Role != UserRole.SuperAdmin) return;
+            ShowViewCached("AdminPanelMasterView", () => new CRMS_Peguit.winforms.Views.SuperAdmin.AdminPanelMasterView());
+        }
+
+        private void BtnBranchingClick(object? sender, EventArgs e)
+        {
+            if (!CurrentSession.CanAccessBranching) return;
+            ShowViewCached("BranchesView", () =>
+            {
+                var branchView = new CRMS_Peguit.winforms.Views.Branching.BranchesView();
+                branchView.ActiveBranchChanged += (bId, bName) =>
+                {
+                    ApplyRolePermissions();
+                };
+                return branchView;
+            });
         }
 
         // =====================================================

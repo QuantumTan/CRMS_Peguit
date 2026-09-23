@@ -49,12 +49,18 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             UiRadiusHelper.StyleCard(pnlRecentActivity, 12);
 
             UiRadiusHelper.StyleButton(btnExport, 8);
-            btnExport.BackColor = Color.White;
-            btnExport.ForeColor = Theme.Primary;
-            btnExport.FlatAppearance.BorderColor = Theme.BorderAccessible;
-            btnExport.FlatAppearance.BorderSize = 1;
+            btnExport.BackColor = Theme.Primary;
+            btnExport.ForeColor = Color.White;
+            btnExport.Font = new Font("Segoe UI Semibold", 9.5f);
+            UiRadiusHelper.AttachHoverFeedback(btnExport, Theme.Primary, Theme.PrimaryDark);
 
             UiRadiusHelper.StyleButton(btnGoToReports, 8);
+            btnGoToReports.BackColor = Color.White;
+            btnGoToReports.ForeColor = Theme.Primary;
+            btnGoToReports.FlatAppearance.BorderColor = Color.FromArgb(203, 213, 225);
+            btnGoToReports.FlatAppearance.BorderSize = 1;
+            btnGoToReports.Font = new Font("Segoe UI Semibold", 9.5f);
+            UiRadiusHelper.AttachHoverFeedback(btnGoToReports, Color.White, Color.FromArgb(248, 250, 252));
 
             ConfigurePlot(plotDealsClosed);
             ConfigurePlot(plotPipeline);
@@ -86,9 +92,10 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                 }
             };
 
+            pnlHeader.Resize += (_, _) => LayoutHeaderControls();
             pnlScrollableContent.Resize += (_, _) => AutoLayoutCharts();
-            this.Resize += (_, _) => AutoLayoutCharts();
-            this.Load += (_, _) => AutoLayoutCharts();
+            this.Resize += (_, _) => { LayoutHeaderControls(); AutoLayoutCharts(); };
+            this.Load += (_, _) => { LayoutHeaderControls(); AutoLayoutCharts(); };
 
             // Wire KPI cards — each scrolls to its most relevant chart
             kpiDealsClosed.SetAction(() => ScrollToChart(pnlChartDealsClosed, kpiDealsClosed));
@@ -142,7 +149,36 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                 btnGoToReports.Visible = CurrentSession.CanAccess("Reports");
             }
 
+            LayoutHeaderControls();
             AutoLayoutCharts();
+        }
+
+        private void LayoutHeaderControls()
+        {
+            if (pnlHeader == null || pnlHeader.ClientSize.Width <= 0) return;
+
+            int rightPadding = 20;
+            int rightX = pnlHeader.ClientSize.Width - rightPadding;
+            int spacing = 10;
+            int top = 25;
+
+            // Order from right edge: btnExport, cboDateRange, btnGoToReports
+            if (btnExport.Visible)
+            {
+                btnExport.Size = new Size(130, 34);
+                btnExport.Location = new Point(rightX - btnExport.Width, top);
+                rightX = btnExport.Left - spacing;
+            }
+
+            cboDateRange.Size = new Size(140, 32);
+            cboDateRange.Location = new Point(rightX - cboDateRange.Width, top + 1);
+            rightX = cboDateRange.Left - spacing;
+
+            if (btnGoToReports.Visible)
+            {
+                btnGoToReports.Size = new Size(140, 34);
+                btnGoToReports.Location = new Point(rightX - btnGoToReports.Width, top);
+            }
         }
 
         private DateRangeFilter GetSelectedDateRange()
@@ -241,6 +277,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
         private void AutoLayoutCharts()
         {
             if (pnlScrollableContent.ClientSize.Width <= 0) return;
+            LayoutHeaderControls();
 
             // Preserve and temporarily reset scroll offset during calculation to prevent coordinates shifting
             int scrollX = pnlScrollableContent.AutoScrollPosition.X;
@@ -265,7 +302,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                 // 3-column layout: 2 chart columns + 1 activity feed column
                 int activityWidth = 380;
                 int chartWidth = (containerWidth - activityWidth - (padding * 2)) / 2;
-                int chartHeight = 320;
+                int chartHeight = 360;
 
                 int x1 = 20;
                 int x2 = x1 + chartWidth + padding;
@@ -299,7 +336,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             {
                 // 2-column layout (intermediate breakpoint) — taller charts
                 int chartWidth = (containerWidth - padding) / 2;
-                int chartHeight = 320;
+                int chartHeight = 360;
 
                 int x1 = 20;
                 int x2 = x1 + chartWidth + padding;
@@ -334,7 +371,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                 // 2-column (≥750px) or 1-column (<750px) layout
                 int cols = containerWidth >= 750 ? 2 : 1;
                 int chartWidth = cols == 2 ? (containerWidth - padding) / 2 : containerWidth;
-                int chartHeight = 300;
+                int chartHeight = 340;
 
                 int x1 = 20;
                 int x2 = cols == 2 ? x1 + chartWidth + padding : x1;
@@ -400,6 +437,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             // plot starts at y=58 to accommodate title (12pt bold) + subtitle label
             plot.Location = new Point(14, 58);
             plot.Size = new Size(Math.Max(100, w - 28), Math.Max(100, h - 70));
+            plot.Refresh();
         }
 
         private void RenderDealsOverTimeChart(List<MonthlyMetric>? metrics)
@@ -494,8 +532,18 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                 return;
             }
 
+            Color[] sourcePalette = new[]
+            {
+                Color.FromArgb(37, 103, 156),  // Skyline Blue
+                Color.FromArgb(14, 165, 233),  // Sky
+                Color.FromArgb(99, 102, 241),  // Indigo
+                Color.FromArgb(139, 92, 246),  // Violet
+                Color.FromArgb(20, 184, 166),  // Teal
+                Color.FromArgb(245, 158, 11),  // Amber
+            };
+
             var items = sources
-                .Select(s => (s.Source, (double)s.Count, BiDisplayConstants.SecondaryAccent))
+                .Select((s, idx) => (s.Source, (double)s.Count, sourcePalette[idx % sourcePalette.Length]))
                 .ToList();
 
             BiDisplayConstants.RenderBarPlot(plotSources, items, rotation: -30);
@@ -517,58 +565,133 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                     Font = new Font("Segoe UI", 9.5f),
                     ForeColor = Theme.TextSecondary,
                     AutoSize = true,
-                    Padding = new Padding(10)
+                    Padding = new Padding(12)
                 };
                 pnlActivityFeedList.Controls.Add(lblEmpty);
                 return;
             }
 
+            int itemWidth = Math.Max(260, pnlActivityFeedList.ClientSize.Width - 12);
+
             foreach (var item in feed)
             {
+                // Classify activity event type and pick cohesive pastel badge colors
+                KpiIconType iconType;
+                Color badgeBg;
+                Color badgeBorder;
+                Color iconColor;
+                string eventCategory;
+                string eventDetail;
+
+                string rawDesc = item.Description ?? "";
+                if (item.Icon == "💼" || rawDesc.StartsWith("Deal", StringComparison.OrdinalIgnoreCase))
+                {
+                    iconType = KpiIconType.Briefcase;
+                    badgeBg = Color.FromArgb(239, 246, 255);    // Blue 50
+                    badgeBorder = Color.FromArgb(191, 219, 254);// Blue 200
+                    iconColor = Theme.Primary;                  // Skyline Blue (#25679C)
+                    eventCategory = "Deal Closed";
+                }
+                else if (item.Icon == "🎟" || rawDesc.StartsWith("Ticket", StringComparison.OrdinalIgnoreCase))
+                {
+                    iconType = KpiIconType.Ticket;
+                    badgeBg = Color.FromArgb(254, 243, 199);    // Amber 50
+                    badgeBorder = Color.FromArgb(253, 230, 138);// Amber 200
+                    iconColor = Color.FromArgb(217, 119, 6);    // Amber 600
+                    eventCategory = "Ticket Resolved";
+                }
+                else if (item.Icon == "◎" || rawDesc.StartsWith("Lead", StringComparison.OrdinalIgnoreCase))
+                {
+                    iconType = KpiIconType.Target;
+                    badgeBg = Color.FromArgb(236, 253, 245);    // Emerald 50
+                    badgeBorder = Color.FromArgb(167, 243, 208);// Emerald 200
+                    iconColor = Color.FromArgb(5, 150, 105);    // Emerald 600
+                    eventCategory = "Lead Converted";
+                }
+                else
+                {
+                    iconType = KpiIconType.Clock;
+                    badgeBg = Color.FromArgb(241, 245, 249);    // Slate 100
+                    badgeBorder = Color.FromArgb(226, 232, 240);// Slate 200
+                    iconColor = Color.FromArgb(71, 85, 105);    // Slate 600
+                    eventCategory = "Activity";
+                }
+
+                int colonIdx = rawDesc.IndexOf(':');
+                if (colonIdx >= 0 && colonIdx < rawDesc.Length - 1)
+                {
+                    eventDetail = rawDesc.Substring(colonIdx + 1).Trim();
+                }
+                else
+                {
+                    eventDetail = rawDesc;
+                }
+
                 var rowPanel = new Panel
                 {
-                    Width = Math.Max(280, pnlActivityFeedList.ClientSize.Width - 10),
-                    Height = 52,
-                    BackColor = Color.Transparent,
-                    Margin = new Padding(0, 0, 0, 0)
+                    Width = itemWidth,
+                    Height = 54,
+                    BackColor = Color.White,
+                    Margin = new Padding(0, 0, 0, 4),
+                    Cursor = Cursors.Default
                 };
 
-                // Subtle top separator line
+                // Draw pastel circular vector badge and subtle hairline divider
                 rowPanel.Paint += (s, e) =>
                 {
-                    using var pen = new Pen(Color.FromArgb(241, 245, 249), 1f);
-                    e.Graphics.DrawLine(pen, 0, 0, rowPanel.Width, 0);
+                    e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+                    // Subtle hairline bottom divider
+                    using (var divPen = new Pen(Color.FromArgb(241, 245, 249), 1f))
+                    {
+                        e.Graphics.DrawLine(divPen, 50, rowPanel.Height - 1, rowPanel.Width - 12, rowPanel.Height - 1);
+                    }
+
+                    // Circular pastel badge
+                    var badgeRect = new Rectangle(6, 9, 36, 36);
+                    using (var bBrush = new SolidBrush(badgeBg))
+                    {
+                        e.Graphics.FillEllipse(bBrush, badgeRect);
+                    }
+                    using (var bPen = new Pen(badgeBorder, 1f))
+                    {
+                        e.Graphics.DrawEllipse(bPen, badgeRect);
+                    }
+
+                    // Anti-aliased Lucide vector icon
+                    var iconRect = new Rectangle(15, 18, 18, 18);
+                    UiIconHelper.DrawIcon(e.Graphics, iconType, iconRect, iconColor);
                 };
 
-                var lblIcon = new Label
-                {
-                    Text = item.Icon,
-                    Font = new Font("Segoe UI Emoji", 14f),
-                    Size = new Size(36, 36),
-                    Location = new Point(8, 8),
-                    TextAlign = ContentAlignment.MiddleCenter
-                };
+                // Soft hover feedback
+                rowPanel.MouseEnter += (_, _) => rowPanel.BackColor = Color.FromArgb(248, 250, 252);
+                rowPanel.MouseLeave += (_, _) => rowPanel.BackColor = Color.White;
 
                 var lblDesc = new Label
                 {
-                    Text = item.Description,
-                    Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                    ForeColor = Theme.TextPrimary,
-                    Location = new Point(48, 7),
-                    Size = new Size(rowPanel.Width - 56, 18),
-                    AutoEllipsis = true
+                    Text = $"{eventCategory} • {eventDetail}",
+                    Font = new Font("Segoe UI Semibold", 8.75f),
+                    ForeColor = Color.FromArgb(15, 23, 42), // Slate 900
+                    Location = new Point(48, 8),
+                    Size = new Size(Math.Max(100, rowPanel.Width - 54), 18),
+                    AutoEllipsis = true,
+                    BackColor = Color.Transparent
                 };
+                lblDesc.MouseEnter += (_, _) => rowPanel.BackColor = Color.FromArgb(248, 250, 252);
+                lblDesc.MouseLeave += (_, _) => rowPanel.BackColor = Color.White;
 
                 var lblTime = new Label
                 {
                     Text = BiDisplayConstants.FormatDateTime(item.Timestamp),
-                    Font = new Font("Segoe UI", 7.5F),
-                    ForeColor = Theme.TextSecondary,
-                    Location = new Point(48, 27),
-                    Size = new Size(rowPanel.Width - 56, 16)
+                    Font = new Font("Segoe UI", 7.75f),
+                    ForeColor = Color.FromArgb(100, 116, 139), // Slate 500
+                    Location = new Point(48, 28),
+                    Size = new Size(Math.Max(100, rowPanel.Width - 54), 16),
+                    BackColor = Color.Transparent
                 };
+                lblTime.MouseEnter += (_, _) => rowPanel.BackColor = Color.FromArgb(248, 250, 252);
+                lblTime.MouseLeave += (_, _) => rowPanel.BackColor = Color.White;
 
-                rowPanel.Controls.Add(lblIcon);
                 rowPanel.Controls.Add(lblDesc);
                 rowPanel.Controls.Add(lblTime);
 

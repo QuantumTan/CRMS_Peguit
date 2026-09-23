@@ -127,8 +127,9 @@ namespace CRMS_Peguit.winforms.Models.Services
                 plot.Plot.Axes.Bottom.TickLabelStyle.FontName = "Segoe UI";
                 plot.Plot.Axes.Bottom.TickLabelStyle.FontSize = 10;
 
-                // Softer grid lines (Slate 200, subtle)
-                plot.Plot.Grid.MajorLineColor = ScottPlot.Color.FromHex("#E2E8F0");
+                // Softer horizontal-only grid lines (Slate 100, minimalist modern)
+                plot.Plot.Grid.XAxisStyle.IsVisible = false;
+                plot.Plot.Grid.MajorLineColor = ScottPlot.Color.FromHex("#F1F5F9");
                 plot.Plot.Grid.MajorLineWidth = 1;
                 plot.Plot.ShowGrid();
             }
@@ -151,8 +152,22 @@ namespace CRMS_Peguit.winforms.Models.Services
             plot.Refresh();
         }
 
+        private static string FormatTrendLabel(string rawLabel, bool simplifyYear = true)
+        {
+            if (string.IsNullOrWhiteSpace(rawLabel)) return "";
+            if (simplifyYear && rawLabel.Length > 4 && char.IsDigit(rawLabel[^1]) && rawLabel.Contains(' '))
+            {
+                var parts = rawLabel.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2)
+                {
+                    return parts[0]; // e.g. "Jan"
+                }
+            }
+            return rawLabel;
+        }
+
         /// <summary>
-        /// Renders a trend over time as a proper LINE chart with markers per BI standards.
+        /// Renders a trend over time as a proper LINE chart with solid markers and data labels.
         /// </summary>
         public static void RenderTrendLinePlot(FormsPlot plot, List<(string label, double value)> data, Color? lineColor = null, Color? markerColor = null)
         {
@@ -180,33 +195,64 @@ namespace CRMS_Peguit.winforms.Models.Services
 
             var scatter = plot.Plot.Add.Scatter(xs, ys);
             scatter.Color = ScottPlot.Color.FromColor(lineClr);
-            scatter.LineWidth = 3.0f;
+            scatter.LineWidth = 2.5f;
             scatter.MarkerSize = 8f;
             scatter.MarkerShape = MarkerShape.FilledCircle;
             scatter.MarkerFillColor = ScottPlot.Color.FromColor(markClr);
             scatter.MarkerLineColor = ScottPlot.Color.FromColor(Color.White);
             scatter.MarkerLineWidth = 1.5f;
 
-            // More visible shaded area under the line curve
+            // Subtle area tint under the trend curve
             scatter.FillY = true;
-            scatter.FillYColor = ScottPlot.Color.FromColor(Color.FromArgb(45, lineClr.R, lineClr.G, lineClr.B));
+            scatter.FillYColor = ScottPlot.Color.FromColor(Color.FromArgb(20, lineClr.R, lineClr.G, lineClr.B));
 
-            var ticks = data.Select((d, i) => new ScottPlot.Tick(i, d.label)).ToArray();
+            // Add clear data value label above each point (just like categorical bar charts)
+            double maxY = ys.Length > 0 ? ys.Max() : 10;
+            for (int i = 0; i < data.Count; i++)
+            {
+                double val = data[i].value;
+                if (val > 0)
+                {
+                    string valDisplay = val >= 1_000 ? $"{val:N0}" : (val % 1 == 0 ? $"{val:N0}" : $"{val:N1}");
+                    var txt = plot.Plot.Add.Text(valDisplay, i, val);
+                    txt.LabelAlignment = Alignment.LowerCenter;
+                    txt.LabelFontSize = 10;
+                    txt.LabelFontName = "Segoe UI";
+                    txt.LabelFontColor = ScottPlot.Color.FromHex("#0F172A"); // Slate 900
+                    txt.LabelBold = true;
+                }
+            }
+
+            // Simplify year if all ticks share the same year (e.g. "Jan 2026" -> "Jan")
+            bool allSameYear = data.Count > 1 && data.All(d => d.label.Length >= 4 && char.IsDigit(d.label[^1]) && d.label[^4..] == data[0].label[^4..]);
+            var ticks = data.Select((d, i) => new ScottPlot.Tick(i, allSameYear ? FormatTrendLabel(d.label, true) : d.label)).ToArray();
             var tickGen = new ScottPlot.TickGenerators.NumericManual(ticks);
             plot.Plot.Axes.Bottom.TickGenerator = tickGen;
-            plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = -30;
-            plot.Plot.Axes.Bottom.TickLabelStyle.Alignment = Alignment.MiddleRight;
+
+            if (data.Count <= 12)
+            {
+                plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = 0;
+                plot.Plot.Axes.Bottom.TickLabelStyle.Alignment = Alignment.UpperCenter;
+                plot.Plot.Axes.Bottom.MinimumSize = 36;
+            }
+            else
+            {
+                plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = -25;
+                plot.Plot.Axes.Bottom.TickLabelStyle.Alignment = Alignment.MiddleRight;
+                plot.Plot.Axes.Bottom.MinimumSize = 52;
+            }
+
             plot.Plot.Axes.Bottom.TickLabelStyle.ForeColor = ScottPlot.Color.FromHex("#475569");
             plot.Plot.Axes.Bottom.TickLabelStyle.FontName = "Segoe UI";
             plot.Plot.Axes.Bottom.TickLabelStyle.FontSize = 10;
             plot.Plot.Axes.Left.TickLabelStyle.ForeColor = ScottPlot.Color.FromHex("#64748B");
             plot.Plot.Axes.Left.TickLabelStyle.FontName = "Segoe UI";
             plot.Plot.Axes.Left.TickLabelStyle.FontSize = 10;
-            plot.Plot.Axes.Bottom.MinimumSize = 58;
-            plot.Plot.Axes.Left.MinimumSize = 52;
+            plot.Plot.Axes.Left.MinimumSize = 48;
 
-            double maxVal = ys.Length > 0 ? ys.Max() : 10;
-            plot.Plot.Axes.SetLimits(-0.4, xs.Length - 0.6, 0, Math.Max(1.0, maxVal * 1.2));
+            // Give balanced horizontal padding and enough top headroom for data labels
+            double topHeadroom = maxY > 0 ? maxY * 1.25 : 10;
+            plot.Plot.Axes.SetLimits(-0.5, xs.Length - 0.5, 0, topHeadroom);
             plot.Refresh();
         }
 
@@ -287,8 +333,8 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
 
             var pie = plot.Plot.Add.Pie(slices);
-            pie.DonutFraction = 0.58;
-            pie.SliceLabelDistance = 1.45;
+            pie.DonutFraction = 0.68;
+            pie.SliceLabelDistance = 1.35;
 
             plot.Plot.Axes.Frameless();
             plot.Plot.HideGrid();
@@ -341,13 +387,14 @@ namespace CRMS_Peguit.winforms.Models.Services
             var bars = new List<Bar>();
             var ticks = new List<ScottPlot.Tick>();
 
-            // Adapt bar width so 1 or 2 items don't stretch into massive blocks
+            // Adapt bar width so bars look substantial and fill the category spaces nicely
             double barSize = items.Count switch
             {
-                1 => 0.35,
-                2 => 0.48,
-                3 => 0.58,
-                _ => 0.70
+                1 => 0.40,
+                2 => 0.52,
+                3 => 0.62,
+                4 => 0.68,
+                _ => 0.72
             };
 
             double maxY = 0;
@@ -374,7 +421,7 @@ namespace CRMS_Peguit.winforms.Models.Services
                     string valDisplay = val >= 1_000 ? $"{val:N0}" : (val % 1 == 0 ? $"{val:N0}" : $"{val:N1}");
                     var txt = plot.Plot.Add.Text(valDisplay, i, val);
                     txt.LabelAlignment = Alignment.LowerCenter;
-                    txt.LabelFontSize = 10;
+                    txt.LabelFontSize = 11;
                     txt.LabelFontName = "Segoe UI";
                     txt.LabelFontColor = ScottPlot.Color.FromHex("#0F172A");
                     txt.LabelBold = true;
@@ -395,25 +442,25 @@ namespace CRMS_Peguit.winforms.Models.Services
             {
                 plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = effRotation;
                 plot.Plot.Axes.Bottom.TickLabelStyle.Alignment = Alignment.MiddleRight;
-                plot.Plot.Axes.Bottom.MinimumSize = 68;
+                plot.Plot.Axes.Bottom.MinimumSize = 58;
             }
             else
             {
                 plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = 0;
                 plot.Plot.Axes.Bottom.TickLabelStyle.Alignment = Alignment.UpperCenter;
-                plot.Plot.Axes.Bottom.MinimumSize = 48;
+                plot.Plot.Axes.Bottom.MinimumSize = 40;
             }
 
             plot.Plot.Axes.Bottom.TickLabelStyle.ForeColor = ScottPlot.Color.FromHex("#475569");
             plot.Plot.Axes.Bottom.TickLabelStyle.FontName = "Segoe UI";
-            plot.Plot.Axes.Bottom.TickLabelStyle.FontSize = 10;
+            plot.Plot.Axes.Bottom.TickLabelStyle.FontSize = 10.5f;
             plot.Plot.Axes.Left.TickLabelStyle.ForeColor = ScottPlot.Color.FromHex("#64748B");
             plot.Plot.Axes.Left.TickLabelStyle.FontName = "Segoe UI";
-            plot.Plot.Axes.Left.TickLabelStyle.FontSize = 10;
-            plot.Plot.Axes.Left.MinimumSize = 52;
+            plot.Plot.Axes.Left.TickLabelStyle.FontSize = 10.5f;
+            plot.Plot.Axes.Left.MinimumSize = 50;
 
-            // Frame chart nicely with headroom for top labels
-            double topHeadroom = maxY > 0 ? maxY * 1.30 : 10;
+            // Frame chart nicely with optimized headroom for taller bars
+            double topHeadroom = maxY > 0 ? maxY * 1.15 : 10;
             plot.Plot.Axes.SetLimits(-0.6, items.Count - 0.4, 0, topHeadroom);
             plot.Refresh();
         }

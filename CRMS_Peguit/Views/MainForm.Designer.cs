@@ -28,7 +28,11 @@ namespace CRMS_Peguit.winforms
         private System.Windows.Forms.Button btnApprovals = null!;
         private System.Windows.Forms.Button btnManageManagers = null!;
         private System.Windows.Forms.Button btnManageAgents = null!;
+        private System.Windows.Forms.Button btnAdminPanel = null!;
+        private System.Windows.Forms.Button btnBranching = null!;
         private System.Windows.Forms.Button btnLogout = null!;
+
+        private System.Windows.Forms.Label lblTenantTierBadge = null!;
 
         private System.Windows.Forms.Panel contentWrapperPanel = null!;
         private System.Windows.Forms.Panel topHeaderPanel = null!;
@@ -76,6 +80,8 @@ namespace CRMS_Peguit.winforms
             this.btnApprovals = new System.Windows.Forms.Button();
             this.btnManageManagers = new System.Windows.Forms.Button();
             this.btnManageAgents = new System.Windows.Forms.Button();
+            this.btnAdminPanel = new System.Windows.Forms.Button();
+            this.btnBranching = new System.Windows.Forms.Button();
             this.btnLogout = new System.Windows.Forms.Button();
             this.contentWrapperPanel = new System.Windows.Forms.Panel();
             this.topHeaderPanel = new System.Windows.Forms.Panel();
@@ -86,6 +92,7 @@ namespace CRMS_Peguit.winforms
             this.lblHeaderUserName = new System.Windows.Forms.Label();
             this.mainPanel = new System.Windows.Forms.Panel();
             this.mainToolTip = new System.Windows.Forms.ToolTip();
+            this.lblTenantTierBadge = new System.Windows.Forms.Label();
             this.sidebarPanel.SuspendLayout();
             this.pnlLogoHeader.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.picLogo)).BeginInit();
@@ -156,10 +163,12 @@ namespace CRMS_Peguit.winforms
             this.pnlNav.Controls.Add(this.btnActivities);
             this.pnlNav.Controls.Add(this.btnCampaigns);
             this.pnlNav.Controls.Add(this.btnDeals);
+            this.pnlNav.Controls.Add(this.btnBranching);
             this.pnlNav.Controls.Add(this.btnProperties);
             this.pnlNav.Controls.Add(this.btnCustomers);
             this.pnlNav.Controls.Add(this.btnLeads);
             this.pnlNav.Controls.Add(this.lblSalesSection);
+            this.pnlNav.Controls.Add(this.btnAdminPanel);
             this.pnlNav.Controls.Add(this.btnDashboard);
             this.pnlNav.Dock = System.Windows.Forms.DockStyle.Fill;
             this.pnlNav.Location = new System.Drawing.Point(0, 118);
@@ -454,6 +463,53 @@ namespace CRMS_Peguit.winforms
             this.btnManageAgents.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             this.btnManageAgents.UseVisualStyleBackColor = true;
             // 
+            // btnAdminPanel
+            // 
+            this.btnAdminPanel.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.btnAdminPanel.Dock = System.Windows.Forms.DockStyle.Top;
+            this.btnAdminPanel.FlatAppearance.BorderSize = 0;
+            this.btnAdminPanel.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnAdminPanel.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnAdminPanel.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
+            this.btnAdminPanel.Location = new System.Drawing.Point(0, 38);
+            this.btnAdminPanel.Name = "btnAdminPanel";
+            this.btnAdminPanel.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
+            this.btnAdminPanel.Size = new System.Drawing.Size(240, 38);
+            this.btnAdminPanel.TabIndex = 20;
+            this.btnAdminPanel.Text = "  👑  Admin Panel";
+            this.btnAdminPanel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.btnAdminPanel.UseVisualStyleBackColor = true;
+            // 
+            // btnBranching
+            // 
+            this.btnBranching.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.btnBranching.Dock = System.Windows.Forms.DockStyle.Top;
+            this.btnBranching.FlatAppearance.BorderSize = 0;
+            this.btnBranching.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnBranching.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnBranching.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
+            this.btnBranching.Location = new System.Drawing.Point(0, 160);
+            this.btnBranching.Name = "btnBranching";
+            this.btnBranching.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
+            this.btnBranching.Size = new System.Drawing.Size(240, 38);
+            this.btnBranching.TabIndex = 21;
+            this.btnBranching.Text = "  🏢  Branches";
+            this.btnBranching.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.btnBranching.UseVisualStyleBackColor = true;
+            // 
+            // lblTenantTierBadge
+            // 
+            this.lblTenantTierBadge.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.lblTenantTierBadge.BackColor = System.Drawing.Color.FromArgb(241, 245, 249);
+            this.lblTenantTierBadge.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
+            this.lblTenantTierBadge.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
+            this.lblTenantTierBadge.Location = new System.Drawing.Point(480, 14);
+            this.lblTenantTierBadge.Name = "lblTenantTierBadge";
+            this.lblTenantTierBadge.Size = new System.Drawing.Size(300, 30);
+            this.lblTenantTierBadge.TabIndex = 5;
+            this.lblTenantTierBadge.Text = "🏢 Tenant Tier";
+            this.lblTenantTierBadge.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            // 
             // btnLogout
             // 
             this.btnLogout.Cursor = System.Windows.Forms.Cursors.Hand;
@@ -487,6 +543,7 @@ namespace CRMS_Peguit.winforms
             this.topHeaderPanel.Controls.Add(this.btnToggleSidebar);
             this.topHeaderPanel.Controls.Add(this.txtGlobalSearch);
             this.topHeaderPanel.Controls.Add(this.notificationBell);
+            this.topHeaderPanel.Controls.Add(this.lblTenantTierBadge);
             this.topHeaderPanel.Controls.Add(this.lblHeaderAvatar);
             this.topHeaderPanel.Controls.Add(this.lblHeaderUserName);
             this.topHeaderPanel.Dock = System.Windows.Forms.DockStyle.Top;

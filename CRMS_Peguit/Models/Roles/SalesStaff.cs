@@ -29,7 +29,8 @@ namespace CRMS_Peguit.winforms.Models.Roles
                 "Properties",
                 "Deals",
                 "Activities",
-                "TasksReminders"
+                "TasksReminders",
+                "Campaigns"
             };
         }
 
