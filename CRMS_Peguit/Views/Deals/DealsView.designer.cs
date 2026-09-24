@@ -59,7 +59,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
             // 
             this.lblTitle.AutoSize = true;
             this.lblTitle.Font = new System.Drawing.Font("Segoe UI", 20F, System.Drawing.FontStyle.Bold);
-            this.lblTitle.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
+            this.lblTitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextPrimary;
             this.lblTitle.Location = new System.Drawing.Point(30, 20);
             this.lblTitle.Name = "lblTitle";
             this.lblTitle.Size = new System.Drawing.Size(86, 37);
@@ -70,7 +70,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
             // 
             this.lblSubtitle.AutoSize = true;
             this.lblSubtitle.Font = new System.Drawing.Font("Segoe UI", 9.5F);
-            this.lblSubtitle.ForeColor = System.Drawing.Color.FromArgb(100, 116, 139);
+            this.lblSubtitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextSecondary;
             this.lblSubtitle.Location = new System.Drawing.Point(32, 58);
             this.lblSubtitle.Name = "lblSubtitle";
             this.lblSubtitle.Size = new System.Drawing.Size(120, 17);

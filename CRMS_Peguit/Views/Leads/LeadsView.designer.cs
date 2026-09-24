@@ -52,8 +52,8 @@ namespace CRMS_Peguit.winforms.Views.Leads
             // 
             this.lblTitle.AutoSize = true;
             this.lblTitle.Font = new System.Drawing.Font("Segoe UI", 20F, System.Drawing.FontStyle.Bold);
-            this.lblTitle.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
-            this.lblTitle.Location = new System.Drawing.Point(32, 20);
+            this.lblTitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextPrimary;
+            this.lblTitle.Location = new System.Drawing.Point(30, 20);
             this.lblTitle.Name = "lblTitle";
             this.lblTitle.Size = new System.Drawing.Size(90, 37);
             this.lblTitle.TabIndex = 0;
@@ -63,8 +63,8 @@ namespace CRMS_Peguit.winforms.Views.Leads
             // 
             this.lblSubtitle.AutoSize = true;
             this.lblSubtitle.Font = new System.Drawing.Font("Segoe UI", 9.5F);
-            this.lblSubtitle.ForeColor = System.Drawing.Color.FromArgb(100, 116, 139);
-            this.lblSubtitle.Location = new System.Drawing.Point(135, 33);
+            this.lblSubtitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextSecondary;
+            this.lblSubtitle.Location = new System.Drawing.Point(32, 58);
             this.lblSubtitle.Name = "lblSubtitle";
             this.lblSubtitle.Size = new System.Drawing.Size(120, 17);
             this.lblSubtitle.TabIndex = 1;
@@ -72,7 +72,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
             // 
             // btnAdd
             // 
-            this.btnAdd.BackColor = System.Drawing.Color.FromArgb(15, 91, 158);
+            this.btnAdd.BackColor = CRMS_Peguit.winforms.Models.Services.Theme.Primary;
             this.btnAdd.Cursor = System.Windows.Forms.Cursors.Hand;
             this.btnAdd.FlatAppearance.BorderSize = 0;
             this.btnAdd.FlatStyle = System.Windows.Forms.FlatStyle.Flat;

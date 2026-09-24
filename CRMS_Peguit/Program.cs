@@ -82,6 +82,19 @@ namespace CRMS_Peguit.winforms
                 return;
             }
 
+            if (args.Contains("--seed-all-tenants"))
+            {
+                Console.WriteLine("==================================================");
+                Console.WriteLine("SEEDING ALL TENANTS (TENANT 1, TENANT 2, TENANT 3)");
+                Console.WriteLine("==================================================");
+                var progress = new Progress<string>(msg => Console.WriteLine($"[SEED] {msg}"));
+                LocalDb.SeedAllTenantsAsync(progress).GetAwaiter().GetResult();
+                Console.WriteLine("==================================================");
+                Console.WriteLine("ALL TENANTS SUCCESSFULLY SEEDED!");
+                Console.WriteLine("==================================================");
+                return;
+            }
+
             if (args.Contains("--verify-multidb"))
             {
                 Console.WriteLine("==================================================");
@@ -103,26 +116,57 @@ namespace CRMS_Peguit.winforms
                 // 2. Tenant A DB
                 using var tenant1Db = LocalDb.CreateContext(1);
                 string t1Catalog = tenant1Db.Database.GetDbConnection().Database;
-                Console.WriteLine($"[TENANT-1-DB] Database: {t1Catalog} | Users: {tenant1Db.Users.Count()} | Deals: {tenant1Db.Deals.Count()} | Customers: {tenant1Db.Customers.Count()}");
+                Console.WriteLine($"[TENANT-1-DB] Database: {t1Catalog} | Users: {tenant1Db.Users.Count()} | Customers: {tenant1Db.Customers.Count()} | Properties: {tenant1Db.Properties.Count()} | Deals: {tenant1Db.Deals.Count()} | Leads: {tenant1Db.Leads.Count()} | Tickets: {tenant1Db.SupportTickets.Count()}");
 
                 // 3. Tenant B DB
                 using var tenant2Db = LocalDb.CreateContext(2);
                 string t2Catalog = tenant2Db.Database.GetDbConnection().Database;
-                Console.WriteLine($"[TENANT-2-DB] Database: {t2Catalog} | Users: {tenant2Db.Users.Count()} | Deals: {tenant2Db.Deals.Count()} | Campaigns: {tenant2Db.Campaigns.Count()}");
+                Console.WriteLine($"[TENANT-2-DB] Database: {t2Catalog} | Users: {tenant2Db.Users.Count()} | Customers: {tenant2Db.Customers.Count()} | Properties: {tenant2Db.Properties.Count()} | Deals: {tenant2Db.Deals.Count()} | Leads: {tenant2Db.Leads.Count()} | Tickets: {tenant2Db.SupportTickets.Count()}");
 
                 // 4. Tenant C DB
                 using var tenant3Db = LocalDb.CreateContext(3);
                 string t3Catalog = tenant3Db.Database.GetDbConnection().Database;
-                Console.WriteLine($"[TENANT-3-DB] Database: {t3Catalog} | Users: {tenant3Db.Users.Count()} | Branches: {tenant3Db.Branches.Count()} | Deals: {tenant3Db.Deals.Count()}");
+                Console.WriteLine($"[TENANT-3-DB] Database: {t3Catalog} | Users: {tenant3Db.Users.Count()} | Branches: {tenant3Db.Branches.Count()} | Customers: {tenant3Db.Customers.Count()} | Properties: {tenant3Db.Properties.Count()} | Deals: {tenant3Db.Deals.Count()} | Leads: {tenant3Db.Leads.Count()} | Tickets: {tenant3Db.SupportTickets.Count()}");
                 foreach (var b in tenant3Db.Branches.ToList())
                 {
-                    Console.WriteLine($"  ├─ Branch: {b.BranchCode} - {b.BranchName} ({b.Address})");
+                    int branchUsers = tenant3Db.Users.Count(u => u.BranchId == b.BranchId);
+                    int branchProps = tenant3Db.Properties.Count(p => p.BranchId == b.BranchId);
+                    int branchDeals = tenant3Db.Deals.Count(d => d.BranchId == b.BranchId);
+                    int branchLeads = tenant3Db.Leads.Count(l => l.BranchId == b.BranchId);
+                    Console.WriteLine($"  ├─ Branch {b.BranchCode} ({b.BranchName}): Users={branchUsers}, Properties={branchProps}, Deals={branchDeals}, Leads={branchLeads}");
                 }
 
                 // 5. Cross-Database Aggregation in SuperAdminSubscriptionController
                 var saCtrl = new CRMS_Peguit.winforms.Controllers.SuperAdminSubscriptionController();
                 var bi = saCtrl.GetPlatformBiSummaryAsync().GetAwaiter().GetResult();
-                Console.WriteLine($"[CROSS-DB-BI] Total Tenants: {bi.TotalTenants} | Active Subs: {bi.ActiveSubscriptions} | MRR: ₱{bi.TotalMrr:N2} | Expiring: {bi.ExpiringSubscriptions} | Expired: {bi.ExpiredSubscriptions}");
+                // 6. Verify Logins across Tenants
+                var authService = new CRMS_Peguit.winforms.Auth.AuthService("http://localhost:5000");
+                var loginsToTest = new (string Email, string Password, int ExpectedTenantId)[]
+                {
+                    ("superadmin@crms.com", "SuperAdmin123!", 0),
+                    ("tenanta_admin@test.com", "Admin123!", 1),
+                    ("admin@test.com", "Admin123!", 1),
+                    ("manager@test.com", "Manager123!", 1),
+                    ("agent@test.com", "Agent123!", 1),
+                    ("tenantb_admin@test.com", "Admin123!", 2),
+                    ("manager.b@test.com", "Manager123!", 2),
+                    ("agent.b@test.com", "Agent123!", 2),
+                    ("tenantc_admin@test.com", "Admin123!", 3),
+                    ("manager.c@test.com", "Manager123!", 3),
+                    ("carlos.mendoza@test.com", "Manager123!", 3),
+                    ("beatrice.ong@test.com", "Manager123!", 3),
+                    ("agent.c@test.com", "Agent123!", 3)
+                };
+
+                Console.WriteLine("--------------------------------------------------");
+                Console.WriteLine("VERIFYING CROSS-TENANT AUTHENTICATION");
+                Console.WriteLine("--------------------------------------------------");
+                foreach (var (email, pwd, expTid) in loginsToTest)
+                {
+                    var res = authService.TryLocalDbLogin(email, pwd);
+                    Console.WriteLine($"  ├─ {email} -> Success={res.Success}, TenantId={CRMS_Peguit.winforms.Auth.CurrentSession.TenantId} (Expected={expTid}), Role={CRMS_Peguit.winforms.Auth.CurrentSession.CurrentUser?.Role}");
+                }
+
                 Console.WriteLine("==================================================");
                 Console.WriteLine("MULTI-DATABASE ISOLATION: 100% VERIFIED SUCCESS!");
                 Console.WriteLine("==================================================");

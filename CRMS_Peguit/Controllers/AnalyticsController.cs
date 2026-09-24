@@ -407,5 +407,98 @@ namespace CRMS_Peguit.winforms.Controllers
                 return new List<ActivityFeedItem>();
             }
         }
+
+        public List<AnalyticsDetailRow> GetDrillDownRows(DateRangeFilter range)
+        {
+            var list = new List<AnalyticsDetailRow>();
+            try
+            {
+                var startDate = range.StartDate;
+                var endDate = range.EndDate;
+
+                // 1. Deals
+                var deals = GetDealsQuery()
+                    .Include(d => d.Agent)
+                    .Include(d => d.Customer).ThenInclude(c => c!.Person)
+                    .Include(d => d.Property)
+                    .Where(d => (d.ContractSignedDate ?? d.CreatedAt) >= startDate && (d.ContractSignedDate ?? d.CreatedAt) <= endDate)
+                    .ToList();
+
+                foreach (var d in deals)
+                {
+                    string st = d.Stage;
+                    if (st.Equals("closed", StringComparison.OrdinalIgnoreCase) || st.Equals("closed-won", StringComparison.OrdinalIgnoreCase))
+                        st = "Won";
+
+                    string dealTitle = d.Property?.Address ?? (d.Customer?.FullName ?? $"Deal #{d.DealId}");
+
+                    list.Add(new AnalyticsDetailRow
+                    {
+                        RecordType = "Deal",
+                        Reference = $"DL-{d.DealId:D4}",
+                        Title = dealTitle,
+                        Status = st,
+                        AssignedTo = d.Agent?.FullName ?? "Unassigned",
+                        Value = d.Value,
+                        Date = d.ContractSignedDate ?? d.CreatedAt,
+                        Details = $"Rate: {d.CommissionRate:F1}%"
+                    });
+                }
+
+                // 2. Leads
+                var leads = GetLeadsQuery()
+                    .Include(l => l.AssignedAgent)
+                    .Include(l => l.Person)
+                    .Where(l => l.CreatedAt >= startDate && l.CreatedAt <= endDate)
+                    .ToList();
+
+                foreach (var l in leads)
+                {
+                    list.Add(new AnalyticsDetailRow
+                    {
+                        RecordType = "Lead",
+                        Reference = $"LD-{l.LeadId:D4}",
+                        Title = l.FullName,
+                        Status = l.Stage,
+                        AssignedTo = l.AssignedAgent?.FullName ?? "Unassigned",
+                        Value = l.ExpectedValue ?? 0m,
+                        Date = l.CreatedAt,
+                        Details = string.IsNullOrWhiteSpace(l.Source) ? "Direct" : l.Source
+                    });
+                }
+
+                // 3. Support Tickets
+                var tickets = GetTicketsQuery()
+                    .Include(t => t.AssignedToUser)
+                    .Include(t => t.Customer).ThenInclude(c => c.Person)
+                    .Where(t => t.CreatedAt >= startDate && t.CreatedAt <= endDate)
+                    .ToList();
+
+                foreach (var t in tickets)
+                {
+                    string ticketTitle = !string.IsNullOrWhiteSpace(t.Category)
+                        ? (t.Customer != null ? $"{t.Category} ({t.Customer.FullName})" : t.Category)
+                        : (t.Description.Length > 40 ? t.Description[..40] + "..." : t.Description);
+
+                    list.Add(new AnalyticsDetailRow
+                    {
+                        RecordType = "Ticket",
+                        Reference = string.IsNullOrWhiteSpace(t.TicketNumber) ? $"TK-{t.TicketId:D4}" : t.TicketNumber,
+                        Title = ticketTitle,
+                        Status = t.Status,
+                        AssignedTo = t.AssignedToUser?.FullName ?? "Unassigned",
+                        Value = 0,
+                        Date = t.CreatedAt,
+                        Details = $"Priority: {t.Priority}"
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error in GetDrillDownRows: {ex.Message}");
+            }
+
+            return list.OrderByDescending(r => r.Date).ToList();
+        }
     }
 }

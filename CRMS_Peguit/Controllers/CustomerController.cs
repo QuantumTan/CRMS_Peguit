@@ -426,6 +426,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 int total = await query.CountAsync();
                 int active = await query.CountAsync(c => c.Status.ToLower() == "active");
                 int inactive = await query.CountAsync(c => c.Status.ToLower() == "inactive");
+                int followUp = await query.CountAsync(c => c.Status.ToLower() == "prospect" || c.AssignmentStatus.ToLower() == "pending");
                 int thisMonth = await query.CountAsync(c => c.CreatedAt.Year == now.Year && c.CreatedAt.Month == now.Month);
 
                 return new CustomerKpiCounts
@@ -433,6 +434,7 @@ namespace CRMS_Peguit.winforms.Controllers
                     Total = total,
                     Active = active,
                     Inactive = inactive,
+                    FollowUp = followUp,
                     ThisMonth = thisMonth
                 };
             }
@@ -590,6 +592,7 @@ namespace CRMS_Peguit.winforms.Controllers
         public int Total { get; set; }
         public int Active { get; set; }
         public int Inactive { get; set; }
+        public int FollowUp { get; set; }
         public int ThisMonth { get; set; }
     }
 }

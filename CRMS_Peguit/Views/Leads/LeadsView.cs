@@ -3,6 +3,7 @@ using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 using CRMS_Peguit.winforms.Views.Shared;
 
 using Lead = CRMS_Peguit.domain.entities.Lead;
@@ -25,6 +26,13 @@ namespace CRMS_Peguit.winforms.Views.Leads
         private readonly System.Windows.Forms.Timer _searchDebounceTimer;
         private bool _isLoading = false;
 
+        private TableLayoutPanel _pnlKpiContainer = null!;
+        private KpiCard _kpiTotal = null!;
+        private KpiCard _kpiNew = null!;
+        private KpiCard _kpiContacted = null!;
+        private KpiCard _kpiQualified = null!;
+        private KpiCard _kpiConverted = null!;
+
         public LeadsView()
         {
             InitializeComponent();
@@ -37,6 +45,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
                 await RefreshGridAsync(resetPage: true, animate: false);
             };
 
+            InitKpis();
             InitPagination();
             InitEmptyState();
             ApplyStyling();
@@ -45,6 +54,43 @@ namespace CRMS_Peguit.winforms.Views.Leads
 
             this.Load += (_, _) => LayoutToolbar();
             this.Resize += (_, _) => LayoutToolbar();
+        }
+
+        private void InitKpis()
+        {
+            _pnlKpiContainer = new TableLayoutPanel
+            {
+                ColumnCount = 5,
+                RowCount = 1,
+                Height = 88,
+                BackColor = Color.Transparent
+            };
+            _pnlKpiContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20f));
+            _pnlKpiContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20f));
+            _pnlKpiContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20f));
+            _pnlKpiContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20f));
+            _pnlKpiContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20f));
+            _pnlKpiContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+
+            _kpiTotal = new KpiCard("TOTAL LEADS", "all", Color.FromArgb(100, 116, 139), KpiIconType.Target, "All prospects") { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 6, 0), ClickMode = KpiClickMode.InPlaceFilter };
+            _kpiNew = new KpiCard("NEW", "new", Color.FromArgb(14, 165, 233), KpiIconType.Briefcase, "Uncontacted") { Dock = DockStyle.Fill, Margin = new Padding(3, 0, 4, 0), ClickMode = KpiClickMode.InPlaceFilter };
+            _kpiContacted = new KpiCard("CONTACTED", "contacted", Color.FromArgb(245, 158, 11), KpiIconType.Clock, "In discussion") { Dock = DockStyle.Fill, Margin = new Padding(4, 0, 4, 0), ClickMode = KpiClickMode.InPlaceFilter };
+            _kpiQualified = new KpiCard("QUALIFIED", "qualified", Color.FromArgb(16, 185, 129), KpiIconType.Target, "High interest") { Dock = DockStyle.Fill, Margin = new Padding(4, 0, 4, 0), ClickMode = KpiClickMode.InPlaceFilter };
+            _kpiConverted = new KpiCard("CONVERTED", "converted", Color.FromArgb(168, 85, 247), KpiIconType.Users, "Became clients") { Dock = DockStyle.Fill, Margin = new Padding(6, 0, 0, 0), ClickMode = KpiClickMode.InPlaceFilter };
+
+            _kpiTotal.Click += (_, _) => SetFilter("All");
+            _kpiNew.Click += (_, _) => SetFilter("New");
+            _kpiContacted.Click += (_, _) => SetFilter("Contacted");
+            _kpiQualified.Click += (_, _) => SetFilter("Qualified");
+            _kpiConverted.Click += (_, _) => SetFilter("Converted");
+
+            _pnlKpiContainer.Controls.Add(_kpiTotal, 0, 0);
+            _pnlKpiContainer.Controls.Add(_kpiNew, 1, 0);
+            _pnlKpiContainer.Controls.Add(_kpiContacted, 2, 0);
+            _pnlKpiContainer.Controls.Add(_kpiQualified, 3, 0);
+            _pnlKpiContainer.Controls.Add(_kpiConverted, 4, 0);
+
+            Controls.Add(_pnlKpiContainer);
         }
 
         private void InitPagination()
@@ -59,79 +105,15 @@ namespace CRMS_Peguit.winforms.Views.Leads
 
         private void InitEmptyState()
         {
-            _pnlEmptyState = new Panel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = Color.White,
-                Visible = false
-            };
-
-            var innerPanel = new Panel
-            {
-                Size = new Size(420, 240),
-                BackColor = Color.Transparent
-            };
-
-            var lblIcon = new Label
-            {
-                Text = "🔍",
-                Font = new Font("Segoe UI Emoji", 34f),
-                ForeColor = Color.FromArgb(148, 163, 184),
-                TextAlign = ContentAlignment.MiddleCenter,
-                Size = new Size(70, 70),
-                Location = new Point((420 - 70) / 2, 8)
-            };
-
-            var lblTitle = new Label
-            {
-                Text = "No leads found",
-                Font = new Font("Segoe UI", 13f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(15, 23, 42),
-                TextAlign = ContentAlignment.MiddleCenter,
-                Size = new Size(400, 28),
-                Location = new Point(10, 85)
-            };
-
-            var lblDesc = new Label
-            {
-                Text = "We couldn't find any leads matching your criteria.\nTry searching with different terms or selecting another stage.",
-                Font = new Font("Segoe UI", 9.5f),
-                ForeColor = Color.FromArgb(100, 116, 139),
-                TextAlign = ContentAlignment.MiddleCenter,
-                Size = new Size(400, 42),
-                Location = new Point(10, 116)
-            };
-
-            var btnReset = new Button
-            {
-                Text = "Clear Filters & Search",
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(15, 91, 158),
-                BackColor = Color.FromArgb(239, 246, 255),
-                Cursor = Cursors.Hand,
-                FlatStyle = FlatStyle.Flat,
-                Size = new Size(180, 36),
-                Location = new Point((420 - 180) / 2, 172)
-            };
-            btnReset.FlatAppearance.BorderColor = Color.FromArgb(191, 219, 254);
-            UiRadiusHelper.StyleButton(btnReset, 8);
-            btnReset.Click += (_, _) =>
-            {
-                txtSearch.Clear();
-                SetFilter("All");
-            };
-
-            innerPanel.Controls.Add(lblIcon);
-            innerPanel.Controls.Add(lblTitle);
-            innerPanel.Controls.Add(lblDesc);
-            innerPanel.Controls.Add(btnReset);
-
-            _pnlEmptyState.Controls.Add(innerPanel);
-            _pnlEmptyState.Resize += (_, _) =>
-            {
-                innerPanel.Location = new Point((_pnlEmptyState.Width - innerPanel.Width) / 2, Math.Max(20, (_pnlEmptyState.Height - innerPanel.Height) / 2));
-            };
-
+            _pnlEmptyState = UiGridHelper.CreateEmptyStatePanel(
+                KpiIconType.Target,
+                "No Leads Found",
+                "No leads match your search or filter criteria.\nTry clearing your search query or selecting a different stage filter.",
+                () =>
+                {
+                    txtSearch.Clear();
+                    SetFilter("All");
+                });
             pnlCard.Controls.Add(_pnlEmptyState);
             _pnlEmptyState.BringToFront();
         }
@@ -153,6 +135,10 @@ namespace CRMS_Peguit.winforms.Views.Leads
             btnAdd.Click += BtnAddClick;
             txtSearch.TextChanged += (_, _) =>
             {
+                if (!string.IsNullOrWhiteSpace(txtSearch.Text) && !string.Equals(_filterStage, "All", StringComparison.OrdinalIgnoreCase))
+                {
+                    _filterStage = "All";
+                }
                 _searchDebounceTimer.Stop();
                 _searchDebounceTimer.Start();
             };
@@ -161,15 +147,15 @@ namespace CRMS_Peguit.winforms.Views.Leads
             {
                 _btnExport = new Button
                 {
-                    Text = "📥 Export CSV",
+                    Text = "Export CSV",
                     BackColor = Color.White,
-                    ForeColor = Color.FromArgb(15, 91, 158),
+                    ForeColor = Theme.Primary,
                     Cursor = Cursors.Hand,
                     FlatStyle = FlatStyle.Flat,
                     Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                    Size = new Size(130, 36)
+                    Size = new Size(120, 36)
                 };
-                _btnExport.FlatAppearance.BorderColor = Color.FromArgb(15, 91, 158);
+                _btnExport.FlatAppearance.BorderColor = Theme.Primary;
                 _btnExport.Click += (_, _) => ExportToCsv();
                 UiRadiusHelper.StyleButton(_btnExport, 8);
                 Controls.Add(_btnExport);
@@ -219,7 +205,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
             };
         }
 
-        private async void SetFilter(string stage)
+        public async void SetFilter(string stage)
         {
             if (string.Equals(_filterStage, stage, StringComparison.OrdinalIgnoreCase) && !string.Equals(stage, "All", StringComparison.OrdinalIgnoreCase))
             {
@@ -229,12 +215,30 @@ namespace CRMS_Peguit.winforms.Views.Leads
             {
                 _filterStage = stage;
             }
+
+            if (!string.Equals(_filterStage, "All", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(txtSearch.Text))
+            {
+                txtSearch.Clear();
+            }
+
             await RefreshGridAsync(resetPage: true, animate: true);
         }
 
         private void UpdateFilterPillStyles(LeadStageCounts counts)
         {
             lblSubtitle.Text = $"{counts.Total} total · {counts.Qualified} qualified";
+
+            _kpiTotal.SetValue(counts.Total);
+            _kpiNew.SetValue(counts.New);
+            _kpiContacted.SetValue(counts.Contacted);
+            _kpiQualified.SetValue(counts.Qualified);
+            _kpiConverted.SetValue(counts.Converted);
+
+            _kpiTotal.SetSelected(string.Equals(_filterStage, "All", StringComparison.OrdinalIgnoreCase));
+            _kpiNew.SetSelected(string.Equals(_filterStage, "New", StringComparison.OrdinalIgnoreCase));
+            _kpiContacted.SetSelected(string.Equals(_filterStage, "Contacted", StringComparison.OrdinalIgnoreCase));
+            _kpiQualified.SetSelected(string.Equals(_filterStage, "Qualified", StringComparison.OrdinalIgnoreCase));
+            _kpiConverted.SetSelected(string.Equals(_filterStage, "Converted", StringComparison.OrdinalIgnoreCase));
 
             var pills = new[]
             {
@@ -827,79 +831,86 @@ namespace CRMS_Peguit.winforms.Views.Leads
         {
             if (this.IsDisposed) return;
 
-            int rightPadding = 32;
-            int leftMargin = 32;
+            int rightPadding = UiStyleConstants.PageMarginRight;
+            int leftMargin = UiStyleConstants.PageMarginLeft;
             int totalWidth = ClientSize.Width;
 
-            // Reposition title and subtitle inline next to each other
-            lblTitle.Location = new Point(leftMargin, 20);
-            lblSubtitle.Location = new Point(lblTitle.Right + 14, lblTitle.Top + 12);
-            lblSubtitle.BringToFront();
+            // 1. Page Title & Subtitle
+            lblTitle.Location = new Point(leftMargin, UiStyleConstants.PageMarginTop);
+            lblSubtitle.Location = new Point(leftMargin + 2, lblTitle.Bottom + 4);
 
-            // Position header action buttons
+            // 2. KPI Row
+            _pnlKpiContainer.Location = new Point(leftMargin, lblSubtitle.Bottom + 12);
+            _pnlKpiContainer.Size = new Size(Math.Max(100, totalWidth - leftMargin - rightPadding), UiStyleConstants.KpiRowHeight);
+
+            // 3. Toolbar Row (All controls aligned at y)
+            int y = _pnlKpiContainer.Bottom + 14;
+
             int rightEdge = totalWidth - rightPadding;
             if (btnAdd.Visible)
             {
+                btnAdd.Top = y;
+                btnAdd.Height = UiStyleConstants.ToolbarRowHeight;
                 btnAdd.Left = rightEdge - btnAdd.Width;
-                btnAdd.Top = 20;
                 rightEdge = btnAdd.Left - 10;
             }
             if (_btnExport != null && _btnExport.Visible)
             {
+                _btnExport.Top = y;
+                _btnExport.Height = UiStyleConstants.ToolbarRowHeight;
                 _btnExport.Left = rightEdge - _btnExport.Width;
-                _btnExport.Top = 20;
+                rightEdge = _btnExport.Left - 10;
             }
 
-            int y = 78;
-
-            // Layout filter pills
             var pills = new[] { btnFilterConverted, btnFilterQualified, btnFilterContacted, btnFilterNew, btnFilterAll };
-            int filterRight = totalWidth - rightPadding;
+            int filterRight = rightEdge;
             int totalFilterWidth = 0;
-            foreach (var p in pills) totalFilterWidth += p.Width + 8;
+            foreach (var p in pills) totalFilterWidth += p.Width + 6;
 
-            int availableForSearch = totalWidth - leftMargin - rightPadding - totalFilterWidth - 20;
+            int availableForSearch = filterRight - leftMargin - totalFilterWidth - 16;
 
-            if (availableForSearch >= 200)
+            if (availableForSearch >= 180)
             {
-                // Single row: search on left, filters aligned to right
+                // Single row
                 foreach (var p in pills)
                 {
                     p.Top = y;
-                    p.Height = 32;
+                    p.Height = UiStyleConstants.ToolbarRowHeight;
                     p.Left = filterRight - p.Width;
-                    filterRight = p.Left - 8;
+                    filterRight = p.Left - 6;
                 }
 
                 txtSearch.Top = y;
                 txtSearch.Left = leftMargin;
-                txtSearch.Height = 32;
-                txtSearch.Width = Math.Min(360, availableForSearch);
+                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
+                txtSearch.Width = Math.Min(UiStyleConstants.SearchBoxWidth, availableForSearch);
 
-                pnlCard.Top = 126;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - 126 - 24);
+                int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
+                pnlCard.Top = cardTop;
+                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - UiStyleConstants.PageMarginBottom);
             }
             else
             {
                 // Two rows: search on row 1, filter pills wrapped to row 2
                 txtSearch.Top = y;
                 txtSearch.Left = leftMargin;
-                txtSearch.Height = 32;
-                txtSearch.Width = Math.Max(180, totalWidth - leftMargin - rightPadding);
+                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
+                txtSearch.Width = Math.Max(180, rightEdge - leftMargin);
 
+                int pillY = y + UiStyleConstants.ToolbarRowHeight + 10;
                 int filterX = leftMargin;
-                int pillY = y + 40;
                 var forwardPills = new[] { btnFilterAll, btnFilterNew, btnFilterContacted, btnFilterQualified, btnFilterConverted };
                 foreach (var p in forwardPills)
                 {
                     p.Top = pillY;
-                    p.Height = 32;
+                    p.Height = UiStyleConstants.ToolbarRowHeight;
                     p.Left = filterX;
-                    filterX += p.Width + 8;
+                    filterX += p.Width + 6;
                 }
 
-                pnlCard.Top = pillY + 42;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - pnlCard.Top - 24);
+                int cardTop = pillY + UiStyleConstants.ToolbarRowHeight + 14;
+                pnlCard.Top = cardTop;
+                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 20);
             }
 
             pnlCard.Left = leftMargin;

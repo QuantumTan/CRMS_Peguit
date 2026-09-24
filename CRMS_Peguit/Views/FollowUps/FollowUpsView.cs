@@ -9,6 +9,7 @@ using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Views.FollowUps
 {
@@ -31,6 +32,9 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             BindEvents();
             UpdateFilterPillStyles();
             RefreshData();
+
+            this.Load += (_, _) => LayoutToolbar();
+            this.Resize += (_, _) => LayoutToolbar();
         }
 
         private void InitGridColumns()
@@ -106,84 +110,16 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
 
         private void InitEmptyState()
         {
-            _pnlEmptyState = new Panel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = Color.White,
-                Visible = false
-            };
-
-            var innerPanel = new Panel
-            {
-                Size = new Size(440, 230),
-                BackColor = Color.Transparent
-            };
-
-            var pnlIcon = new Panel
-            {
-                Size = new Size(48, 48),
-                Location = new Point((440 - 48) / 2, 10),
-                BackColor = Color.FromArgb(239, 246, 255)
-            };
-            UiRadiusHelper.ApplyRoundedCorners(pnlIcon, 12);
-            pnlIcon.Paint += (s, e) =>
-            {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using var font = new Font("Segoe UI Emoji", 18f);
-                using var brush = new SolidBrush(Theme.Primary);
-                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-                e.Graphics.DrawString("⏱", font, brush, new RectangleF(0, 0, 48, 48), sf);
-            };
-
-            var lblTitle = new Label
-            {
-                Text = "No Follow-Ups Found",
-                Font = new Font("Segoe UI", 13f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(15, 23, 42),
-                TextAlign = ContentAlignment.MiddleCenter,
-                Size = new Size(440, 26),
-                Location = new Point(0, 68)
-            };
-
-            var lblDesc = new Label
-            {
-                Text = "No follow-up reminders match your search or filter criteria.\nTry clearing your query or scheduling a new client touchpoint.",
-                Font = new Font("Segoe UI", 9.5f),
-                ForeColor = Color.FromArgb(100, 116, 139),
-                TextAlign = ContentAlignment.MiddleCenter,
-                Size = new Size(420, 42),
-                Location = new Point(10, 98)
-            };
-
-            var btnReset = new Button
-            {
-                Text = "Clear Filters & Search",
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(15, 91, 158),
-                BackColor = Color.FromArgb(239, 246, 255),
-                Cursor = Cursors.Hand,
-                FlatStyle = FlatStyle.Flat,
-                Size = new Size(180, 36),
-                Location = new Point((440 - 180) / 2, 154)
-            };
-            btnReset.FlatAppearance.BorderColor = Color.FromArgb(191, 219, 254);
-            UiRadiusHelper.StyleButton(btnReset, 8);
-            btnReset.Click += (_, _) =>
-            {
-                txtSearch.Clear();
-                SetFilter("All");
-            };
-
-            innerPanel.Controls.Add(pnlIcon);
-            innerPanel.Controls.Add(lblTitle);
-            innerPanel.Controls.Add(lblDesc);
-            innerPanel.Controls.Add(btnReset);
-
-            _pnlEmptyState.Controls.Add(innerPanel);
-            _pnlEmptyState.Resize += (_, _) =>
-            {
-                innerPanel.Location = new Point((_pnlEmptyState.Width - innerPanel.Width) / 2, Math.Max(20, (_pnlEmptyState.Height - innerPanel.Height) / 2));
-            };
+            _pnlEmptyState = UiGridHelper.CreateEmptyStatePanel(
+                KpiIconType.Clock,
+                "No Follow-Ups Found",
+                "No follow-up reminders match your search or filter criteria.\nTry clearing your query or scheduling a new client touchpoint.",
+                () =>
+                {
+                    txtSearch.Clear();
+                    ToggleOrSetFilter("All");
+                },
+                "Clear Filters & Search");
 
             pnlCard.Controls.Add(_pnlEmptyState);
             _pnlEmptyState.BringToFront();
@@ -201,58 +137,128 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             btnFilterUpcoming.Width = 125;
             btnFilterCompleted.Width = 130;
 
-            LayoutPills();
-
             UiRadiusHelper.ApplyPillShape(btnFilterAll);
             UiRadiusHelper.ApplyPillShape(btnFilterOverdue);
             UiRadiusHelper.ApplyPillShape(btnFilterToday);
             UiRadiusHelper.ApplyPillShape(btnFilterUpcoming);
             UiRadiusHelper.ApplyPillShape(btnFilterCompleted);
-
-            this.Load += (_, _) => LayoutPills();
-            this.Resize += (_, _) => LayoutPills();
-            pnlCard.SizeChanged += (_, _) => LayoutPills();
         }
 
-        private void LayoutPills()
+        private void LayoutToolbar()
         {
-            // On-screen order, left to right
-            var pills = new[] { btnFilterAll, btnFilterOverdue, btnFilterToday, btnFilterUpcoming, btnFilterCompleted };
+            if (this.IsDisposed) return;
 
-            // Right-align: last pill ends at the card's right edge, others stack leftward
-            int x = pnlCard.Right;
-            for (int i = pills.Length - 1; i >= 0; i--)
+            int rightPadding = UiStyleConstants.PageMarginRight;
+            int leftMargin = UiStyleConstants.PageMarginLeft;
+            int totalWidth = ClientSize.Width;
+
+            // 1. Position and size KPI container
+            pnlKpiContainer.Left = leftMargin;
+            pnlKpiContainer.Top = Math.Max(90, lblSubtitle.Bottom + 10);
+            pnlKpiContainer.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
+            pnlKpiContainer.Height = UiStyleConstants.KpiRowHeight;
+
+            // 2. Position toolbar row (Search box on left, filter pills in center, action buttons rightmost at identical y)
+            int y = pnlKpiContainer.Bottom + 16;
+            int rightEdge = totalWidth - rightPadding;
+
+            if (btnAdd.Visible)
             {
-                var p = pills[i];
-                p.AutoSize = false;
-                p.Anchor = AnchorStyles.Top | AnchorStyles.Left;
-                p.Top = txtSearch.Top + (txtSearch.Height - p.Height) / 2;
-                p.Left = x - p.Width;
-                x = p.Left - 8;
+                btnAdd.Top = y;
+                btnAdd.Height = UiStyleConstants.ToolbarRowHeight;
+                btnAdd.Left = rightEdge - btnAdd.Width;
+                rightEdge = btnAdd.Left - 10;
             }
+
+            var pills = new[] { btnFilterCompleted, btnFilterAll, btnFilterUpcoming, btnFilterToday, btnFilterOverdue };
+            int filterRight = rightEdge;
+            int totalFilterWidth = 0;
+            foreach (var p in pills) totalFilterWidth += p.Width + 6;
+
+            int availableForSearch = filterRight - leftMargin - totalFilterWidth - 16;
+
+            if (availableForSearch >= 180)
+            {
+                // Single row
+                foreach (var p in pills)
+                {
+                    p.Top = y;
+                    p.Height = UiStyleConstants.ToolbarRowHeight;
+                    p.Left = filterRight - p.Width;
+                    filterRight = p.Left - 6;
+                }
+
+                txtSearch.Top = y;
+                txtSearch.Left = leftMargin;
+                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
+                txtSearch.Width = Math.Min(UiStyleConstants.SearchBoxWidth, availableForSearch);
+
+                int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
+                pnlCard.Top = cardTop;
+                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - UiStyleConstants.PageMarginBottom);
+            }
+            else
+            {
+                // Two rows: search on row 1, filter pills wrapped to row 2
+                txtSearch.Top = y;
+                txtSearch.Left = leftMargin;
+                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
+                txtSearch.Width = Math.Max(180, rightEdge - leftMargin);
+
+                int pillY = y + UiStyleConstants.ToolbarRowHeight + 10;
+                int filterX = leftMargin;
+                var forwardPills = new[] { btnFilterAll, btnFilterOverdue, btnFilterToday, btnFilterUpcoming, btnFilterCompleted };
+                foreach (var p in forwardPills)
+                {
+                    p.Top = pillY;
+                    p.Height = UiStyleConstants.ToolbarRowHeight;
+                    p.Left = filterX;
+                    filterX += p.Width + 6;
+                }
+
+                int cardTop = pillY + UiStyleConstants.ToolbarRowHeight + 14;
+                pnlCard.Top = cardTop;
+                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 20);
+            }
+
+            pnlCard.Left = leftMargin;
+            pnlCard.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
         }
 
         private void BindEvents()
         {
             btnAdd.Click += (_, _) => ShowCreateDialog();
-            txtSearch.TextChanged += (_, _) => ApplyFilterAndSearch();
+            txtSearch.TextChanged += (_, _) =>
+            {
+                if (!string.IsNullOrWhiteSpace(txtSearch.Text) && !string.Equals(_filterCategory, "All", StringComparison.OrdinalIgnoreCase))
+                {
+                    _filterCategory = "All";
+                    UpdateFilterPillStyles();
+                }
+                ApplyFilterAndSearch();
+            };
 
-            btnFilterOverdue.Click += (_, _) => SetFilter("Overdue");
-            btnFilterToday.Click += (_, _) => SetFilter("Today");
-            btnFilterUpcoming.Click += (_, _) => SetFilter("Upcoming");
-            btnFilterAll.Click += (_, _) => SetFilter("All");
-            btnFilterCompleted.Click += (_, _) => SetFilter("Completed");
+            btnFilterOverdue.Click += (_, _) => ToggleOrSetFilter("Overdue");
+            btnFilterToday.Click += (_, _) => ToggleOrSetFilter("Today");
+            btnFilterUpcoming.Click += (_, _) => ToggleOrSetFilter("Upcoming");
+            btnFilterAll.Click += (_, _) => ToggleOrSetFilter("All");
+            btnFilterCompleted.Click += (_, _) => ToggleOrSetFilter("Completed");
 
             // KPI card click shortcuts
+            kpiOverdue.ClickMode = KpiClickMode.InPlaceFilter;
+            kpiToday.ClickMode = KpiClickMode.InPlaceFilter;
+            kpiUpcoming.ClickMode = KpiClickMode.InPlaceFilter;
+            kpiCompleted.ClickMode = KpiClickMode.InPlaceFilter;
+
             kpiOverdue.Cursor = Cursors.Hand;
             kpiToday.Cursor = Cursors.Hand;
             kpiUpcoming.Cursor = Cursors.Hand;
             kpiCompleted.Cursor = Cursors.Hand;
 
-            kpiOverdue.Click += (_, _) => SetFilter("Overdue");
-            kpiToday.Click += (_, _) => SetFilter("Today");
-            kpiUpcoming.Click += (_, _) => SetFilter("Upcoming");
-            kpiCompleted.Click += (_, _) => SetFilter("Completed");
+            kpiOverdue.Click += (_, _) => ToggleOrSetFilter("Overdue");
+            kpiToday.Click += (_, _) => ToggleOrSetFilter("Today");
+            kpiUpcoming.Click += (_, _) => ToggleOrSetFilter("Upcoming");
+            kpiCompleted.Click += (_, _) => ToggleOrSetFilter("Completed");
 
             grid.CellPainting += GridCellPainting;
             grid.CellFormatting += GridCellFormatting;
@@ -281,9 +287,25 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             btnFilterCompleted.Text = $"Completed ({counts.Completed})";
         }
 
-        private void SetFilter(string filter)
+        public void ToggleOrSetFilter(string filter)
+        {
+            if (string.Equals(_filterCategory, filter, StringComparison.OrdinalIgnoreCase) && !string.Equals(filter, "All", StringComparison.OrdinalIgnoreCase))
+            {
+                SetFilter("All");
+            }
+            else
+            {
+                SetFilter(filter);
+            }
+        }
+
+        public void SetFilter(string filter)
         {
             _filterCategory = filter;
+            if (!string.Equals(_filterCategory, "All", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(txtSearch.Text))
+            {
+                txtSearch.Clear();
+            }
             UpdateFilterPillStyles();
             ApplyFilterAndSearch();
         }
@@ -304,6 +326,11 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
                 bool active = string.Equals(_filterCategory, name, StringComparison.OrdinalIgnoreCase);
                 UiRadiusHelper.StyleFilterPill(btn, active);
             }
+
+            kpiOverdue.SetSelected(string.Equals(_filterCategory, "Overdue", StringComparison.OrdinalIgnoreCase));
+            kpiToday.SetSelected(string.Equals(_filterCategory, "Today", StringComparison.OrdinalIgnoreCase));
+            kpiUpcoming.SetSelected(string.Equals(_filterCategory, "Upcoming", StringComparison.OrdinalIgnoreCase));
+            kpiCompleted.SetSelected(string.Equals(_filterCategory, "Completed", StringComparison.OrdinalIgnoreCase));
         }
 
         private void ApplyFilterAndSearch()
@@ -620,14 +647,7 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
 
         private void ArchiveFollowUp(TaskReminder reminder)
         {
-            var confirm = MessageBox.Show(
-                $"Are you sure you want to archive the follow-up '{reminder.Title}'?\n\nThis will remove it from your active list while preserving historical data.",
-                "Archive Follow-Up",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question
-            );
-
-            if (confirm == DialogResult.Yes)
+            if (UiStyleConstants.ConfirmArchive(this, reminder.Title, "follow-up"))
             {
                 _controller.SoftDelete(reminder.TaskReminderId);
                 RefreshData();

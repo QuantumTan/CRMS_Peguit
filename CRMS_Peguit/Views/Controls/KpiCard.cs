@@ -9,20 +9,55 @@ using CRMS_Peguit.winforms.Services;
 namespace CRMS_Peguit.winforms.Controls
 {
     /// <summary>
+    /// Determines the interaction mode of the KPI card per the industry standard:
+    /// - InPlaceFilter: Grid is present on this screen -> click filters that grid in place (Case 1).
+    /// - Navigate: No grid is present on this screen -> click navigates to target screen with pre-applied filter (Case 2).
+    /// </summary>
+    public enum KpiClickMode
+    {
+        InPlaceFilter, // Case 1: Filters grid on current screen in place
+        Navigate       // Case 2: Navigates to screen that has a grid, pre-filtered
+    }
+
+    /// <summary>
     /// Modern vertical-stacked KPI metric card following the Tailwind/Lucide design system:
     /// - Top row: Subdued uppercase title + rounded tinted icon container on the top-right
     /// - Main value: Prominent bold metric beneath the title (text-3xl font-bold text-slate-900)
     /// - Bottom row: Secondary metric / trend or status indicator
     /// - Clean white surface, rounded-xl (12px), subtle border, and soft elevation shadow
+    /// - Supports both InPlaceFilter and Navigate modes selected at construction time
     /// </summary>
     public class KpiCard : Panel
     {
         private readonly Label _lblTitle;
         private readonly Label _lblValue;
         private readonly Label _lblSubtitle;
+        private readonly Label _lblNavHint;
 
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public string FilterKey { get; }
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool IsSelected { get; private set; }
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public KpiClickMode Mode { get; private set; } = KpiClickMode.InPlaceFilter;
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public KpiClickMode ClickMode
+        {
+            get => Mode;
+            set => SetMode(value);
+        }
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public string? NavigationTarget { get; set; }
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public string? PreAppliedFilter { get; set; }
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public bool AutoToggleOnFilterClick { get; set; } = false;
 
         private Color _accentColor;
         private Color _accentBgColor;
@@ -41,16 +76,17 @@ namespace CRMS_Peguit.winforms.Controls
         private const int RightPadding = 16;
         private const int TopPadding = 14;
 
-        public KpiCard() : this("KPI", "all", AzureTints.SkylineBlue, KpiIconType.None)
+        public KpiCard() : this("KPI", "all", AzureTints.SkylineBlue, KpiIconType.None, null, KpiClickMode.InPlaceFilter)
         {
         }
 
-        public KpiCard(string title, string filterKey, Color accentColor, KpiIconType icon = KpiIconType.None, string? subtitle = null)
+        public KpiCard(string title, string filterKey, Color accentColor, KpiIconType icon = KpiIconType.None, string? subtitle = null, KpiClickMode mode = KpiClickMode.InPlaceFilter)
         {
             FilterKey = filterKey;
             _accentColor = accentColor;
             _iconType = icon != KpiIconType.None ? icon : InferIconFromKey(filterKey, title);
             _accentBgColor = GetTintBackground(_accentColor);
+            Mode = mode;
 
             SetStyle(ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.UserPaint |
@@ -99,14 +135,29 @@ namespace CRMS_Peguit.winforms.Controls
                 TextAlign = ContentAlignment.MiddleLeft
             };
 
+            // 4. Case 2 Navigate Hint: Subtle "View full report →" affordance
+            _lblNavHint = new Label
+            {
+                Text = "View report →",
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+                ForeColor = _accentColor,
+                BackColor = Color.Transparent,
+                AutoSize = true,
+                Cursor = Cursors.Hand,
+                Visible = false,
+                TextAlign = ContentAlignment.MiddleRight
+            };
+
             Controls.Add(_lblTitle);
             Controls.Add(_lblValue);
             Controls.Add(_lblSubtitle);
+            Controls.Add(_lblNavHint);
 
             // Forward child clicks to card
             _lblTitle.Click += (_, _) => OnClick(EventArgs.Empty);
             _lblValue.Click += (_, _) => OnClick(EventArgs.Empty);
             _lblSubtitle.Click += (_, _) => OnClick(EventArgs.Empty);
+            _lblNavHint.Click += (_, _) => OnClick(EventArgs.Empty);
 
             // Forward hover states
             MouseEnter += (_, _) => SetHoverState(true);
@@ -117,12 +168,34 @@ namespace CRMS_Peguit.winforms.Controls
             _lblValue.MouseLeave += (_, _) => SetHoverState(false);
             _lblSubtitle.MouseEnter += (_, _) => SetHoverState(true);
             _lblSubtitle.MouseLeave += (_, _) => SetHoverState(false);
+            _lblNavHint.MouseEnter += (_, _) => SetHoverState(true);
+            _lblNavHint.MouseLeave += (_, _) => SetHoverState(false);
 
             GotFocus += (_, _) => Invalidate();
             LostFocus += (_, _) => Invalidate();
             SizeChanged += (_, _) => LayoutCard();
 
             LayoutCard();
+            UpdateTooltips();
+        }
+
+        public KpiCard(string title, string filterKey, Color accentColor, KpiClickMode mode)
+            : this(title, filterKey, accentColor, KpiIconType.None, null, mode)
+        {
+        }
+
+        public void SetMode(KpiClickMode mode)
+        {
+            if (Mode != mode)
+            {
+                Mode = mode;
+                if (Mode != KpiClickMode.Navigate)
+                {
+                    _lblNavHint.Visible = false;
+                }
+                UpdateTooltips();
+                Invalidate();
+            }
         }
 
         public void SetTitle(string title)
@@ -140,6 +213,10 @@ namespace CRMS_Peguit.winforms.Controls
         protected override void OnClick(EventArgs e)
         {
             base.OnClick(e);
+            if (Mode == KpiClickMode.InPlaceFilter && AutoToggleOnFilterClick)
+            {
+                SetSelected(!IsSelected);
+            }
             _clickAction?.Invoke();
         }
 
@@ -150,6 +227,7 @@ namespace CRMS_Peguit.winforms.Controls
             {
                 _accentColor = accentColor.Value;
                 _accentBgColor = accentBgColor ?? GetTintBackground(_accentColor);
+                _lblNavHint.ForeColor = _accentColor;
             }
             Invalidate();
         }
@@ -181,11 +259,23 @@ namespace CRMS_Peguit.winforms.Controls
 
         private void UpdateTooltips()
         {
-            string tip = !string.IsNullOrWhiteSpace(_fullValueTooltip) ? _fullValueTooltip : _lblValue.Text;
+            string baseTip = !string.IsNullOrWhiteSpace(_fullValueTooltip) ? _fullValueTooltip : _lblValue.Text;
+            string tip;
+            if (Mode == KpiClickMode.Navigate)
+            {
+                string targetStr = !string.IsNullOrWhiteSpace(NavigationTarget) ? $" to {NavigationTarget}" : "";
+                tip = $"{baseTip} · Click to navigate{targetStr} →";
+            }
+            else
+            {
+                tip = $"{baseTip} · Click to filter in-place";
+            }
+
             _toolTip.SetToolTip(this, tip);
             _toolTip.SetToolTip(_lblValue, tip);
             _toolTip.SetToolTip(_lblTitle, tip);
             _toolTip.SetToolTip(_lblSubtitle, tip);
+            _toolTip.SetToolTip(_lblNavHint, tip);
         }
 
         public void SetSubtitle(string text, Color? textColor = null)
@@ -210,6 +300,16 @@ namespace CRMS_Peguit.winforms.Controls
             if (_isHovered != hovered)
             {
                 _isHovered = hovered;
+                if (Mode == KpiClickMode.Navigate)
+                {
+                    _lblNavHint.Visible = hovered;
+                    _lblNavHint.ForeColor = _accentColor;
+                    LayoutCard();
+                }
+                else
+                {
+                    _lblNavHint.Visible = false;
+                }
                 Invalidate();
             }
         }
@@ -253,21 +353,23 @@ namespace CRMS_Peguit.winforms.Controls
             int valueY = _lblTitle.Bottom + 2;
             _lblValue.Location = new Point(LeftPadding - 1, valueY);
 
-            // Structured secondary metric / amount layout:
-            // If primary value is compact, place secondary amount horizontally beside it with an 8px gap.
-            // Otherwise, stack it cleanly below the value with guaranteed spacing without vertical collision.
+            // Position Case 2 navigation hint on bottom-right if visible
+            if (_lblNavHint.Visible)
+            {
+                _lblNavHint.Location = new Point(Width - RightPadding - _lblNavHint.PreferredWidth, Height - _lblNavHint.PreferredHeight - 6);
+            }
+
+            // Structured secondary metric / amount layout
             const int horizontalGap = 8;
-            int availableWidth = Width - RightPadding;
+            int availableWidth = _lblNavHint.Visible ? _lblNavHint.Left - 4 : Width - RightPadding;
 
             if (_lblValue.Right + horizontalGap + _lblSubtitle.PreferredWidth <= availableWidth)
             {
-                // Position beside the value aligned near baseline
                 int subY = Math.Max(_lblTitle.Bottom + 2, _lblValue.Bottom - _lblSubtitle.PreferredHeight - 4);
                 _lblSubtitle.Location = new Point(_lblValue.Right + horizontalGap, subY);
             }
             else
             {
-                // Stack below the value with guaranteed gap
                 int subY = Math.Max(_lblValue.Bottom + 2, Height - _lblSubtitle.PreferredHeight - 6);
                 _lblSubtitle.Location = new Point(LeftPadding, subY);
             }
@@ -284,7 +386,12 @@ namespace CRMS_Peguit.winforms.Controls
             // 1. Gentle elevation shadow
             if (_isHovered)
             {
-                using var shadowPen = new Pen(Color.FromArgb(18, 15, 23, 42), 2f);
+                float shadowWidth = Mode == KpiClickMode.Navigate ? 2.5f : 2f;
+                Color shadowColor = Mode == KpiClickMode.Navigate
+                    ? Color.FromArgb(24, _accentColor.R, _accentColor.G, _accentColor.B)
+                    : Color.FromArgb(18, 15, 23, 42);
+
+                using var shadowPen = new Pen(shadowColor, shadowWidth);
                 using var shadowPath = UiRadiusHelper.CreateRoundedPath(new Rectangle(1, 2, Width - 3, Height - 3), CardRadius);
                 e.Graphics.DrawPath(shadowPen, shadowPath);
             }
@@ -295,26 +402,50 @@ namespace CRMS_Peguit.winforms.Controls
                 e.Graphics.DrawPath(shadowPen, shadowPath);
             }
 
-            // 2. Clean card background fill
-            Color bgColor = _isHovered ? Color.FromArgb(250, 252, 255) : Color.White;
+            // 2. Card background fill
+            Color bgColor;
+            if (IsSelected && Mode == KpiClickMode.InPlaceFilter)
+            {
+                bgColor = Color.FromArgb(248, 252, 255); // Soft active wash
+            }
+            else if (_isHovered)
+            {
+                bgColor = Mode == KpiClickMode.Navigate ? Color.FromArgb(252, 254, 255) : Color.FromArgb(250, 252, 255);
+            }
+            else
+            {
+                bgColor = Color.White;
+            }
+
             using (var bgBrush = new SolidBrush(bgColor))
             using (var bgPath = UiRadiusHelper.CreateRoundedPath(cardRect, CardRadius))
             {
                 e.Graphics.FillPath(bgBrush, bgPath);
             }
 
-            // 3. Subtle perimeter border
+            // 3. Perimeter border
             Color borderColor;
             float borderWidth;
-            if (IsSelected)
+            if (IsSelected && Mode == KpiClickMode.InPlaceFilter)
             {
+                // Prominent persistent selected state in Case 1
                 borderColor = Color.FromArgb(14, 165, 233); // Sky 500 (#0EA5E9)
-                borderWidth = 1.5f;
+                borderWidth = 2.0f;
             }
             else if (_isHovered)
             {
-                borderColor = Color.FromArgb(203, 213, 225); // Slate 300 (#CBD5E1)
-                borderWidth = 1f;
+                if (Mode == KpiClickMode.Navigate)
+                {
+                    // Visually distinct hover state for Case 2 (accent tint border)
+                    borderColor = _accentColor;
+                    borderWidth = 1.5f;
+                }
+                else
+                {
+                    // Case 1 hover state
+                    borderColor = Color.FromArgb(203, 213, 225); // Slate 300 (#CBD5E1)
+                    borderWidth = 1f;
+                }
             }
             else
             {
@@ -415,7 +546,6 @@ namespace CRMS_Peguit.winforms.Controls
 
         private static Color GetTintBackground(Color accent)
         {
-            // Calculate a soft, modern pastel wash (e.g. bg-blue-50, bg-emerald-50)
             int r = (int)(accent.R * 0.12f + 255 * 0.88f);
             int g = (int)(accent.G * 0.12f + 255 * 0.88f);
             int b = (int)(accent.B * 0.12f + 255 * 0.88f);

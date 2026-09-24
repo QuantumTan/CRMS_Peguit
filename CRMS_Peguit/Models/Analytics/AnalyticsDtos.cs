@@ -217,4 +217,16 @@ namespace CRMS_Peguit.winforms.Models.Analytics
             TotalValue = totalValue;
         }
     }
+
+    public class AnalyticsDetailRow
+    {
+        public string RecordType { get; set; } = string.Empty; // "Deal", "Lead", "Ticket"
+        public string Reference { get; set; } = string.Empty;  // "DL-0012", "LD-0045", "TK-0089"
+        public string Title { get; set; } = string.Empty;      // Title, Name, or Subject
+        public string Status { get; set; } = string.Empty;     // Won, Lost, Open, Qualified, etc.
+        public string AssignedTo { get; set; } = string.Empty; // Agent Full Name
+        public decimal Value { get; set; }                     // Deal Value or Budget
+        public DateTime Date { get; set; }                     // Creation or Signed Date
+        public string Details { get; set; } = string.Empty;    // Extra context (source, priority, commission)
+    }
 }

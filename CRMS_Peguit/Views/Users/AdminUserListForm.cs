@@ -6,13 +6,14 @@ using System.Drawing;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Views.Users
 {
     public partial class AdminUserListForm : UserControl
     {
         private readonly UserController _controller;
-        private Label _lblEmptyState = null!;
+        private Panel _pnlEmptyState = null!;
 
         public AdminUserListForm(string initialRoleFilter = "All Roles")
         {
@@ -30,17 +31,19 @@ namespace CRMS_Peguit.winforms.Views.Users
 
         private void InitEmptyState()
         {
-            _lblEmptyState = new Label
-            {
-                Text = "🔍 No users match your search or filter criteria.\nTry adjusting your search terms or role filter.",
-                Font = new Font("Segoe UI", 11f),
-                ForeColor = Theme.TextSecondary,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Dock = DockStyle.Fill,
-                Visible = false
-            };
-            pnlCard.Controls.Add(_lblEmptyState);
-            _lblEmptyState.BringToFront();
+            _pnlEmptyState = UiGridHelper.CreateEmptyStatePanel(
+                KpiIconType.Users,
+                "No Users Found",
+                "No users match your search or filter criteria.\nTry adjusting your search query or selecting a different role filter.",
+                () =>
+                {
+                    txtSearch.Clear();
+                    cmbRoleFilter.SelectedIndex = 0;
+                },
+                "Clear Filters & Search");
+
+            pnlCard.Controls.Add(_pnlEmptyState);
+            _pnlEmptyState.BringToFront();
         }
         
         private void BindEvents(string initialRoleFilter)
@@ -68,53 +71,62 @@ namespace CRMS_Peguit.winforms.Views.Users
         {
             if (this.IsDisposed) return;
 
-            int rightPadding = 30;
-            int leftMargin = 30;
+            int rightPadding = UiStyleConstants.PageMarginRight;
+            int leftMargin = UiStyleConstants.PageMarginLeft;
             int totalWidth = ClientSize.Width;
             int y = 88;
 
-            // Position header action button
-            btnAdd.Left = totalWidth - rightPadding - btnAdd.Width;
-            btnAdd.Top = 24;
+            // Position toolbar action button
+            int rightEdge = totalWidth - rightPadding;
+            btnAdd.Top = y;
+            btnAdd.Height = UiStyleConstants.ToolbarRowHeight;
+            btnAdd.Left = rightEdge - btnAdd.Width;
+            rightEdge = btnAdd.Left - 16;
 
             // Check if search + role + checkbox fit in single row
             int filtersWidth = 150 + 12 + chkIncludeInactive.Width;
-            int availableForSearch = totalWidth - leftMargin - rightPadding - filtersWidth - 20;
+            int availableForSearch = rightEdge - leftMargin - filtersWidth - 20;
 
-            if (availableForSearch >= 200)
+            if (availableForSearch >= 180)
             {
                 // Single row
                 txtSearch.Top = y;
                 txtSearch.Left = leftMargin;
-                txtSearch.Width = Math.Min(320, availableForSearch);
+                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
+                txtSearch.Width = Math.Min(UiStyleConstants.SearchBoxWidth, availableForSearch);
 
                 cmbRoleFilter.Top = y;
                 cmbRoleFilter.Left = txtSearch.Right + 12;
+                cmbRoleFilter.Height = UiStyleConstants.ToolbarRowHeight;
                 cmbRoleFilter.Width = 140;
 
-                chkIncludeInactive.Top = y + 3;
+                chkIncludeInactive.Top = y + (UiStyleConstants.ToolbarRowHeight - chkIncludeInactive.Height) / 2;
                 chkIncludeInactive.Left = cmbRoleFilter.Right + 16;
 
-                pnlCard.Top = 126;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - 126 - 24);
+                int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
+                pnlCard.Top = cardTop;
+                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - UiStyleConstants.PageMarginBottom);
             }
             else
             {
-                // Two rows: search on row 1, role & checkbox on row 2
+                // Two rows: search & button on row 1, role & checkbox on row 2
                 txtSearch.Top = y;
                 txtSearch.Left = leftMargin;
-                txtSearch.Width = Math.Max(180, totalWidth - leftMargin - rightPadding);
+                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
+                txtSearch.Width = Math.Max(180, rightEdge - leftMargin);
 
-                int row2Y = y + 34;
+                int row2Y = y + UiStyleConstants.ToolbarRowHeight + 10;
                 cmbRoleFilter.Top = row2Y;
                 cmbRoleFilter.Left = leftMargin;
+                cmbRoleFilter.Height = UiStyleConstants.ToolbarRowHeight;
                 cmbRoleFilter.Width = 140;
 
-                chkIncludeInactive.Top = row2Y + 3;
+                chkIncludeInactive.Top = row2Y + (UiStyleConstants.ToolbarRowHeight - chkIncludeInactive.Height) / 2;
                 chkIncludeInactive.Left = cmbRoleFilter.Right + 16;
 
-                pnlCard.Top = row2Y + 38;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - pnlCard.Top - 20);
+                int cardTop = row2Y + UiStyleConstants.ToolbarRowHeight + 14;
+                pnlCard.Top = cardTop;
+                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 20);
             }
 
             pnlCard.Left = leftMargin;
@@ -202,7 +214,7 @@ namespace CRMS_Peguit.winforms.Views.Users
 
                 grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
                 UiGridHelper.EnforceTableStandards(grid);
-                _lblEmptyState.Visible = (grid.Rows.Count == 0);
+                _pnlEmptyState.Visible = (grid.Rows.Count == 0);
             }
             catch (Exception ex)
             {

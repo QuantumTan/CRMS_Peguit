@@ -78,6 +78,36 @@ namespace CRMS_Peguit.winforms.Models.Services
             return context;
         }
 
+        public static async Task SeedAllTenantsAsync(IProgress<string>? progress = null)
+        {
+            progress?.Report("Ensuring Master Platform database and physical database mapping...");
+            using (var masterDb = CreateMasterContext())
+            {
+                // Master DB initialization and subscription records ensured by CreateMasterContext()
+            }
+
+            int[] tenantIds = { 1, 2, 3 };
+            foreach (var tid in tenantIds)
+            {
+                string tenantName = tid switch
+                {
+                    1 => "Apex Realty (Tenant 1)",
+                    2 => "BlueHorizon Properties (Tenant 2)",
+                    3 => "Crestview Holdings (Tenant 3 - Multi-Branch)",
+                    _ => $"Tenant {tid}"
+                };
+
+                progress?.Report($"[Tenant {tid}] Initializing schema & seeding datasets for {tenantName}...");
+                using var tenantDb = CreateContext(tid);
+                await DbSeeder.SeedTestUsersAsync(tenantDb, tid);
+                progress?.Report($"[Tenant {tid}] Completed seeding for {tenantName}.");
+            }
+
+            progress?.Report("All tenants successfully seeded!");
+        }
+
+        public static void SeedAllTenants() => SeedAllTenantsAsync().GetAwaiter().GetResult();
+
         private static void EnsureMasterDatabaseInitialized(MasterCrmsDbContext context)
         {
             try

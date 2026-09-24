@@ -91,8 +91,8 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             // lblTitle
             // 
             this.lblTitle.AutoSize = true;
-            this.lblTitle.Font = new System.Drawing.Font("Segoe UI", 18F, System.Drawing.FontStyle.Bold);
-            this.lblTitle.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
+            this.lblTitle.Font = CRMS_Peguit.winforms.Services.UiStyleConstants.PageTitleFont;
+            this.lblTitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextPrimary;
             this.lblTitle.Location = new System.Drawing.Point(30, 20);
             this.lblTitle.Name = "lblTitle";
             this.lblTitle.Size = new System.Drawing.Size(200, 32);
@@ -103,8 +103,8 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             // lblSubtitle
             // 
             this.lblSubtitle.AutoSize = true;
-            this.lblSubtitle.Font = new System.Drawing.Font("Segoe UI", 9.5F);
-            this.lblSubtitle.ForeColor = System.Drawing.Color.FromArgb(100, 116, 139);
+            this.lblSubtitle.Font = CRMS_Peguit.winforms.Services.UiStyleConstants.SubtitleFont;
+            this.lblSubtitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextSecondary;
             this.lblSubtitle.Location = new System.Drawing.Point(32, 56);
             this.lblSubtitle.Name = "lblSubtitle";
             this.lblSubtitle.Size = new System.Drawing.Size(120, 17);
@@ -115,7 +115,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             // 
             this.lblLoading.AutoSize = true;
             this.lblLoading.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Italic);
-            this.lblLoading.ForeColor = System.Drawing.Color.FromArgb(100, 116, 139);
+            this.lblLoading.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextSecondary;
             this.lblLoading.Location = new System.Drawing.Point(32, 56);
             this.lblLoading.Name = "lblLoading";
             this.lblLoading.Size = new System.Drawing.Size(150, 15);

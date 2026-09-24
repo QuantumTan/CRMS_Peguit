@@ -7,6 +7,7 @@ using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Auth;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Views.Users
 {
@@ -42,12 +43,12 @@ namespace CRMS_Peguit.winforms.Views.Users
             btnToggleStatus.Click += async (s, e) => await ToggleStatusAsync();
 
             btnToggleStatus.Text = _user.Status == "active" ? "Deactivate User" : "Reactivate User";
-            btnToggleStatus.BackColor = _user.Status == "active" ? Color.IndianRed : Color.MediumSeaGreen;
+            btnToggleStatus.BackColor = _user.Status == "active" ? Theme.Danger : Theme.Success;
 
             if (_user.UserId == CurrentSession.UserId)
             {
                 btnToggleStatus.Enabled = false;
-                btnToggleStatus.BackColor = Color.Gray;
+                btnToggleStatus.BackColor = Theme.StatusNeutral;
             }
 
             btnClose.Click += (s, e) => { this.DialogResult = DialogResult.OK; this.Close(); };
@@ -78,21 +79,22 @@ namespace CRMS_Peguit.winforms.Views.Users
             {
                 if (_user.Status == "active")
                 {
-                    var confirm = MessageBox.Show($"Are you sure you want to deactivate {_user.FullName}?", "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-                    if (confirm != DialogResult.Yes) return;
+                    if (!UiStyleConstants.ConfirmAction(this, "deactivate", _user.FullName, "Confirm Deactivation")) return;
                     
                     await _controller.DeactivateAsync(_user.UserId);
                     _user.Status = "inactive";
                 }
                 else
                 {
+                    if (!UiStyleConstants.ConfirmAction(this, "reactivate", _user.FullName, "Confirm Reactivation")) return;
+
                     await _controller.ReactivateAsync(_user.UserId);
                     _user.Status = "active";
                 }
 
                 lblStatusValue.Text = _user.Status.ToUpper();
                 btnToggleStatus.Text = _user.Status == "active" ? "Deactivate User" : "Reactivate User";
-                btnToggleStatus.BackColor = _user.Status == "active" ? Color.IndianRed : Color.MediumSeaGreen;
+                btnToggleStatus.BackColor = _user.Status == "active" ? Theme.Danger : Theme.Success;
                 
                 MessageBox.Show($"User is now {_user.Status}.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }

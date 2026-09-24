@@ -23,6 +23,8 @@ namespace CRMS_Peguit.winforms.Models.Roles
                 "Dashboard",
                 "AdminPanel",
                 "BusinessIntelligence",
+                "Reports",
+                "Analytics",
                 "Subscription",
                 "Branching",
                 "Administrators",

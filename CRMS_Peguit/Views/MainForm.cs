@@ -721,17 +721,37 @@ namespace CRMS_Peguit.winforms
 
         public void NavigateTo(string module)
         {
+            NavigateTo(module, null);
+        }
+
+        public void NavigateTo(string module, string? initialFilter)
+        {
+            if (string.IsNullOrWhiteSpace(initialFilter) && module.Contains(':'))
+            {
+                var parts = module.Split(':', 2);
+                module = parts[0].Trim();
+                initialFilter = parts[1].Trim();
+            }
+
             switch (module.ToLowerInvariant())
             {
                 case "customers":
                     if (!CurrentSession.CanAccess("Customers")) return;
                     SetActiveNavButton(btnCustomers);
                     BtnCustomersClick(btnCustomers, EventArgs.Empty);
+                    if (!string.IsNullOrWhiteSpace(initialFilter) && _viewCache.TryGetValue("Customers", out var cv) && cv is CustomersView custView)
+                    {
+                        custView.SetFilter(initialFilter);
+                    }
                     break;
                 case "leads":
                     if (!CurrentSession.CanAccess("Leads")) return;
                     SetActiveNavButton(btnLeads);
                     BtnLeadsClick(btnLeads, EventArgs.Empty);
+                    if (!string.IsNullOrWhiteSpace(initialFilter) && _viewCache.TryGetValue("Leads", out var lv) && lv is LeadsView leadsView)
+                    {
+                        leadsView.SetFilter(initialFilter);
+                    }
                     break;
                 case "properties":
                     if (!CurrentSession.CanAccess("Properties")) return;
@@ -742,6 +762,10 @@ namespace CRMS_Peguit.winforms
                     if (!CurrentSession.CanAccess("Deals")) return;
                     SetActiveNavButton(btnDeals);
                     BtnDealsClick(btnDeals, EventArgs.Empty);
+                    if (!string.IsNullOrWhiteSpace(initialFilter) && _viewCache.TryGetValue("Deals", out var dv) && dv is DealsView dealsView)
+                    {
+                        dealsView.SetFilter(initialFilter);
+                    }
                     break;
                 case "campaigns":
                     if (!CurrentSession.CanAccess("Campaigns")) return;
@@ -758,6 +782,10 @@ namespace CRMS_Peguit.winforms
                     if (!CurrentSession.CanAccess("SupportTickets")) return;
                     SetActiveNavButton(btnSupportTickets);
                     BtnSupportTicketsClick(btnSupportTickets, EventArgs.Empty);
+                    if (!string.IsNullOrWhiteSpace(initialFilter) && _viewCache.TryGetValue("SupportTickets", out var stv) && stv is CRMS_Peguit.winforms.Views.SupportTickets.SupportTicketsView ticketsView)
+                    {
+                        ticketsView.SetFilter(initialFilter);
+                    }
                     break;
                 case "followups":
                 case "tasksreminders":
@@ -765,6 +793,10 @@ namespace CRMS_Peguit.winforms
                     if (!CurrentSession.CanAccess("TasksReminders") || !RbacService.IsAgent) return;
                     SetActiveNavButton(btnFollowUps);
                     BtnFollowUpsClick(btnFollowUps, EventArgs.Empty);
+                    if (!string.IsNullOrWhiteSpace(initialFilter) && _viewCache.TryGetValue("FollowUps", out var fv) && fv is FollowUpsView fuView)
+                    {
+                        fuView.SetFilter(initialFilter);
+                    }
                     break;
                 case "reports":
                 case "reports:commission":
@@ -787,11 +819,9 @@ namespace CRMS_Peguit.winforms
                         {
                             rptView.SelectReport("Commission");
                         }
-                        else if (modLower.Contains(':'))
+                        else if (!string.IsNullOrWhiteSpace(initialFilter))
                         {
-                            var subReport = module.Split(':', 2)[1].Trim();
-                            if (!string.IsNullOrEmpty(subReport))
-                                rptView.SelectReport(subReport);
+                            rptView.SelectReport(initialFilter);
                         }
                     }
                     break;
@@ -807,6 +837,10 @@ namespace CRMS_Peguit.winforms
                         ana.NavigationRequested += m => NavigateTo(m);
                         return ana;
                     });
+                    if (!string.IsNullOrWhiteSpace(initialFilter) && _viewCache.TryGetValue("Analytics", out var cachedAna) && cachedAna is CRMS_Peguit.winforms.Views.Analytics.AnalyticsView anaView)
+                    {
+                        anaView.SetFilter(initialFilter);
+                    }
                     break;
                 case "salesstaff":
                 case "manageagents":

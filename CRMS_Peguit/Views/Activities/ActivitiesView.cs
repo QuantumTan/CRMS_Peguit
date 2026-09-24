@@ -7,7 +7,9 @@ using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
+using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 using CRMS_Peguit.winforms.Views.Customers;
 using CRMS_Peguit.winforms.Views.FollowUps;
 using CRMS_Peguit.winforms.Views.Leads;
@@ -33,6 +35,9 @@ namespace CRMS_Peguit.winforms.Views.Activities
             BindEvents();
             UpdateFilterPillStyles();
             RefreshData();
+
+            this.Load += (_, _) => LayoutToolbar();
+            this.Resize += (_, _) => LayoutToolbar();
         }
 
         private void InitGridColumns()
@@ -113,118 +118,169 @@ namespace CRMS_Peguit.winforms.Views.Activities
 
         private void InitEmptyState()
         {
-            _pnlEmptyState = new Panel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = Color.White,
-                Visible = false
-            };
-
-            var lblEmptyIcon = new Label
-            {
-                Text = "⚡",
-                Font = new Font("Segoe UI Emoji", 36f),
-                ForeColor = Color.FromArgb(148, 163, 184),
-                Size = new Size(80, 60),
-                TextAlign = ContentAlignment.MiddleCenter
-            };
-
-            var lblEmptyTitle = new Label
-            {
-                Text = "No activities or interactions found",
-                Font = new Font("Segoe UI", 13f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(30, 41, 59),
-                AutoSize = true
-            };
-
-            var lblEmptySub = new Label
-            {
-                Text = "Log calls, emails, and meetings to maintain a complete client relationship history.",
-                Font = new Font("Segoe UI", 9.5f),
-                ForeColor = Color.FromArgb(100, 116, 139),
-                AutoSize = true
-            };
-
-            var btnEmptyAdd = new Button
-            {
-                Text = "+ Log First Activity",
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                BackColor = Theme.Primary,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                Size = new Size(160, 36),
-                Cursor = Cursors.Hand
-            };
-            btnEmptyAdd.FlatAppearance.BorderSize = 0;
-            UiRadiusHelper.StyleButton(btnEmptyAdd, 8);
-            UiRadiusHelper.AttachHoverFeedback(btnEmptyAdd, Theme.Primary, Theme.PrimaryDark);
-            btnEmptyAdd.Click += (_, _) => BtnAddClick();
-
-            _pnlEmptyState.Resize += (_, _) =>
-            {
-                int cx = _pnlEmptyState.Width / 2;
-                int cy = _pnlEmptyState.Height / 2 - 40;
-                lblEmptyIcon.Location = new Point(cx - lblEmptyIcon.Width / 2, cy - 60);
-                lblEmptyTitle.Location = new Point(cx - lblEmptyTitle.Width / 2, cy + 5);
-                lblEmptySub.Location = new Point(cx - lblEmptySub.Width / 2, cy + 32);
-                btnEmptyAdd.Location = new Point(cx - btnEmptyAdd.Width / 2, cy + 65);
-            };
-
-            _pnlEmptyState.Controls.Add(lblEmptyIcon);
-            _pnlEmptyState.Controls.Add(lblEmptyTitle);
-            _pnlEmptyState.Controls.Add(lblEmptySub);
-            _pnlEmptyState.Controls.Add(btnEmptyAdd);
+            _pnlEmptyState = UiGridHelper.CreateEmptyStatePanel(
+                KpiIconType.Clock,
+                "No Activities Found",
+                "No activities match your search or filter criteria.\nLog calls, emails, and meetings to maintain a complete client relationship history.",
+                () =>
+                {
+                    txtSearch.Clear();
+                    ToggleOrSetFilter("All");
+                },
+                "Clear Filters & Search");
 
             pnlCard.Controls.Add(_pnlEmptyState);
+            _pnlEmptyState.BringToFront();
         }
 
         private void ApplyStyling()
         {
             UiRadiusHelper.StyleButton(btnAdd, 8);
             UiRadiusHelper.AttachHoverFeedback(btnAdd, Theme.Primary, Theme.PrimaryDark);
-
-            UiRadiusHelper.ApplyRoundedCorners(pnlCard, 10);
-            pnlCard.Paint += (s, e) =>
-            {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                var rect = new Rectangle(0, 0, pnlCard.Width - 1, pnlCard.Height - 1);
-                using var path = UiRadiusHelper.CreateRoundedPath(rect, 10);
-                using var pen = new Pen(Color.FromArgb(226, 232, 240), 1f);
-                e.Graphics.DrawPath(pen, path);
-            };
+            UiRadiusHelper.StyleCard(pnlCard, 12);
 
             var filterPills = new[] { btnFilterAll, btnFilterCalls, btnFilterEmails, btnFilterMeetings, btnFilterSystem };
             foreach (var pill in filterPills)
             {
-                UiRadiusHelper.StyleButton(pill, 6);
+                UiRadiusHelper.ApplyPillShape(pill);
             }
+        }
+
+        private void LayoutToolbar()
+        {
+            if (this.IsDisposed) return;
+
+            int rightPadding = UiStyleConstants.PageMarginRight;
+            int leftMargin = UiStyleConstants.PageMarginLeft;
+            int totalWidth = ClientSize.Width;
+
+            // 1. Position and size KPI container
+            pnlKpiContainer.Left = leftMargin;
+            pnlKpiContainer.Top = Math.Max(90, lblSubtitle.Bottom + 10);
+            pnlKpiContainer.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
+            pnlKpiContainer.Height = UiStyleConstants.KpiRowHeight;
+
+            // 2. Position toolbar row (Search box on left, filter pills in center, action buttons rightmost at identical y)
+            int y = pnlKpiContainer.Bottom + 16;
+            int rightEdge = totalWidth - rightPadding;
+
+            if (btnAdd.Visible)
+            {
+                btnAdd.Top = y;
+                btnAdd.Height = UiStyleConstants.ToolbarRowHeight;
+                btnAdd.Left = rightEdge - btnAdd.Width;
+                rightEdge = btnAdd.Left - 10;
+            }
+
+            var pills = new[] { btnFilterSystem, btnFilterMeetings, btnFilterEmails, btnFilterCalls, btnFilterAll };
+            int filterRight = rightEdge;
+            int totalFilterWidth = 0;
+            foreach (var p in pills) totalFilterWidth += p.Width + 6;
+
+            int availableForSearch = filterRight - leftMargin - totalFilterWidth - 16;
+
+            if (availableForSearch >= 180)
+            {
+                // Single row
+                foreach (var p in pills)
+                {
+                    p.Top = y;
+                    p.Height = UiStyleConstants.ToolbarRowHeight;
+                    p.Left = filterRight - p.Width;
+                    filterRight = p.Left - 6;
+                }
+
+                txtSearch.Top = y;
+                txtSearch.Left = leftMargin;
+                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
+                txtSearch.Width = Math.Min(UiStyleConstants.SearchBoxWidth, availableForSearch);
+
+                int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
+                pnlCard.Top = cardTop;
+                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - UiStyleConstants.PageMarginBottom);
+            }
+            else
+            {
+                // Two rows: search on row 1, filter pills wrapped to row 2
+                txtSearch.Top = y;
+                txtSearch.Left = leftMargin;
+                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
+                txtSearch.Width = Math.Max(180, rightEdge - leftMargin);
+
+                int pillY = y + UiStyleConstants.ToolbarRowHeight + 10;
+                int filterX = leftMargin;
+                var forwardPills = new[] { btnFilterAll, btnFilterCalls, btnFilterEmails, btnFilterMeetings, btnFilterSystem };
+                foreach (var p in forwardPills)
+                {
+                    p.Top = pillY;
+                    p.Height = UiStyleConstants.ToolbarRowHeight;
+                    p.Left = filterX;
+                    filterX += p.Width + 6;
+                }
+
+                int cardTop = pillY + UiStyleConstants.ToolbarRowHeight + 14;
+                pnlCard.Top = cardTop;
+                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 20);
+            }
+
+            pnlCard.Left = leftMargin;
+            pnlCard.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
         }
 
         private void BindEvents()
         {
             btnAdd.Click += (_, _) => BtnAddClick();
 
-            btnFilterAll.Click += (_, _) => SetFilter("All");
-            btnFilterCalls.Click += (_, _) => SetFilter("Calls");
-            btnFilterEmails.Click += (_, _) => SetFilter("Emails");
-            btnFilterMeetings.Click += (_, _) => SetFilter("Meetings");
-            btnFilterSystem.Click += (_, _) => SetFilter("System Events");
+            kpiTotal.ClickMode = KpiClickMode.InPlaceFilter;
+            kpiCalls.ClickMode = KpiClickMode.InPlaceFilter;
+            kpiEmails.ClickMode = KpiClickMode.InPlaceFilter;
+            kpiMeetings.ClickMode = KpiClickMode.InPlaceFilter;
 
-            kpiTotal.Click += (_, _) => SetFilter("All");
-            kpiCalls.Click += (_, _) => SetFilter("Calls");
-            kpiEmails.Click += (_, _) => SetFilter("Emails");
-            kpiMeetings.Click += (_, _) => SetFilter("Meetings");
+            btnFilterAll.Click += (_, _) => ToggleOrSetFilter("All");
+            btnFilterCalls.Click += (_, _) => ToggleOrSetFilter("Calls");
+            btnFilterEmails.Click += (_, _) => ToggleOrSetFilter("Emails");
+            btnFilterMeetings.Click += (_, _) => ToggleOrSetFilter("Meetings");
+            btnFilterSystem.Click += (_, _) => ToggleOrSetFilter("System Events");
 
-            txtSearch.TextChanged += (_, _) => RefreshData();
+            kpiTotal.Click += (_, _) => ToggleOrSetFilter("All");
+            kpiCalls.Click += (_, _) => ToggleOrSetFilter("Calls");
+            kpiEmails.Click += (_, _) => ToggleOrSetFilter("Emails");
+            kpiMeetings.Click += (_, _) => ToggleOrSetFilter("Meetings");
+
+            txtSearch.TextChanged += (_, _) =>
+            {
+                if (!string.IsNullOrWhiteSpace(txtSearch.Text) && !string.Equals(_filterCategory, "All", StringComparison.OrdinalIgnoreCase))
+                {
+                    _filterCategory = "All";
+                    UpdateFilterPillStyles();
+                }
+                RefreshData();
+            };
 
             grid.CellPainting += Grid_CellPainting;
             grid.CellDoubleClick += Grid_CellDoubleClick;
             grid.CellMouseDown += Grid_CellMouseDown;
         }
 
-        private void SetFilter(string filter)
+        public void ToggleOrSetFilter(string filter)
+        {
+            if (string.Equals(_filterCategory, filter, StringComparison.OrdinalIgnoreCase) && !string.Equals(filter, "All", StringComparison.OrdinalIgnoreCase))
+            {
+                SetFilter("All");
+            }
+            else
+            {
+                SetFilter(filter);
+            }
+        }
+
+        public void SetFilter(string filter)
         {
             _filterCategory = filter;
+            if (!string.Equals(_filterCategory, "All", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(txtSearch.Text))
+            {
+                txtSearch.Clear();
+            }
             UpdateFilterPillStyles();
             RefreshData();
         }
@@ -245,6 +301,11 @@ namespace CRMS_Peguit.winforms.Views.Activities
                 bool active = string.Equals(_filterCategory, key, StringComparison.OrdinalIgnoreCase);
                 UiRadiusHelper.StyleFilterPill(btn, active);
             }
+
+            kpiTotal.SetSelected(string.Equals(_filterCategory, "All", StringComparison.OrdinalIgnoreCase));
+            kpiCalls.SetSelected(string.Equals(_filterCategory, "Calls", StringComparison.OrdinalIgnoreCase));
+            kpiEmails.SetSelected(string.Equals(_filterCategory, "Emails", StringComparison.OrdinalIgnoreCase));
+            kpiMeetings.SetSelected(string.Equals(_filterCategory, "Meetings", StringComparison.OrdinalIgnoreCase));
         }
 
         public void RefreshData()

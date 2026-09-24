@@ -709,16 +709,16 @@ namespace CRMS_Peguit.winforms.Views.Customers
                     _btnMessage.Location = new Point(24, 13);
                 }
 
-                // Right-aligned dialog actions (8px spacing)
+                // Right-aligned dialog actions (8px spacing) — Primary action rightmost, Close to its left
                 int right = _pnlFooter.ClientSize.Width - 24;
-                if (_btnClose != null)
-                {
-                    _btnClose.Location = new Point(right - _btnClose.Width, 13);
-                    right -= (_btnClose.Width + 8);
-                }
                 if (_btnEdit != null && _btnEdit.Visible)
                 {
                     _btnEdit.Location = new Point(right - _btnEdit.Width, 13);
+                    right -= (_btnEdit.Width + 8);
+                }
+                if (_btnClose != null)
+                {
+                    _btnClose.Location = new Point(right - _btnClose.Width, 13);
                 }
             }
 

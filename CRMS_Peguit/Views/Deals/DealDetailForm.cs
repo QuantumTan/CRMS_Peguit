@@ -709,14 +709,14 @@ namespace CRMS_Peguit.winforms.Views.Deals
             if (_pnlFooter != null)
             {
                 int right = _pnlFooter.ClientSize.Width - 24;
-                if (_btnClose != null)
-                {
-                    _btnClose.Location = new Point(right - _btnClose.Width, 13);
-                    right -= (_btnClose.Width + 8);
-                }
                 if (_btnEdit != null && _btnEdit.Visible)
                 {
                     _btnEdit.Location = new Point(right - _btnEdit.Width, 13);
+                    right -= (_btnEdit.Width + 8);
+                }
+                if (_btnClose != null)
+                {
+                    _btnClose.Location = new Point(right - _btnClose.Width, 13);
                 }
                 if (_btnViewContract != null)
                 {

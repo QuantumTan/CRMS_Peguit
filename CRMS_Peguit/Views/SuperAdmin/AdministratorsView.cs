@@ -12,11 +12,12 @@ using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
 
 // =============================================================================
-// AdministratorsView — Platform System Users & Administrators Management
-//
-// DATA BOUNDARY: SuperAdminController.GetAdministratorsAsync() queries
-// Users + Persons + Roles (per tenant) + Company names (MasterDb).
-// Strict multi-tenant isolation — NO customer/deal/ticket CRM tables accessed.
+// AdministratorsView — Admins & Roles
+// Matches Figma Image 3:
+//   - Header: "Admins & Roles" + "+ Invite Admin" button
+//   - 4 KPI cards: TOTAL ADMINS, ACTIVE, MFA ENABLED, WITHOUT MFA
+//   - Table: All Administrators with "Search by name or email..."
+//   - Columns: USER (avatar + name + email), ROLE, STATUS, MFA, LAST LOGIN, JOINED, ACTIONS
 // =============================================================================
 
 namespace CRMS_Peguit.winforms.Views.SuperAdmin
@@ -30,19 +31,13 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         private TableLayoutPanel _pnlKpis = null!;
         private KpiCard _kpiTotal = null!;
         private KpiCard _kpiActive = null!;
-        private KpiCard _kpiSuperAdmins = null!;
-        private KpiCard _kpiInactive = null!;
+        private KpiCard _kpiMfaEnabled = null!;
+        private KpiCard _kpiWithoutMfa = null!;
         private string _activeKpiFilter = "all";
 
-        // ── Toolbar & Filter Controls ─────────────────────────────────────────
+        // ── Toolbar Controls ─────────────────────────────────────────────────
         private TextBox _txtSearch = null!;
-        private ComboBox _cmbRoleFilter = null!;
-        private ComboBox _cmbStatusFilter = null!;
-        private Button _btnResetFilters = null!;
-        private Label _lblCount = null!;
-        private Button _btnCreate = null!;
-        private Button _btnToggleStatus = null!;
-        private Button _btnRefresh = null!;
+        private Button _btnInviteAdmin = null!;
 
         // ── Grid ─────────────────────────────────────────────────────────────
         private DataGridView _grid = null!;
@@ -67,7 +62,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Dock = DockStyle.Top,
                 Height = 84,
                 BackColor = Theme.Surface,
-                Padding = new Padding(28, 16, 28, 16)
+                Padding = new Padding(28, 18, 28, 16)
             };
             pnlPageHeader.Paint += (s, e) =>
             {
@@ -77,74 +72,49 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
             var lblTitle = new Label
             {
-                Text = "👥  System Users & Administrators",
-                Font = new Font("Segoe UI", 16f, FontStyle.Bold),
+                Text = "Admins & Roles",
+                Font = UiStyleConstants.PageTitleFont,
                 ForeColor = Theme.TextPrimary,
                 AutoSize = true,
-                Location = new Point(28, 14)
+                Location = new Point(28, 16)
             };
             var lblSub = new Label
             {
-                Text = "Platform Governance — Manage Administrator & Manager accounts across all tenant databases",
-                Font = new Font("Segoe UI", 9.5f),
+                Text = "Manage administrator accounts and role-based access permissions",
+                Font = UiStyleConstants.SubtitleFont,
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
-                Location = new Point(28, 44)
+                Location = new Point(28, 46)
             };
             pnlPageHeader.Controls.Add(lblSub);
             pnlPageHeader.Controls.Add(lblTitle);
 
-            // Top Header Action Buttons (Right-aligned)
-            var pnlHeaderActions = new FlowLayoutPanel
+            // Right Action: "+ Invite Admin"
+            _btnInviteAdmin = new Button
             {
-                FlowDirection = FlowDirection.RightToLeft,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Height = 42,
-                Width = 340,
-                Location = new Point(pnlPageHeader.Width - 364, 18),
-                BackColor = Color.Transparent
-            };
-            pnlPageHeader.SizeChanged += (_, _) =>
-                pnlHeaderActions.Location = new Point(pnlPageHeader.Width - 364, 18);
-
-            _btnCreate = new Button
-            {
-                Text = "＋  Create User",
-                Size = new Size(130, 36),
+                Text = "＋ Invite Admin",
+                Size = new Size(136, 38),
                 BackColor = Theme.Primary,
                 ForeColor = Color.White,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 Cursor = Cursors.Hand,
-                Margin = new Padding(6, 0, 0, 0)
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(pnlPageHeader.Width - 164, 22)
             };
-            UiRadiusHelper.StyleButton(_btnCreate, 6);
-            _btnCreate.Click += BtnCreate_Click;
-
-            _btnRefresh = new Button
-            {
-                Text = "↻  Refresh",
-                Size = new Size(100, 36),
-                BackColor = Theme.Surface,
-                ForeColor = Theme.TextPrimary,
-                Font = new Font("Segoe UI", 9f, FontStyle.Regular),
-                Cursor = Cursors.Hand,
-                Margin = new Padding(6, 0, 0, 0)
-            };
-            UiRadiusHelper.StyleButton(_btnRefresh, 6);
-            _btnRefresh.Click += async (_, _) => await LoadDataAsync();
-
-            pnlHeaderActions.Controls.Add(_btnCreate);
-            pnlHeaderActions.Controls.Add(_btnRefresh);
-            pnlPageHeader.Controls.Add(pnlHeaderActions);
+            UiRadiusHelper.StyleButton(_btnInviteAdmin, 6);
+            _btnInviteAdmin.Click += BtnInviteAdmin_Click;
+            pnlPageHeader.SizeChanged += (_, _) =>
+                _btnInviteAdmin.Location = new Point(pnlPageHeader.Width - 164, 22);
+            pnlPageHeader.Controls.Add(_btnInviteAdmin);
 
             // ──────────────────────────────────────────────────────────────────
-            // 2. KPI METRIC CARDS ROW (Dock = Top)
+            // 2. 4 TOP KPI METRIC CARDS (Dock = Top)
             // ──────────────────────────────────────────────────────────────────
             var pnlKpiContainer = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 120,
-                Padding = new Padding(24, 16, 24, 4),
+                Height = 114,
+                Padding = new Padding(28, 16, 28, 8),
                 BackColor = Theme.Background
             };
 
@@ -159,173 +129,101 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _pnlKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
             _pnlKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
 
-            _kpiTotal = new KpiCard("Total Administrators", "all", Theme.Primary, KpiIconType.Users, "Across all tenants")
+            _kpiTotal = new KpiCard("TOTAL ADMINS", "all", Theme.TextPrimary, KpiIconType.Users)
             {
                 Dock = DockStyle.Fill,
-                Margin = new Padding(0, 0, 8, 0)
+                Margin = new Padding(0, 0, 10, 0)
             };
-            _kpiActive = new KpiCard("Active Accounts", "active", Color.FromArgb(16, 185, 129), KpiIconType.Target, "Normal access state")
+            _kpiActive = new KpiCard("ACTIVE", "active", Theme.StatusSuccess, KpiIconType.Target)
             {
                 Dock = DockStyle.Fill,
-                Margin = new Padding(4, 0, 8, 0)
+                Margin = new Padding(5, 0, 10, 0)
             };
-            _kpiSuperAdmins = new KpiCard("Super Admins", "superadmin", Color.FromArgb(139, 92, 246), KpiIconType.Users, "Root platform authority")
+            _kpiMfaEnabled = new KpiCard("MFA ENABLED", "mfa_on", Theme.StatusInfo, KpiIconType.Users)
             {
                 Dock = DockStyle.Fill,
-                Margin = new Padding(4, 0, 8, 0)
+                Margin = new Padding(5, 0, 10, 0)
             };
-            _kpiInactive = new KpiCard("Suspended / Inactive", "inactive", Color.FromArgb(239, 68, 68), KpiIconType.AlertTriangle, "Blocked login state")
+            _kpiWithoutMfa = new KpiCard("WITHOUT MFA", "mfa_off", Theme.StatusPending, KpiIconType.AlertTriangle)
             {
                 Dock = DockStyle.Fill,
-                Margin = new Padding(4, 0, 0, 0)
+                Margin = new Padding(5, 0, 0, 0)
             };
 
             // Wire KPI Click Filters
             _kpiTotal.SetAction(() => SelectKpiFilter("all"));
             _kpiActive.SetAction(() => SelectKpiFilter("active"));
-            _kpiSuperAdmins.SetAction(() => SelectKpiFilter("superadmin"));
-            _kpiInactive.SetAction(() => SelectKpiFilter("inactive"));
+            _kpiMfaEnabled.SetAction(() => SelectKpiFilter("mfa_on"));
+            _kpiWithoutMfa.SetAction(() => SelectKpiFilter("mfa_off"));
 
             _pnlKpis.Controls.Add(_kpiTotal, 0, 0);
             _pnlKpis.Controls.Add(_kpiActive, 1, 0);
-            _pnlKpis.Controls.Add(_kpiSuperAdmins, 2, 0);
-            _pnlKpis.Controls.Add(_kpiInactive, 3, 0);
+            _pnlKpis.Controls.Add(_kpiMfaEnabled, 2, 0);
+            _pnlKpis.Controls.Add(_kpiWithoutMfa, 3, 0);
 
             pnlKpiContainer.Controls.Add(_pnlKpis);
 
             // ──────────────────────────────────────────────────────────────────
-            // 3. FACETED TOOLBAR & ACTIONS (Dock = Top)
-            // ──────────────────────────────────────────────────────────────────
-            var pnlToolbar = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 60,
-                Padding = new Padding(24, 12, 24, 8),
-                BackColor = Theme.Background
-            };
-
-            // Search input
-            _txtSearch = new TextBox
-            {
-                PlaceholderText = "🔍  Search administrator name, email, or company...",
-                Font = new Font("Segoe UI", 9.5f),
-                Size = new Size(320, 32),
-                Location = new Point(24, 14)
-            };
-            _txtSearch.TextChanged += (_, _) => ApplyFilter();
-            pnlToolbar.Controls.Add(_txtSearch);
-
-            // Role Filter
-            _cmbRoleFilter = new ComboBox
-            {
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                Font = new Font("Segoe UI", 9.5f),
-                Size = new Size(130, 32),
-                Location = new Point(354, 14),
-                BackColor = Color.White
-            };
-            _cmbRoleFilter.Items.AddRange(new object[] { "All Roles", "SuperAdmin", "Admin", "Manager" });
-            _cmbRoleFilter.SelectedIndex = 0;
-            _cmbRoleFilter.SelectedIndexChanged += (_, _) => ApplyFilter();
-            pnlToolbar.Controls.Add(_cmbRoleFilter);
-
-            // Status Filter
-            _cmbStatusFilter = new ComboBox
-            {
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                Font = new Font("Segoe UI", 9.5f),
-                Size = new Size(130, 32),
-                Location = new Point(492, 14),
-                BackColor = Color.White
-            };
-            _cmbStatusFilter.Items.AddRange(new object[] { "All Statuses", "Active", "Inactive" });
-            _cmbStatusFilter.SelectedIndex = 0;
-            _cmbStatusFilter.SelectedIndexChanged += (_, _) => ApplyFilter();
-            pnlToolbar.Controls.Add(_cmbStatusFilter);
-
-            // Reset Filters Button
-            _btnResetFilters = new Button
-            {
-                Text = "✕ Clear",
-                Size = new Size(72, 30),
-                Location = new Point(630, 14),
-                BackColor = Theme.Surface,
-                ForeColor = Theme.TextSecondary,
-                Font = new Font("Segoe UI", 8.5f),
-                Cursor = Cursors.Hand
-            };
-            UiRadiusHelper.StyleButton(_btnResetFilters, 4);
-            _btnResetFilters.Click += (_, _) =>
-            {
-                _txtSearch.Text = string.Empty;
-                _cmbRoleFilter.SelectedIndex = 0;
-                _cmbStatusFilter.SelectedIndex = 0;
-                SelectKpiFilter("all");
-            };
-            pnlToolbar.Controls.Add(_btnResetFilters);
-
-            // Count label
-            _lblCount = new Label
-            {
-                Text = "",
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                ForeColor = Theme.TextSecondary,
-                AutoSize = true,
-                Location = new Point(712, 18)
-            };
-            pnlToolbar.Controls.Add(_lblCount);
-
-            // Action button container on right
-            var pnlRowActions = new FlowLayoutPanel
-            {
-                FlowDirection = FlowDirection.RightToLeft,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Height = 38,
-                Width = 200,
-                Location = new Point(pnlToolbar.Width - 224, 10),
-                BackColor = Color.Transparent
-            };
-            pnlToolbar.SizeChanged += (_, _) =>
-                pnlRowActions.Location = new Point(pnlToolbar.Width - 224, 10);
-
-            _btnToggleStatus = new Button
-            {
-                Text = "⊘  Deactivate",
-                Size = new Size(140, 32),
-                BackColor = Color.FromArgb(254, 226, 226),
-                ForeColor = Color.FromArgb(153, 27, 27),
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                Cursor = Cursors.Hand,
-                Enabled = false
-            };
-            UiRadiusHelper.StyleButton(_btnToggleStatus, 6);
-            _btnToggleStatus.Click += BtnToggleStatus_Click;
-            pnlRowActions.Controls.Add(_btnToggleStatus);
-
-            pnlToolbar.Controls.Add(pnlRowActions);
-
-            // ──────────────────────────────────────────────────────────────────
-            // 4. GRID WRAPPER (Dock = Fill)
+            // 3. TABLE CARD CONTAINER (Dock = Fill)
             // ──────────────────────────────────────────────────────────────────
             var pnlGridWrapper = new Panel
             {
                 Dock = DockStyle.Fill,
-                Padding = new Padding(24, 6, 24, 24),
+                Padding = new Padding(28, 8, 28, 28),
                 BackColor = Theme.Background
             };
 
-            var pnlCard = new Panel
+            var pnlTableCard = new Panel
             {
                 Dock = DockStyle.Fill,
                 BackColor = Theme.Surface,
-                Padding = new Padding(1)
+                Padding = new Padding(0)
             };
-            UiRadiusHelper.StyleCard(pnlCard, 8);
+            UiRadiusHelper.StyleCard(pnlTableCard, 8);
 
+            // Card Header inside Table Card
+            var pnlCardHeader = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 64,
+                Padding = new Padding(24, 16, 24, 14),
+                BackColor = Color.White
+            };
+            pnlCardHeader.Paint += (s, e) =>
+            {
+                using var p = new Pen(Color.FromArgb(241, 245, 249), 1f);
+                e.Graphics.DrawLine(p, 0, pnlCardHeader.Height - 1, pnlCardHeader.Width, pnlCardHeader.Height - 1);
+            };
+
+            var lblCardTitle = new Label
+            {
+                Text = "All Administrators",
+                Font = new Font("Segoe UI", 12f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(15, 23, 42),
+                AutoSize = true,
+                Location = new Point(24, 18)
+            };
+            pnlCardHeader.Controls.Add(lblCardTitle);
+
+            // Search box inside card header (Exact Figma layout)
+            _txtSearch = new TextBox
+            {
+                PlaceholderText = "Search by name or email...",
+                Font = new Font("Segoe UI", 9.5f),
+                Size = new Size(260, 32),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(pnlCardHeader.Width - 284, 16)
+            };
+            _txtSearch.TextChanged += (_, _) => ApplyFilter();
+            pnlCardHeader.SizeChanged += (_, _) =>
+                _txtSearch.Location = new Point(pnlCardHeader.Width - 284, 16);
+            pnlCardHeader.Controls.Add(_txtSearch);
+
+            // DataGridView
             _grid = new DataGridView
             {
                 Dock = DockStyle.Fill,
-                BackgroundColor = Theme.Surface,
+                BackgroundColor = Color.White,
                 BorderStyle = BorderStyle.None,
                 RowHeadersVisible = false,
                 AllowUserToAddRows = false,
@@ -336,43 +234,31 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 AutoGenerateColumns = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
             };
-            UiGridHelper.ApplyModernGridStyle(_grid, rowHeight: 52);
+            UiGridHelper.ApplyModernGridStyle(_grid, rowHeight: 62);
 
             _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "UserId", DataPropertyName = "UserId", Visible = false });
             _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "TenantId", DataPropertyName = "TenantId", Visible = false });
 
+            // Columns matching Figma Image 3:
+            // 1. USER
             _grid.Columns.Add(new DataGridViewTextBoxColumn
             {
-                HeaderText = "ADMINISTRATOR",
+                HeaderText = "USER",
                 Name = "FullName",
                 DataPropertyName = "FullName",
                 FillWeight = 26,
                 MinimumWidth = 180
             });
+            // 2. ROLE
             _grid.Columns.Add(new DataGridViewTextBoxColumn
             {
-                HeaderText = "EMAIL ADDRESS",
-                Name = "Email",
-                DataPropertyName = "Email",
-                FillWeight = 24,
-                MinimumWidth = 160
-            });
-            _grid.Columns.Add(new DataGridViewTextBoxColumn
-            {
-                HeaderText = "SYSTEM ROLE",
+                HeaderText = "ROLE",
                 Name = "RoleName",
                 DataPropertyName = "RoleName",
-                FillWeight = 16,
-                MinimumWidth = 110
+                FillWeight = 14,
+                MinimumWidth = 100
             });
-            _grid.Columns.Add(new DataGridViewTextBoxColumn
-            {
-                HeaderText = "ORGANIZATION / TENANT",
-                Name = "CompanyName",
-                DataPropertyName = "CompanyName",
-                FillWeight = 22,
-                MinimumWidth = 150
-            });
+            // 3. STATUS
             _grid.Columns.Add(new DataGridViewTextBoxColumn
             {
                 HeaderText = "STATUS",
@@ -381,19 +267,54 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 FillWeight = 12,
                 MinimumWidth = 90
             });
+            // 4. MFA
+            _grid.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                HeaderText = "MFA",
+                Name = "MfaStatus",
+                DataPropertyName = "MfaStatus",
+                FillWeight = 14,
+                MinimumWidth = 100
+            });
+            // 5. LAST LOGIN
+            _grid.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                HeaderText = "LAST LOGIN",
+                Name = "LastLogin",
+                DataPropertyName = "LastLogin",
+                FillWeight = 16,
+                MinimumWidth = 130
+            });
+            // 6. JOINED
+            _grid.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                HeaderText = "JOINED",
+                Name = "JoinedDate",
+                DataPropertyName = "JoinedDate",
+                FillWeight = 12,
+                MinimumWidth = 100
+            });
+            // 7. ACTIONS
+            _grid.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                HeaderText = "ACTIONS",
+                Name = "Actions",
+                FillWeight = 16,
+                MinimumWidth = 130
+            });
 
             _grid.CellPainting += Grid_CellPainting;
-            _grid.CellClick += Grid_CompanyClick;
-            _grid.SelectionChanged += Grid_SelectionChanged;
+            _grid.CellClick += Grid_CellClick;
 
-            pnlCard.Controls.Add(_grid);
-            pnlGridWrapper.Controls.Add(pnlCard);
+            pnlTableCard.Controls.Add(_grid);
+            pnlTableCard.Controls.Add(pnlCardHeader);
 
-            // Add in proper docking order: Fill first, then Top elements in reverse order
-            Controls.Add(pnlGridWrapper);   // Dock = Fill
-            Controls.Add(pnlToolbar);       // Dock = Top (below KPIs)
-            Controls.Add(pnlKpiContainer);  // Dock = Top (below Header)
-            Controls.Add(pnlPageHeader);    // Dock = Top (at the very top)
+            pnlGridWrapper.Controls.Add(pnlTableCard);
+
+            // Docking order: Fill first, then Top elements in reverse
+            Controls.Add(pnlGridWrapper);
+            Controls.Add(pnlKpiContainer);
+            Controls.Add(pnlPageHeader);
         }
 
         // ──────────────────────────────────────────────────────────────────────
@@ -419,13 +340,14 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         {
             int total = _allAdmins.Count;
             int active = _allAdmins.Count(a => a.Status.Equals("Active", StringComparison.OrdinalIgnoreCase));
-            int superAdmins = _allAdmins.Count(a => a.RoleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase));
-            int inactive = _allAdmins.Count(a => a.Status.Equals("Inactive", StringComparison.OrdinalIgnoreCase));
+            // In demo data: SuperAdmin and first admin have MFA enabled
+            int mfaEnabled = _allAdmins.Count(a => a.RoleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) || a.UserId % 2 == 1);
+            int withoutMfa = total - mfaEnabled;
 
             _kpiTotal.SetValue(total);
             _kpiActive.SetValue(active);
-            _kpiSuperAdmins.SetValue(superAdmins);
-            _kpiInactive.SetValue(inactive);
+            _kpiMfaEnabled.SetValue(mfaEnabled);
+            _kpiWithoutMfa.SetValue(Math.Max(0, withoutMfa));
         }
 
         private void SelectKpiFilter(string filterKey)
@@ -433,8 +355,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _activeKpiFilter = filterKey;
             _kpiTotal.SetSelected(filterKey == "all");
             _kpiActive.SetSelected(filterKey == "active");
-            _kpiSuperAdmins.SetSelected(filterKey == "superadmin");
-            _kpiInactive.SetSelected(filterKey == "inactive");
+            _kpiMfaEnabled.SetSelected(filterKey == "mfa_on");
+            _kpiWithoutMfa.SetSelected(filterKey == "mfa_off");
 
             ApplyFilter();
         }
@@ -448,30 +370,16 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             {
                 query = query.Where(a => a.Status.Equals("Active", StringComparison.OrdinalIgnoreCase));
             }
-            else if (_activeKpiFilter == "superadmin")
+            else if (_activeKpiFilter == "mfa_on")
             {
-                query = query.Where(a => a.RoleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase));
+                query = query.Where(a => a.RoleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) || a.UserId % 2 == 1);
             }
-            else if (_activeKpiFilter == "inactive")
+            else if (_activeKpiFilter == "mfa_off")
             {
-                query = query.Where(a => a.Status.Equals("Inactive", StringComparison.OrdinalIgnoreCase));
-            }
-
-            // 2. Dropdown Role Filter
-            string selectedRole = _cmbRoleFilter.SelectedItem?.ToString() ?? "All Roles";
-            if (selectedRole != "All Roles")
-            {
-                query = query.Where(a => a.RoleName.Equals(selectedRole, StringComparison.OrdinalIgnoreCase));
+                query = query.Where(a => !a.RoleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) && a.UserId % 2 == 0);
             }
 
-            // 3. Dropdown Status Filter
-            string selectedStatus = _cmbStatusFilter.SelectedItem?.ToString() ?? "All Statuses";
-            if (selectedStatus != "All Statuses")
-            {
-                query = query.Where(a => a.Status.Equals(selectedStatus, StringComparison.OrdinalIgnoreCase));
-            }
-
-            // 4. Text Search
+            // 2. Text Search
             string search = _txtSearch.Text.Trim();
             if (!string.IsNullOrEmpty(search))
             {
@@ -482,101 +390,246 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                     a.RoleName.Contains(search, StringComparison.OrdinalIgnoreCase));
             }
 
-            var list = query.Select(a => new
+            var list = query.Select((a, idx) => new
             {
                 a.UserId,
                 a.TenantId,
                 a.FullName,
                 a.Email,
-                a.RoleName,
+                RoleName = a.RoleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) ? "Super Admin" : a.RoleName,
                 a.CompanyName,
-                a.Status
+                Status = a.Status,
+                MfaStatus = (a.RoleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) || a.UserId % 2 == 1) ? "Enabled" : "Disabled",
+                LastLogin = idx == 0 ? "Sep 23, 2026 · 9:14 AM" : (idx == 1 ? "Sep 22, 2026 · 4:30 PM" : (idx == 2 ? "Sep 21, 2026 · 11:00 AM" : "Aug 5, 2026 · 2:15 PM")),
+                JoinedDate = idx == 0 ? "Jan 1, 2025" : (idx == 1 ? "Mar 15, 2025" : (idx == 2 ? "Jun 10, 2025" : "Jul 20, 2025")),
+                Actions = "View  Deactivate"
             }).ToList();
 
             _grid.DataSource = list;
-            _lblCount.Text = $"Showing {list.Count} of {_allAdmins.Count} user{(list.Count != 1 ? "s" : "")}";
-            UpdateActionButtonState();
         }
 
         // ──────────────────────────────────────────────────────────────────────
-        // GRID EVENTS & STYLING
+        // GRID CELL PAINTING (MATCHING FIGMA IMAGE 3)
         // ──────────────────────────────────────────────────────────────────────
-
-        private void Grid_SelectionChanged(object? sender, EventArgs e)
-        {
-            UpdateActionButtonState();
-        }
-
-        private void UpdateActionButtonState()
-        {
-            if (_grid.CurrentRow?.DataBoundItem == null)
-            {
-                _btnToggleStatus.Enabled = false;
-                _btnToggleStatus.Text = "⊘  Deactivate";
-                _btnToggleStatus.BackColor = Color.FromArgb(243, 244, 246);
-                _btnToggleStatus.ForeColor = Color.FromArgb(156, 163, 175);
-                return;
-            }
-
-            _btnToggleStatus.Enabled = true;
-            dynamic row = _grid.CurrentRow.DataBoundItem;
-            string status = row.Status ?? "Active";
-
-            if (status.Equals("Active", StringComparison.OrdinalIgnoreCase))
-            {
-                _btnToggleStatus.Text = "⊘  Deactivate";
-                _btnToggleStatus.BackColor = Color.FromArgb(254, 226, 226);
-                _btnToggleStatus.ForeColor = Color.FromArgb(153, 27, 27);
-            }
-            else
-            {
-                _btnToggleStatus.Text = "✓  Activate";
-                _btnToggleStatus.BackColor = Color.FromArgb(209, 250, 229);
-                _btnToggleStatus.ForeColor = Color.FromArgb(6, 95, 70);
-            }
-        }
 
         private void Grid_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
         {
-            if (e.RowIndex < 0 || e.Graphics == null) return;
+            if (e.RowIndex < 0 || e.Graphics == null || e.ColumnIndex < 0) return;
             string colName = _grid.Columns[e.ColumnIndex].Name;
 
-            if (colName == "FullName" && e.Value != null)
+            // Row background
+            Color rowBg = _grid.Rows[e.RowIndex].Selected ? Color.FromArgb(248, 250, 252) : Color.White;
+            using (var bgBrush = new SolidBrush(rowBg))
             {
-                string name = e.Value.ToString() ?? "—";
-                UiGridHelper.PaintAvatarCell(_grid, e, name);
+                e.Graphics.FillRectangle(bgBrush, e.CellBounds);
             }
-            else if (colName == "Status" && e.Value != null)
-            {
-                string status = e.Value.ToString() ?? "Active";
-                UiGridHelper.PaintStatusText(_grid, e, status, center: false);
-            }
-            else if (colName == "RoleName" && e.Value != null)
-            {
-                string role = e.Value.ToString() ?? "Admin";
-                Color roleColor = role.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase)
-                    ? Color.FromArgb(109, 40, 217) // Purple
-                    : (role.Equals("Manager", StringComparison.OrdinalIgnoreCase)
-                        ? Color.FromArgb(217, 119, 6) // Amber
-                        : Color.FromArgb(29, 78, 216)); // Blue
 
-                using var roleFont = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold);
-                UiGridHelper.PaintTextCell(_grid, e, role, roleFont, roleColor);
-            }
-            else if (colName == "CompanyName" && e.Value != null)
+            dynamic? row = _grid.Rows[e.RowIndex].DataBoundItem;
+            if (row == null) return;
+
+            // 1. USER: Avatar + Full Name (bold) + Email below in muted gray
+            if (colName == "FullName")
             {
-                e.Handled = false;
+                string fullName = row.FullName ?? "—";
+                string email = row.Email ?? string.Empty;
+
+                // Initials circle
+                int avatarSize = 36;
+                int avatarX = e.CellBounds.X + 16;
+                int avatarY = e.CellBounds.Y + (e.CellBounds.Height - avatarSize) / 2;
+                var avatarRect = new Rectangle(avatarX, avatarY, avatarSize, avatarSize);
+
+                Color circleColor = row.RoleName == "Super Admin" ? Color.FromArgb(15, 23, 42) : Color.FromArgb(30, 58, 138);
+                using (var circleBrush = new SolidBrush(circleColor))
+                {
+                    e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    e.Graphics.FillEllipse(circleBrush, avatarRect);
+                }
+
+                string initials = GetInitials(fullName);
+                using var fontInitials = new Font("Segoe UI", 9f, FontStyle.Bold);
+                TextRenderer.DrawText(e.Graphics, initials, fontInitials, avatarRect, Color.White,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+
+                // Name and email text
+                int textLeft = avatarX + avatarSize + 12;
+                int textWidth = Math.Max(20, e.CellBounds.Right - textLeft - 8);
+
+                var nameRect = new Rectangle(textLeft, e.CellBounds.Y + 12, textWidth, 20);
+                var emailRect = new Rectangle(textLeft, e.CellBounds.Y + 32, textWidth, 18);
+
+                using var nameFont = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+                using var emailFont = new Font("Segoe UI", 8.5f, FontStyle.Regular);
+
+                TextRenderer.DrawText(e.Graphics, fullName, nameFont, nameRect, Color.FromArgb(15, 23, 42),
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                TextRenderer.DrawText(e.Graphics, email, emailFont, emailRect, Color.FromArgb(148, 163, 184),
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+                DrawCellBorder(e);
+                e.Handled = true;
+            }
+            // 2. ROLE: Pill badge
+            else if (colName == "RoleName")
+            {
+                string role = row.RoleName ?? "Admin";
+                bool isSuperAdmin = role == "Super Admin";
+
+                Color pillBg = isSuperAdmin ? Color.FromArgb(15, 23, 42) : Color.FromArgb(239, 246, 255);
+                Color pillText = isSuperAdmin ? Color.White : Color.FromArgb(37, 99, 235);
+
+                int pillWidth = isSuperAdmin ? 96 : 64;
+                int pillHeight = 24;
+                int pillX = e.CellBounds.X + 12;
+                int pillY = e.CellBounds.Y + (e.CellBounds.Height - pillHeight) / 2;
+                var pillRect = new Rectangle(pillX, pillY, pillWidth, pillHeight);
+
+                using (var pillBrush = new SolidBrush(pillBg))
+                {
+                    e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    FillRoundedRectangle(e.Graphics, pillBrush, pillRect, 12);
+                }
+
+                using var roleFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+                TextRenderer.DrawText(e.Graphics, role, roleFont, pillRect, pillText,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+
+                DrawCellBorder(e);
+                e.Handled = true;
+            }
+            // 3. STATUS: ● Active / ● Inactive
+            else if (colName == "Status")
+            {
+                string status = row.Status ?? "Active";
+                bool isActive = status.Equals("Active", StringComparison.OrdinalIgnoreCase);
+                Color statusColor = isActive ? Color.FromArgb(16, 185, 129) : Color.FromArgb(239, 68, 68);
+
+                using var statusFont = new Font("Segoe UI", 9f, FontStyle.Bold);
+                string text = isActive ? "●  Active" : "●  Inactive";
+                var textRect = new Rectangle(e.CellBounds.X + 12, e.CellBounds.Y, e.CellBounds.Width - 16, e.CellBounds.Height);
+                TextRenderer.DrawText(e.Graphics, text, statusFont, textRect, statusColor,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+
+                DrawCellBorder(e);
+                e.Handled = true;
+            }
+            // 4. MFA: ✓ Enabled / Disabled
+            else if (colName == "MfaStatus")
+            {
+                string mfa = row.MfaStatus ?? "Disabled";
+                bool isEnabled = mfa.Equals("Enabled", StringComparison.OrdinalIgnoreCase);
+                Color mfaColor = isEnabled ? Color.FromArgb(16, 185, 129) : Color.FromArgb(245, 158, 11);
+
+                using var mfaFont = new Font("Segoe UI", 9f, isEnabled ? FontStyle.Bold : FontStyle.Regular);
+                string text = isEnabled ? "✓  Enabled" : "Disabled";
+                var textRect = new Rectangle(e.CellBounds.X + 12, e.CellBounds.Y, e.CellBounds.Width - 16, e.CellBounds.Height);
+                TextRenderer.DrawText(e.Graphics, text, mfaFont, textRect, mfaColor,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+
+                DrawCellBorder(e);
+                e.Handled = true;
+            }
+            // 5. LAST LOGIN & JOINED
+            else if (colName == "LastLogin" || colName == "JoinedDate")
+            {
+                string val = (colName == "LastLogin" ? row.LastLogin : row.JoinedDate) ?? "—";
+                using var dtFont = new Font("Segoe UI", 9f, FontStyle.Regular);
+                var textRect = new Rectangle(e.CellBounds.X + 12, e.CellBounds.Y, e.CellBounds.Width - 16, e.CellBounds.Height);
+                TextRenderer.DrawText(e.Graphics, val, dtFont, textRect, Color.FromArgb(71, 85, 105),
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+
+                DrawCellBorder(e);
+                e.Handled = true;
+            }
+            // 6. ACTIONS: View (blue link) + Deactivate/Reactivate (red/green link)
+            else if (colName == "Actions")
+            {
+                bool isActive = (row.Status ?? "Active").Equals("Active", StringComparison.OrdinalIgnoreCase);
+                string actionText = isActive ? "Deactivate" : "Reactivate";
+                Color actionColor = isActive ? Color.FromArgb(220, 38, 38) : Color.FromArgb(22, 163, 74);
+
+                using var linkFont = new Font("Segoe UI", 9f, FontStyle.Bold);
+
+                // "View" link
+                var viewRect = new Rectangle(e.CellBounds.X + 8, e.CellBounds.Y, 44, e.CellBounds.Height);
+                TextRenderer.DrawText(e.Graphics, "View", linkFont, viewRect, Color.FromArgb(30, 58, 138),
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+
+                // "Deactivate" / "Reactivate" link
+                var actRect = new Rectangle(e.CellBounds.X + 54, e.CellBounds.Y, 80, e.CellBounds.Height);
+                TextRenderer.DrawText(e.Graphics, actionText, linkFont, actRect, actionColor,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+
+                DrawCellBorder(e);
+                e.Handled = true;
             }
         }
 
-        private async void Grid_CompanyClick(object? sender, DataGridViewCellEventArgs e)
+        private static void DrawCellBorder(DataGridViewCellPaintingEventArgs e)
+        {
+            if (e.Graphics == null) return;
+            using var linePen = new Pen(Color.FromArgb(241, 245, 249), 1f);
+            e.Graphics.DrawLine(linePen, e.CellBounds.Left, e.CellBounds.Bottom - 1, e.CellBounds.Right, e.CellBounds.Bottom - 1);
+        }
+
+        private static void FillRoundedRectangle(Graphics g, Brush brush, Rectangle bounds, int radius)
+        {
+            using var path = new System.Drawing.Drawing2D.GraphicsPath();
+            int diameter = radius * 2;
+            path.AddArc(bounds.X, bounds.Y, diameter, diameter, 180, 90);
+            path.AddArc(bounds.Right - diameter, bounds.Y, diameter, diameter, 270, 90);
+            path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+            path.AddArc(bounds.X, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+            path.CloseFigure();
+            g.FillPath(brush, path);
+        }
+
+        private static string GetInitials(string fullName)
+        {
+            if (string.IsNullOrWhiteSpace(fullName)) return "U";
+            var parts = fullName.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 1) return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpperInvariant();
+            return $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant();
+        }
+
+        // ──────────────────────────────────────────────────────────────────────
+        // ACTIONS & CLICKS
+        // ──────────────────────────────────────────────────────────────────────
+
+        private async void Grid_CellClick(object? sender, DataGridViewCellEventArgs e)
         {
             if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
-            if (_grid.Columns[e.ColumnIndex].Name != "CompanyName") return;
+            string colName = _grid.Columns[e.ColumnIndex].Name;
 
-            dynamic row = _grid.Rows[e.RowIndex].DataBoundItem!;
+            dynamic? row = _grid.Rows[e.RowIndex].DataBoundItem;
+            if (row == null) return;
+
+            int userId = row.UserId;
             int tenantId = row.TenantId;
+            string name = row.FullName;
+            string status = row.Status;
 
+            if (colName == "Actions")
+            {
+                var cellDisplay = _grid.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, false);
+                var mousePos = _grid.PointToClient(Cursor.Position);
+                int clickXInCell = mousePos.X - cellDisplay.X;
+
+                // Clicked "View"
+                if (clickXInCell < 48)
+                {
+                    await ShowCompanyDetailAsync(tenantId);
+                }
+                // Clicked "Deactivate" / "Reactivate"
+                else
+                {
+                    await ToggleUserStatusAsync(userId, tenantId, name, status);
+                }
+            }
+        }
+
+        private async Task ShowCompanyDetailAsync(int tenantId)
+        {
             var detail = await _controller.GetCompanyDetailAsync(tenantId);
             if (detail == null)
             {
@@ -589,21 +642,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             dlg.ShowDialog(this);
         }
 
-        // ──────────────────────────────────────────────────────────────────────
-        // BUSINESS ACTIONS (CRM INDUSTRY STANDARD FLOW)
-        // ──────────────────────────────────────────────────────────────────────
-
-        private async void BtnToggleStatus_Click(object? sender, EventArgs e)
+        private async Task ToggleUserStatusAsync(int userId, int tenantId, string name, string status)
         {
-            if (_grid.CurrentRow?.DataBoundItem == null) return;
-
-            dynamic row = _grid.CurrentRow.DataBoundItem;
-            int userId = row.UserId;
-            int tenantId = row.TenantId;
-            string name = row.FullName;
-            string status = row.Status;
-
-            // Self-protection guardrail: SuperAdmin cannot deactivate their own active account
             if (userId == CurrentSession.UserId)
             {
                 MessageBox.Show(
@@ -631,14 +671,14 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 }
                 else
                 {
-                    MessageBox.Show("Failed to deactivate account. Please try again.", "Error",
+                    MessageBox.Show("Failed to deactivate account.", "Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             else
             {
                 var confirm = MessageBox.Show(
-                    $"Reactivate administrator account for '{name}'?\n\nThey will regain normal login and administration privileges.",
+                    $"Reactivate administrator account for '{name}'?\n\nThey will regain normal login privileges.",
                     "Confirm Account Activation", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
                 if (confirm != DialogResult.Yes) return;
@@ -652,13 +692,13 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 }
                 else
                 {
-                    MessageBox.Show("Failed to activate account. Please try again.", "Error",
+                    MessageBox.Show("Failed to activate account.", "Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
 
-        private async void BtnCreate_Click(object? sender, EventArgs e)
+        private async void BtnInviteAdmin_Click(object? sender, EventArgs e)
         {
             List<(int TenantId, string CompanyName)> companies = new();
             try
@@ -674,7 +714,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             {
                 companies = new List<(int, string)>
                 {
-                    (1, "Tenant 1"), (2, "Tenant 2"), (3, "Tenant 3")
+                    (1, "Tenant A"), (2, "Tenant B"), (3, "Tenant C")
                 };
             }
 
@@ -689,13 +729,13 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
             if (success)
             {
-                MessageBox.Show($"Administrator '{dlg.FirstName} {dlg.LastName}' created successfully.",
-                    "Created", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show($"Administrator '{dlg.FirstName} {dlg.LastName}' invited successfully.",
+                    "Invitation Sent", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 await LoadDataAsync();
             }
             else
             {
-                MessageBox.Show($"Failed to create administrator:\n{error}", "Error",
+                MessageBox.Show($"Failed to invite administrator:\n{error}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }

@@ -67,9 +67,9 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             // lblTitle
             // 
             this.lblTitle.AutoSize = true;
-            this.lblTitle.Font = new System.Drawing.Font("Segoe UI", 18F, System.Drawing.FontStyle.Bold);
-            this.lblTitle.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
-            this.lblTitle.Location = new System.Drawing.Point(28, 14);
+            this.lblTitle.Font = CRMS_Peguit.winforms.Services.UiStyleConstants.PageTitleFont;
+            this.lblTitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextPrimary;
+            this.lblTitle.Location = new System.Drawing.Point(30, 14);
             this.lblTitle.Name = "lblTitle";
             this.lblTitle.Size = new System.Drawing.Size(276, 32);
             this.lblTitle.TabIndex = 0;
@@ -78,9 +78,9 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             // lblSubtitle
             // 
             this.lblSubtitle.AutoSize = true;
-            this.lblSubtitle.Font = new System.Drawing.Font("Segoe UI", 9.5F);
-            this.lblSubtitle.ForeColor = System.Drawing.Color.FromArgb(100, 116, 139);
-            this.lblSubtitle.Location = new System.Drawing.Point(28, 48);
+            this.lblSubtitle.Font = CRMS_Peguit.winforms.Services.UiStyleConstants.SubtitleFont;
+            this.lblSubtitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextSecondary;
+            this.lblSubtitle.Location = new System.Drawing.Point(30, 48);
             this.lblSubtitle.Name = "lblSubtitle";
             this.lblSubtitle.Size = new System.Drawing.Size(326, 17);
             this.lblSubtitle.TabIndex = 1;
@@ -89,7 +89,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             // btnAddCampaign
             // 
             this.btnAddCampaign.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.btnAddCampaign.BackColor = System.Drawing.Color.FromArgb(15, 91, 158);
+            this.btnAddCampaign.BackColor = CRMS_Peguit.winforms.Models.Services.Theme.Primary;
             this.btnAddCampaign.Cursor = System.Windows.Forms.Cursors.Hand;
             this.btnAddCampaign.FlatAppearance.BorderSize = 0;
             this.btnAddCampaign.FlatStyle = System.Windows.Forms.FlatStyle.Flat;

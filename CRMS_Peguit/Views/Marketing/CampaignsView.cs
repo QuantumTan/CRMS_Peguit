@@ -77,12 +77,12 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             this.BackColor = Theme.Background;
 
             lblTitle.Text = "Marketing & Client Retention";
-            lblTitle.Font = new Font("Segoe UI", 20f, FontStyle.Bold);
+            lblTitle.Font = UiStyleConstants.PageTitleFont;
             lblTitle.ForeColor = Theme.TextPrimary;
             lblTitle.Location = new Point(30, 14);
 
             lblSubtitle.Text = "Lead acquisition channels & automated client equity retention reports";
-            lblSubtitle.Font = new Font("Segoe UI", 9.5f);
+            lblSubtitle.Font = UiStyleConstants.SubtitleFont;
             lblSubtitle.ForeColor = Theme.TextSecondary;
             lblSubtitle.Location = new Point(30, 56);
 
@@ -223,23 +223,32 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             _kpiEnrolled = new KpiCard("ENROLLED CLIENTS", "clients", BiDisplayConstants.PrimaryAccent, KpiIconType.Users, "Past closed deals")
             {
                 Dock = DockStyle.Fill,
-                Margin = new Padding(0, 0, 8, 0)
+                Margin = new Padding(0, 0, 8, 0),
+                ClickMode = KpiClickMode.InPlaceFilter
             };
             _kpiDelivered = new KpiCard("UPDATES DELIVERED", "delivered", BiDisplayConstants.HighlightAccent, KpiIconType.Briefcase, "Lifetime touchpoints")
             {
                 Dock = DockStyle.Fill,
-                Margin = new Padding(4, 0, 6, 0)
+                Margin = new Padding(4, 0, 6, 0),
+                ClickMode = KpiClickMode.InPlaceFilter
             };
             _kpiEquity = new KpiCard("AVG. EQUITY SHOWN", "equity", BiDisplayConstants.StatusWon, KpiIconType.Currency, "Asset appreciation tracked")
             {
                 Dock = DockStyle.Fill,
-                Margin = new Padding(6, 0, 4, 0)
+                Margin = new Padding(6, 0, 4, 0),
+                ClickMode = KpiClickMode.InPlaceFilter
             };
             _kpiStatus = new KpiCard("AUTOMATION STATUS", "status", BiDisplayConstants.SkyAccent, KpiIconType.Clock, "Hourly engine check")
             {
                 Dock = DockStyle.Fill,
-                Margin = new Padding(8, 0, 0, 0)
+                Margin = new Padding(8, 0, 0, 0),
+                ClickMode = KpiClickMode.InPlaceFilter
             };
+
+            _kpiEnrolled.Click += (_, _) => FilterAuditTrail(null);
+            _kpiDelivered.Click += (_, _) => FilterAuditTrail("Sent");
+            _kpiEquity.Click += (_, _) => FilterAuditTrail(null);
+            _kpiStatus.Click += (_, _) => FilterAuditTrail("Success");
 
             _pnlKpiContainer.Controls.Add(_kpiEnrolled, 0, 0);
             _pnlKpiContainer.Controls.Add(_kpiDelivered, 1, 0);
@@ -957,12 +966,39 @@ namespace CRMS_Peguit.winforms.Views.Marketing
                 _cboClientPicker.SelectedIndex = 0;
         }
 
+        private string? _auditFilterStatus = null;
+
+        private void FilterAuditTrail(string? status)
+        {
+            if (string.Equals(_auditFilterStatus, status, StringComparison.OrdinalIgnoreCase))
+            {
+                _auditFilterStatus = null;
+            }
+            else
+            {
+                _auditFilterStatus = status;
+            }
+
+            _kpiEnrolled.SetSelected(_auditFilterStatus == null);
+            _kpiDelivered.SetSelected(string.Equals(_auditFilterStatus, "Sent", StringComparison.OrdinalIgnoreCase));
+            _kpiEquity.SetSelected(false);
+            _kpiStatus.SetSelected(string.Equals(_auditFilterStatus, "Success", StringComparison.OrdinalIgnoreCase));
+
+            LoadAuditHistory();
+        }
+
         private void LoadAuditHistory()
         {
             try
             {
                 int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
                 var history = MarketUpdateBackgroundService.Instance.GetDeliveryHistory(tenantId);
+
+                if (!string.IsNullOrEmpty(_auditFilterStatus))
+                {
+                    history = history.Where(h => h.Status.Equals(_auditFilterStatus, StringComparison.OrdinalIgnoreCase)
+                                              || (string.Equals(_auditFilterStatus, "Sent", StringComparison.OrdinalIgnoreCase) && (h.Status == "Sent" || h.Status == "Success"))).ToList();
+                }
 
                 _gridAuditHistory.Columns.Clear();
 

@@ -85,7 +85,7 @@ namespace CRMS_Peguit.winforms.Auth
             }
         }
 
-        private AuthResult TryLocalDbLogin(string email, string password)
+        public AuthResult TryLocalDbLogin(string email, string password)
         {
             var lowerEmail = email.Trim().ToLowerInvariant();
             if (lowerEmail == "superadmin@crms.com" || lowerEmail == "superadmin@test.com" || lowerEmail == "admin@master.com")

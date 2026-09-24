@@ -613,21 +613,27 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             if (_pnlFooter is not null)
             {
                 int rightEdge = _pnlFooter.Width - 24;
-                if (_btnClose is not null)
-                {
-                    _btnClose.Location = new Point(rightEdge - _btnClose.Width, 14);
-                    rightEdge = _btnClose.Left - 8;
-                }
+
+                // 1. Primary action (Update Status or Reopen) rightmost
                 if (_btnUpdateStatus is not null && _btnUpdateStatus.Visible)
                 {
                     _btnUpdateStatus.Location = new Point(rightEdge - _btnUpdateStatus.Width, 14);
                     rightEdge = _btnUpdateStatus.Left - 8;
                 }
-                if (_btnReopen is not null && _btnReopen.Visible)
+                else if (_btnReopen is not null && _btnReopen.Visible)
                 {
                     _btnReopen.Location = new Point(rightEdge - _btnReopen.Width, 14);
                     rightEdge = _btnReopen.Left - 8;
                 }
+
+                // 2. Close button to the left of primary
+                if (_btnClose is not null)
+                {
+                    _btnClose.Location = new Point(rightEdge - _btnClose.Width, 14);
+                    rightEdge = _btnClose.Left - 8;
+                }
+
+                // 3. Secondary actions (e.g. Reassign)
                 if (_btnReassign is not null && _btnReassign.Visible)
                 {
                     _btnReassign.Location = new Point(rightEdge - _btnReassign.Width, 14);

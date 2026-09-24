@@ -4,6 +4,7 @@ using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 using CRMS_Peguit.winforms.Views.Shared;
 
 namespace CRMS_Peguit.winforms.Views.Properties
@@ -13,7 +14,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
         private readonly PropertyController _controller;
         private string _filterStatus = "All";
         private Button? _btnExport;
-        private Label _lblEmptyState = null!;
+        private Panel _pnlEmptyState = null!;
         private PaginationControl _pagination = null!;
         private List<Property> _currentPageProperties = new();
         private Dictionary<int, string> _owners = new();
@@ -56,17 +57,17 @@ namespace CRMS_Peguit.winforms.Views.Properties
 
         private void InitEmptyState()
         {
-            _lblEmptyState = new Label
-            {
-                Text = "🔍 No properties match your search or filter criteria.\nTry adjusting your search terms or filter.",
-                Font = new Font("Segoe UI", 11f),
-                ForeColor = Theme.TextSecondary,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Dock = DockStyle.Fill,
-                Visible = false
-            };
-            pnlCard.Controls.Add(_lblEmptyState);
-            _lblEmptyState.BringToFront();
+            _pnlEmptyState = UiGridHelper.CreateEmptyStatePanel(
+                KpiIconType.Building,
+                "No Properties Found",
+                "No properties match your search or filter criteria.\nTry clearing your search query or selecting a different status filter.",
+                () =>
+                {
+                    txtSearch.Clear();
+                    SetFilter("All");
+                });
+            pnlCard.Controls.Add(_pnlEmptyState);
+            _pnlEmptyState.BringToFront();
         }
 
         private void ApplyStyling()
@@ -89,15 +90,15 @@ namespace CRMS_Peguit.winforms.Views.Properties
             {
                 _btnExport = new Button
                 {
-                    Text = "📥 Export CSV",
+                    Text = "Export CSV",
                     BackColor = Color.White,
-                    ForeColor = Color.FromArgb(15, 91, 158),
+                    ForeColor = Theme.Primary,
                     Cursor = Cursors.Hand,
                     FlatStyle = FlatStyle.Flat,
                     Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                    Size = new Size(130, 36)
+                    Size = new Size(120, 36)
                 };
-                _btnExport.FlatAppearance.BorderColor = Color.FromArgb(15, 91, 158);
+                _btnExport.FlatAppearance.BorderColor = Theme.Primary;
                 _btnExport.Click += (_, _) => ExportToCsv();
                 UiRadiusHelper.StyleButton(_btnExport, 8);
                 Controls.Add(_btnExport);
@@ -285,7 +286,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
             UiGridHelper.AddActionsColumn(grid, 64);
             UiGridHelper.EnforceTableStandards(grid);
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-            _lblEmptyState.Visible = (_currentPageProperties.Count == 0);
+            _pnlEmptyState.Visible = (_currentPageProperties.Count == 0);
         }
 
         private void Grid_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
@@ -303,7 +304,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
             {
                 string address = e.Value.ToString() ?? "";
                 using var font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
-                UiGridHelper.PaintTextCell(grid, e, address, font, Color.FromArgb(15, 23, 42),
+                UiGridHelper.PaintTextCell(grid, e, address, font, Theme.TextPrimary,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis, leftPadding: 12);
             }
             // Clean right-aligned Price column painting at uniform right margin
@@ -312,7 +313,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
                 string priceText = e.Value.ToString() ?? "";
                 priceText = priceText.TrimStart('!', '|', ' ');
                 using var font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
-                UiGridHelper.PaintTextCell(grid, e, priceText, font, Color.FromArgb(15, 23, 42),
+                UiGridHelper.PaintTextCell(grid, e, priceText, font, Theme.TextPrimary,
                     TextFormatFlags.Right | TextFormatFlags.VerticalCenter, leftPadding: 8, rightPadding: 12);
             }
         }
@@ -552,73 +553,80 @@ namespace CRMS_Peguit.winforms.Views.Properties
         {
             if (this.IsDisposed) return;
 
-            int rightPadding = 30;
-            int leftMargin = 30;
+            int rightPadding = UiStyleConstants.PageMarginRight;
+            int leftMargin = UiStyleConstants.PageMarginLeft;
             int totalWidth = ClientSize.Width;
 
-            // Explicit header positioning with clear separation
-            lblTitle.Location = new Point(leftMargin, 20);
+            // 1. Page Title & Subtitle
+            lblTitle.Location = new Point(leftMargin, UiStyleConstants.PageMarginTop);
             lblSubtitle.Location = new Point(leftMargin + 2, lblTitle.Bottom + 4);
-            int y = Math.Max(96, lblSubtitle.Bottom + 16);
 
-            // Position header action buttons
+            // 2. Toolbar Row (No KPI row on Properties screen; toolbar follows directly below header)
+            int y = lblSubtitle.Bottom + 16;
+
             int rightEdge = totalWidth - rightPadding;
             if (btnAdd.Visible)
             {
+                btnAdd.Top = y;
+                btnAdd.Height = UiStyleConstants.ToolbarRowHeight;
                 btnAdd.Left = rightEdge - btnAdd.Width;
-                btnAdd.Top = 24;
                 rightEdge = btnAdd.Left - 10;
             }
             if (_btnExport != null && _btnExport.Visible)
             {
+                _btnExport.Top = y;
+                _btnExport.Height = UiStyleConstants.ToolbarRowHeight;
                 _btnExport.Left = rightEdge - _btnExport.Width;
-                _btnExport.Top = 24;
+                rightEdge = _btnExport.Left - 10;
             }
 
-            // Layout filter pills
             var pills = new[] { btnFilterSold, btnFilterPending, btnFilterAvailable, btnFilterAll };
-            int filterRight = totalWidth - rightPadding;
+            int filterRight = rightEdge;
             int totalFilterWidth = 0;
             foreach (var p in pills) totalFilterWidth += p.Width + 6;
 
-            int availableForSearch = totalWidth - leftMargin - rightPadding - totalFilterWidth - 20;
+            int availableForSearch = filterRight - leftMargin - totalFilterWidth - 16;
 
             if (availableForSearch >= 180)
             {
-                // Single row: search on left, filters aligned to right
+                // Single row
                 foreach (var p in pills)
                 {
                     p.Top = y;
+                    p.Height = UiStyleConstants.ToolbarRowHeight;
                     p.Left = filterRight - p.Width;
                     filterRight = p.Left - 6;
                 }
 
                 txtSearch.Top = y;
                 txtSearch.Left = leftMargin;
-                txtSearch.Width = Math.Min(360, availableForSearch);
+                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
+                txtSearch.Width = Math.Min(UiStyleConstants.SearchBoxWidth, availableForSearch);
 
-                int cardTop = y + txtSearch.Height + 14;
+                int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
                 pnlCard.Top = cardTop;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 24);
+                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - UiStyleConstants.PageMarginBottom);
             }
             else
             {
                 // Two rows: search on row 1, filter pills wrapped to row 2
                 txtSearch.Top = y;
                 txtSearch.Left = leftMargin;
-                txtSearch.Width = Math.Max(180, totalWidth - leftMargin - rightPadding);
+                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
+                txtSearch.Width = Math.Max(180, rightEdge - leftMargin);
 
+                int pillY = y + UiStyleConstants.ToolbarRowHeight + 10;
                 int filterX = leftMargin;
-                int pillY = y + txtSearch.Height + 10;
                 var forwardPills = new[] { btnFilterAll, btnFilterAvailable, btnFilterPending, btnFilterSold };
                 foreach (var p in forwardPills)
                 {
                     p.Top = pillY;
+                    p.Height = UiStyleConstants.ToolbarRowHeight;
                     p.Left = filterX;
                     filterX += p.Width + 6;
                 }
 
-                int cardTop = pillY + 34;
+                int cardTop = pillY + UiStyleConstants.ToolbarRowHeight + 14;
                 pnlCard.Top = cardTop;
                 pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 20);
             }

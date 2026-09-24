@@ -269,17 +269,21 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
                 ConfigureKpi(_kpiTenants, "TOTAL TENANTS", snap.TotalTenants,
                     $"{snap.ActiveTenants} Active Organizations", Theme.Primary, KpiIconType.Building);
+                _kpiTenants.SetAction(() => ShowDrillDown("Total Tenants", $"{snap.TotalTenants} organizations registered across the platform (Active: {snap.ActiveTenants})."));
 
                 ConfigureKpi(_kpiActiveSubs, "ACTIVE SUBSCRIPTIONS", snap.ActiveSubscriptions,
                     "Current active paid plans", Theme.StatusSuccess, KpiIconType.Target);
+                _kpiActiveSubs.SetAction(() => ShowDrillDown("Active Subscriptions", $"{snap.ActiveSubscriptions} active paid subscription plans in good standing."));
 
                 ConfigureKpi(_kpiExpiring, "EXPIRING THIS MONTH", snap.ExpiringThisMonth,
                     snap.ExpiringThisMonth > 0 ? "Requires renewal outreach" : "All plans in good standing",
                     snap.ExpiringThisMonth > 0 ? Theme.StatusPending : Theme.StatusSuccess,
                     KpiIconType.Clock);
+                _kpiExpiring.SetAction(() => ShowDrillDown("Expiring Subscriptions", snap.ExpiringThisMonth > 0 ? $"{snap.ExpiringThisMonth} subscriptions requiring renewal outreach within 30 days." : "All tenant plans are in good standing with zero expiring accounts."));
 
                 ConfigureKpi(_kpiMrr, "TOTAL MRR", $"₱{snap.TotalMrr:N0}",
                     "Monthly recurring revenue", Theme.PrimaryDark, KpiIconType.Currency);
+                _kpiMrr.SetAction(() => ShowDrillDown("Platform MRR", $"Total platform monthly recurring revenue is ₱{snap.TotalMrr:N0} across all active subscriptions."));
 
                 _stBackupStatus.SetStatus(snap.LastBackupStatus);
                 _lblLastBackupDate.Text = snap.LastBackupDate.HasValue
@@ -374,6 +378,14 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 pnlBarBg.Controls.Add(pnlFill);
                 _pnlChart.Controls.Add(pnlBarBg);
 
+                // Make progress bar clickable
+                pnlBarBg.Cursor = Cursors.Hand;
+                lblName.Cursor = Cursors.Hand;
+                Action barClick = () => ShowDrillDown($"{label} Subscriptions", $"{count} out of {total} subscriptions are in '{label}' status ({pct}%).");
+                pnlBarBg.Click += (_, _) => barClick();
+                pnlFill.Click += (_, _) => barClick();
+                lblName.Click += (_, _) => barClick();
+
                 y += 68;
             }
 
@@ -415,6 +427,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                     Size = new Size(_pnlTierDist.Width - 44, 56),
                     Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                     BackColor = Color.FromArgb(248, 250, 252),
+                    Cursor = Cursors.Hand,
                     Tag = "tier"
                 };
                 UiRadiusHelper.StyleCard(pnlRow, 6);
@@ -433,7 +446,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                     Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                     ForeColor = Theme.TextPrimary,
                     Location = new Point(38, 8),
-                    AutoSize = true
+                    AutoSize = true,
+                    Cursor = Cursors.Hand
                 };
                 var lblDesc = new Label
                 {
@@ -441,7 +455,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                     Font = new Font("Segoe UI", 8.5f),
                     ForeColor = Theme.TextSecondary,
                     Location = new Point(38, 28),
-                    AutoSize = true
+                    AutoSize = true,
+                    Cursor = Cursors.Hand
                 };
 
                 var lblCountAndPct = new Label
@@ -452,17 +467,30 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                     Anchor = AnchorStyles.Top | AnchorStyles.Right,
                     Location = new Point(pnlRow.Width - 170, 16),
                     Size = new Size(155, 24),
-                    TextAlign = ContentAlignment.MiddleRight
+                    TextAlign = ContentAlignment.MiddleRight,
+                    Cursor = Cursors.Hand
                 };
 
                 pnlRow.Controls.Add(dot);
                 pnlRow.Controls.Add(lblName);
                 pnlRow.Controls.Add(lblDesc);
                 pnlRow.Controls.Add(lblCountAndPct);
+
+                Action rowClick = () => ShowDrillDown(name, $"{count} tenant organization(s) on this plan tier ({pct}% platform share).\n\nFeatures: {desc}");
+                pnlRow.Click += (_, _) => rowClick();
+                lblName.Click += (_, _) => rowClick();
+                lblDesc.Click += (_, _) => rowClick();
+                lblCountAndPct.Click += (_, _) => rowClick();
+
                 _pnlTierDist.Controls.Add(pnlRow);
 
                 y += 68;
             }
+        }
+
+        private static void ShowDrillDown(string title, string details)
+        {
+            MessageBox.Show(details, $"Platform Analytics — {title}", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 }

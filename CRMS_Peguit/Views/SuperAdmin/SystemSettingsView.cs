@@ -8,6 +8,7 @@ using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 // =============================================================================
 // SystemSettingsView — Platform-wide key/value settings with full audit trail.
@@ -57,7 +58,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             var lblTitle = new Label
             {
                 Text = "System Configuration & Policies",
-                Font = new Font("Segoe UI", 16f, FontStyle.Bold),
+                Font = UiStyleConstants.PageTitleFont,
                 ForeColor = Theme.TextPrimary,
                 AutoSize = true,
                 Location = new Point(28, 14)
@@ -65,7 +66,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             var lblSub = new Label
             {
                 Text = "Global platform settings & security policies with immutable audit trail — Who changed what, when",
-                Font = new Font("Segoe UI", 9.5f),
+                Font = UiStyleConstants.SubtitleFont,
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
                 Location = new Point(28, 42)

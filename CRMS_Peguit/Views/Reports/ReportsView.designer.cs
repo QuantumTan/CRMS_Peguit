@@ -51,13 +51,8 @@ namespace CRMS_Peguit.winforms.Views.Reports
             this.kpi4 = new CRMS_Peguit.winforms.Controls.KpiCard();
 
             this.pnlCharts = new System.Windows.Forms.Panel();
-            this.pnlChartCard1 = new System.Windows.Forms.Panel();
-            this.lblChart1Title = new System.Windows.Forms.Label();
-            this.plotReport1 = new ScottPlot.WinForms.FormsPlot();
-
-            this.pnlChartCard2 = new System.Windows.Forms.Panel();
-            this.lblChart2Title = new System.Windows.Forms.Label();
-            this.plotReport2 = new ScottPlot.WinForms.FormsPlot();
+            this.chartReport1 = new CRMS_Peguit.winforms.Controls.ChartWrapperControl("Primary Analysis Graph", "Click a segment to filter table", CRMS_Peguit.winforms.Controls.KpiClickMode.InPlaceFilter);
+            this.chartReport2 = new CRMS_Peguit.winforms.Controls.ChartWrapperControl("Distribution & Breakdown", "Click a segment to filter table", CRMS_Peguit.winforms.Controls.KpiClickMode.InPlaceFilter);
 
             this.pnlGrid = new System.Windows.Forms.Panel();
             this.lblReportHeader = new System.Windows.Forms.Label();
@@ -72,8 +67,6 @@ namespace CRMS_Peguit.winforms.Views.Reports
             this.pnlKpiContainer.SuspendLayout();
             this.pnlScrollableContent.SuspendLayout();
             this.pnlCharts.SuspendLayout();
-            this.pnlChartCard1.SuspendLayout();
-            this.pnlChartCard2.SuspendLayout();
             this.pnlGrid.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.gridData)).BeginInit();
             this.SuspendLayout();
@@ -96,7 +89,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
             // lblTitle
             // 
             this.lblTitle.AutoSize = true;
-            this.lblTitle.Font = new System.Drawing.Font("Segoe UI", 18F, System.Drawing.FontStyle.Bold);
+            this.lblTitle.Font = CRMS_Peguit.winforms.Services.UiStyleConstants.PageTitleFont;
             this.lblTitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextPrimary;
             this.lblTitle.Location = new System.Drawing.Point(20, 12);
             this.lblTitle.Name = "lblTitle";
@@ -108,7 +101,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
             // lblSubtitle
             // 
             this.lblSubtitle.AutoSize = true;
-            this.lblSubtitle.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.lblSubtitle.Font = CRMS_Peguit.winforms.Services.UiStyleConstants.SubtitleFont;
             this.lblSubtitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextSecondary;
             this.lblSubtitle.Location = new System.Drawing.Point(22, 48);
             this.lblSubtitle.Name = "lblSubtitle";
@@ -427,8 +420,8 @@ namespace CRMS_Peguit.winforms.Views.Reports
             // pnlCharts
             // 
             this.pnlCharts.BackColor = System.Drawing.Color.FromArgb(243, 247, 250);
-            this.pnlCharts.Controls.Add(this.pnlChartCard2);
-            this.pnlCharts.Controls.Add(this.pnlChartCard1);
+            this.pnlCharts.Controls.Add(this.chartReport2);
+            this.pnlCharts.Controls.Add(this.chartReport1);
             this.pnlCharts.Dock = System.Windows.Forms.DockStyle.Top;
             this.pnlCharts.Location = new System.Drawing.Point(0, 187);
             this.pnlCharts.Name = "pnlCharts";
@@ -437,74 +430,20 @@ namespace CRMS_Peguit.winforms.Views.Reports
             this.pnlCharts.TabIndex = 2;
 
             // 
-            // pnlChartCard1
+            // chartReport1
             // 
-            this.pnlChartCard1.BackColor = System.Drawing.Color.White;
-            this.pnlChartCard1.Controls.Add(this.lblChart1Title);
-            this.pnlChartCard1.Controls.Add(this.plotReport1);
-            this.pnlChartCard1.Location = new System.Drawing.Point(20, 10);
-            this.pnlChartCard1.Name = "pnlChartCard1";
-            this.pnlChartCard1.Padding = new System.Windows.Forms.Padding(12);
-            this.pnlChartCard1.Size = new System.Drawing.Size(515, 260);
-            this.pnlChartCard1.TabIndex = 0;
+            this.chartReport1.Location = new System.Drawing.Point(20, 10);
+            this.chartReport1.Name = "chartReport1";
+            this.chartReport1.Size = new System.Drawing.Size(515, 260);
+            this.chartReport1.TabIndex = 0;
 
             // 
-            // lblChart1Title
+            // chartReport2
             // 
-            this.lblChart1Title.AutoSize = true;
-            this.lblChart1Title.Font = new System.Drawing.Font("Segoe UI Semibold", 10.5F, System.Drawing.FontStyle.Bold);
-            this.lblChart1Title.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
-            this.lblChart1Title.Location = new System.Drawing.Point(12, 10);
-            this.lblChart1Title.Name = "lblChart1Title";
-            this.lblChart1Title.Size = new System.Drawing.Size(160, 19);
-            this.lblChart1Title.TabIndex = 0;
-            this.lblChart1Title.Text = "Primary Analysis Graph";
-
-            // 
-            // plotReport1
-            // 
-            this.plotReport1.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
-            | System.Windows.Forms.AnchorStyles.Left) 
-            | System.Windows.Forms.AnchorStyles.Right)));
-            this.plotReport1.Location = new System.Drawing.Point(10, 35);
-            this.plotReport1.Name = "plotReport1";
-            this.plotReport1.Size = new System.Drawing.Size(495, 215);
-            this.plotReport1.TabIndex = 1;
-
-            // 
-            // pnlChartCard2
-            // 
-            this.pnlChartCard2.BackColor = System.Drawing.Color.White;
-            this.pnlChartCard2.Controls.Add(this.lblChart2Title);
-            this.pnlChartCard2.Controls.Add(this.plotReport2);
-            this.pnlChartCard2.Location = new System.Drawing.Point(550, 10);
-            this.pnlChartCard2.Name = "pnlChartCard2";
-            this.pnlChartCard2.Padding = new System.Windows.Forms.Padding(12);
-            this.pnlChartCard2.Size = new System.Drawing.Size(515, 260);
-            this.pnlChartCard2.TabIndex = 1;
-
-            // 
-            // lblChart2Title
-            // 
-            this.lblChart2Title.AutoSize = true;
-            this.lblChart2Title.Font = new System.Drawing.Font("Segoe UI Semibold", 10.5F, System.Drawing.FontStyle.Bold);
-            this.lblChart2Title.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
-            this.lblChart2Title.Location = new System.Drawing.Point(12, 10);
-            this.lblChart2Title.Name = "lblChart2Title";
-            this.lblChart2Title.Size = new System.Drawing.Size(180, 19);
-            this.lblChart2Title.TabIndex = 0;
-            this.lblChart2Title.Text = "Distribution & Breakdown";
-
-            // 
-            // plotReport2
-            // 
-            this.plotReport2.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
-            | System.Windows.Forms.AnchorStyles.Left) 
-            | System.Windows.Forms.AnchorStyles.Right)));
-            this.plotReport2.Location = new System.Drawing.Point(10, 35);
-            this.plotReport2.Name = "plotReport2";
-            this.plotReport2.Size = new System.Drawing.Size(495, 215);
-            this.plotReport2.TabIndex = 1;
+            this.chartReport2.Location = new System.Drawing.Point(550, 10);
+            this.chartReport2.Name = "chartReport2";
+            this.chartReport2.Size = new System.Drawing.Size(515, 260);
+            this.chartReport2.TabIndex = 1;
 
             // 
             // pnlGrid
@@ -659,10 +598,6 @@ namespace CRMS_Peguit.winforms.Views.Reports
             this.pnlKpiContainer.ResumeLayout(false);
             this.pnlScrollableContent.ResumeLayout(false);
             this.pnlCharts.ResumeLayout(false);
-            this.pnlChartCard1.ResumeLayout(false);
-            this.pnlChartCard1.PerformLayout();
-            this.pnlChartCard2.ResumeLayout(false);
-            this.pnlChartCard2.PerformLayout();
             this.pnlGrid.ResumeLayout(false);
             this.pnlGrid.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.gridData)).EndInit();
@@ -696,13 +631,8 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
         private System.Windows.Forms.Panel pnlScrollableContent;
         private System.Windows.Forms.Panel pnlCharts;
-        private System.Windows.Forms.Panel pnlChartCard1;
-        private System.Windows.Forms.Label lblChart1Title;
-        private ScottPlot.WinForms.FormsPlot plotReport1;
-
-        private System.Windows.Forms.Panel pnlChartCard2;
-        private System.Windows.Forms.Label lblChart2Title;
-        private ScottPlot.WinForms.FormsPlot plotReport2;
+        private CRMS_Peguit.winforms.Controls.ChartWrapperControl chartReport1;
+        private CRMS_Peguit.winforms.Controls.ChartWrapperControl chartReport2;
 
         private System.Windows.Forms.Panel pnlGrid;
         private System.Windows.Forms.Label lblReportHeader;

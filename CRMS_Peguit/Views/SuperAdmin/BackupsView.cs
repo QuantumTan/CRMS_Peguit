@@ -8,6 +8,7 @@ using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 // =============================================================================
 // BackupsView — Backup history and management.
@@ -32,6 +33,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         private DataGridView _grid = null!;
         private Button _btnRunBackup = null!;
         private Button _btnRestore = null!;
+        private Button _btnSeedAllTenants = null!;
         private Label _lblLastStatus = null!;
         private Panel _pnlEmptyState = null!;
 
@@ -63,7 +65,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             var lblTitle = new Label
             {
                 Text = "System Backups & Disaster Recovery",
-                Font = new Font("Segoe UI", 16f, FontStyle.Bold),
+                Font = UiStyleConstants.PageTitleFont,
                 ForeColor = Theme.TextPrimary,
                 AutoSize = true,
                 Location = new Point(28, 14)
@@ -71,7 +73,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             var lblSub = new Label
             {
                 Text = "Platform database backups, snapshot logs, and two-step disaster recovery — Infrastructure metadata only",
-                Font = new Font("Segoe UI", 9.5f),
+                Font = UiStyleConstants.SubtitleFont,
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
                 Location = new Point(28, 42)
@@ -104,12 +106,12 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 FlowDirection = FlowDirection.RightToLeft,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 Height = 40,
-                Width = 360,
-                Location = new Point(pnlToolbar.Width - 384, 8),
+                Width = 540,
+                Location = new Point(pnlToolbar.Width - 564, 8),
                 BackColor = Color.Transparent
             };
             pnlToolbar.SizeChanged += (_, _) =>
-                pnlActions.Location = new Point(pnlToolbar.Width - 384, 8);
+                pnlActions.Location = new Point(pnlToolbar.Width - 564, 8);
 
             _btnRunBackup = new Button
             {
@@ -137,8 +139,22 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             UiRadiusHelper.StyleButton(_btnRestore, 6);
             _btnRestore.Click += BtnRestore_Click;
 
+            _btnSeedAllTenants = new Button
+            {
+                Text = "🌱  Seed All Tenants",
+                Size = new Size(160, 34),
+                BackColor = Color.FromArgb(240, 253, 244),
+                ForeColor = Color.FromArgb(22, 101, 52),
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Margin = new Padding(4, 0, 0, 0)
+            };
+            UiRadiusHelper.StyleButton(_btnSeedAllTenants, 6);
+            _btnSeedAllTenants.Click += BtnSeedAllTenants_Click;
+
             pnlActions.Controls.Add(_btnRunBackup);
             pnlActions.Controls.Add(_btnRestore);
+            pnlActions.Controls.Add(_btnSeedAllTenants);
             pnlToolbar.Controls.Add(pnlActions);
 
             // 3. Danger / Warning Alert Banner (Height = 44)
@@ -423,6 +439,68 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             }
             finally
             {
+                _btnRestore.Enabled = true;
+            }
+        }
+
+        private async void BtnSeedAllTenants_Click(object? sender, EventArgs e)
+        {
+            var confirm = MessageBox.Show(
+                "This will verify and seed full realistic datasets across ALL tenants:\n\n" +
+                "  • Tenant 1: Apex Realty (Standard Tier)\n" +
+                "  • Tenant 2: BlueHorizon Properties (Professional Tier)\n" +
+                "  • Tenant 3: Crestview Holdings (Enterprise Multi-Branch: Manila, Cebu, Davao)\n\n" +
+                "Datasets include users, roles, team members, customers, buyer profiles, properties, deals, contingencies, clauses, leads, support tickets, comments, activities, follow-ups, campaigns, and notifications.\n\n" +
+                "Proceed with seeding all tenants?",
+                "Confirm Seed All Tenants",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (confirm != DialogResult.Yes) return;
+
+            _btnSeedAllTenants.Enabled = false;
+            _btnRunBackup.Enabled = false;
+            _btnRestore.Enabled = false;
+            _lblLastStatus.Text = "🌱 Seeding all tenants in progress...";
+            _lblLastStatus.ForeColor = Color.FromArgb(22, 101, 52);
+
+            try
+            {
+                var progress = new Progress<string>(msg =>
+                {
+                    _lblLastStatus.Text = msg;
+                });
+
+                await Task.Run(() => LocalDb.SeedAllTenantsAsync(progress));
+
+                _lblLastStatus.Text = "✓ All tenants successfully seeded.";
+                _lblLastStatus.ForeColor = Color.FromArgb(22, 101, 52);
+
+                MessageBox.Show(
+                    "All tenant databases have been successfully seeded!\n\n" +
+                    "  • Tenant 1 (Apex Realty): CRMS_Tenant_1\n" +
+                    "  • Tenant 2 (BlueHorizon Properties): CRMS_Tenant_2\n" +
+                    "  • Tenant 3 (Crestview Holdings): CRMS_Tenant_3 (3 Branches)\n\n" +
+                    "Default credentials:\n" +
+                    "  • Tenant 1: admin@test.com / Admin123! | manager@test.com / Manager123! | agent@test.com / Agent123!\n" +
+                    "  • Tenant 2: tenantb_admin@test.com / Admin123! | manager.b@test.com / Manager123! | agent.b@test.com / Agent123!\n" +
+                    "  • Tenant 3: tenantc_admin@test.com / Admin123! | manager.c@test.com / Manager123! | agent.c@test.com / Agent123!",
+                    "Seeding Complete",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
+                await LoadDataAsync();
+            }
+            catch (Exception ex)
+            {
+                _lblLastStatus.Text = $"Seeding error: {ex.Message}";
+                _lblLastStatus.ForeColor = Color.FromArgb(153, 27, 27);
+                MessageBox.Show($"Failed to seed all tenants: {ex.Message}", "Seeding Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _btnSeedAllTenants.Enabled = true;
+                _btnRunBackup.Enabled = true;
                 _btnRestore.Enabled = true;
             }
         }

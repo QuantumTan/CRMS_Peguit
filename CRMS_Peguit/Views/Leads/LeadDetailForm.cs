@@ -904,16 +904,16 @@ namespace CRMS_Peguit.winforms.Views.Leads
                     _btnConvert.Location = new Point(left, 13);
                 }
 
-                // Right-aligned dialog actions (8px spacing)
+                // Right-aligned dialog actions (8px spacing) — Primary action rightmost, Close to its left
                 int right = _pnlFooter.ClientSize.Width - 24;
-                if (_btnClose != null)
-                {
-                    _btnClose.Location = new Point(right - _btnClose.Width, 13);
-                    right -= (_btnClose.Width + 8);
-                }
                 if (_btnEdit != null && _btnEdit.Visible)
                 {
                     _btnEdit.Location = new Point(right - _btnEdit.Width, 13);
+                    right -= (_btnEdit.Width + 8);
+                }
+                if (_btnClose != null)
+                {
+                    _btnClose.Location = new Point(right - _btnClose.Width, 13);
                 }
             }
 
@@ -955,12 +955,8 @@ namespace CRMS_Peguit.winforms.Views.Leads
         {
             if (_lead == null || _controller == null) return;
 
-            var result = MessageBox.Show(
-                $"Convert '{_lead.FullName}' into a customer?\n\n" +
-                "A new customer record will be created and this lead will be marked as converted.",
-                "Convert Lead", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-
-            if (result != DialogResult.Yes) return;
+            if (!CRMS_Peguit.winforms.Services.UiStyleConstants.ConfirmAction(this, "convert", _lead.FullName, "A new customer record will be created and this lead will be marked as converted."))
+                return;
 
             _controller.ConvertToCustomer(_lead);
             _lead = _controller.GetById(_lead.LeadId) ?? _lead;

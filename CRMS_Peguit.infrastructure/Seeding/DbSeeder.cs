@@ -13,86 +13,116 @@ namespace CRMS_Peguit.infrastructure.Seeding
     {
         public static async Task SeedTestUsersAsync(RealEstateDbContext db, int tenantId = 1)
         {
+            await EnsureBranchesAsync(db, tenantId);
             await EnsureRolesAndBaseUsersAsync(db, tenantId);
             await EnsureAdditionalTeamMembersAsync(db, tenantId);
             await SeedSampleDataAsync(db, tenantId);
         }
 
+        public static async Task EnsureBranchesAsync(RealEstateDbContext db, int tenantId = 1)
+        {
+            if (tenantId == 3 && !await db.Branches.AnyAsync())
+            {
+                var hq = new Branch { TenantId = 3, BranchCode = "BR-MNL", BranchName = "Metro Manila HQ", Address = "Ayala Ave, Makati City", Phone = "02-8888-0001", IsActive = true };
+                var cebu = new Branch { TenantId = 3, BranchCode = "BR-CEB", BranchName = "Cebu Central Branch", Address = "IT Park, Cebu City", Phone = "032-411-0002", IsActive = true };
+                var davao = new Branch { TenantId = 3, BranchCode = "BR-DVO", BranchName = "Davao Regional Branch", Address = "Bajada, Davao City", Phone = "082-222-0003", IsActive = true };
+                db.Branches.AddRange(hq, cebu, davao);
+                await db.SaveChangesAsync();
+            }
+        }
+
         public static async Task EnsureRolesAndBaseUsersAsync(RealEstateDbContext db, int tenantId = 1)
         {
-            if (!await db.Roles.AnyAsync(r => r.TenantId == tenantId))
+            var adminRole = await db.Roles.FirstOrDefaultAsync(r => r.TenantId == tenantId && r.RoleName == "Admin");
+            var managerRole = await db.Roles.FirstOrDefaultAsync(r => r.TenantId == tenantId && r.RoleName == "Manager");
+            var agentRole = await db.Roles.FirstOrDefaultAsync(r => r.TenantId == tenantId && r.RoleName == "Agent");
+
+            if (adminRole == null)
             {
-                var adminRole = new Role { TenantId = tenantId, RoleName = "Admin" };
-                var managerRole = new Role { TenantId = tenantId, RoleName = "Manager" };
-                var agentRole = new Role { TenantId = tenantId, RoleName = "Agent" };
+                adminRole = new Role { TenantId = tenantId, RoleName = "Admin" };
+                db.Roles.Add(adminRole);
+            }
+            if (managerRole == null)
+            {
+                managerRole = new Role { TenantId = tenantId, RoleName = "Manager" };
+                db.Roles.Add(managerRole);
+            }
+            if (agentRole == null)
+            {
+                agentRole = new Role { TenantId = tenantId, RoleName = "Agent" };
+                db.Roles.Add(agentRole);
+            }
+            await db.SaveChangesAsync();
 
-                db.Roles.AddRange(adminRole, managerRole, agentRole);
+            var branches = await db.Branches.OrderBy(b => b.BranchId).ToListAsync();
+            int? hqBranchId = branches.FirstOrDefault(b => b.BranchCode == "BR-MNL")?.BranchId ?? branches.FirstOrDefault()?.BranchId;
+
+            var existingEmails = await db.Users
+                .Include(u => u.Person)
+                .Where(u => u.Person != null && u.Person.Email != null)
+                .Select(u => u.Person!.Email!.ToLower())
+                .ToListAsync();
+
+            string specificAdminEmail = tenantId switch
+            {
+                3 => "tenantc_admin@test.com",
+                2 => "tenantb_admin@test.com",
+                _ => "tenanta_admin@test.com"
+            };
+            string specificAdminName = tenantId switch
+            {
+                3 => "Tenant C",
+                2 => "Tenant B",
+                _ => "Tenant A"
+            };
+
+            var baseUsersToEnsure = new List<(string FirstName, string LastName, string Email, string Phone, int RoleId, string Password, int? BranchId)>
+            {
+                ("System", "Admin", "admin@test.com", "09170000001", adminRole.RoleId, "Admin123!", tenantId == 3 ? hqBranchId : null),
+                (specificAdminName, "Admin", specificAdminEmail, "09170000099", adminRole.RoleId, "Admin123!", tenantId == 3 ? hqBranchId : null),
+                ("Test", "Manager", "manager@test.com", "09170000002", managerRole.RoleId, "Manager123!", tenantId == 3 ? hqBranchId : null),
+                ("Test", "Agent", "agent@test.com", "09170000003", agentRole.RoleId, "Agent123!", tenantId == 3 ? hqBranchId : null)
+            };
+
+            var toAdd = new List<User>();
+            foreach (var bu in baseUsersToEnsure)
+            {
+                if (!existingEmails.Contains(bu.Email.ToLower()))
+                {
+                    toAdd.Add(new User
+                    {
+                        Person = new Person
+                        {
+                            FirstName = bu.FirstName,
+                            LastName = bu.LastName,
+                            Email = bu.Email,
+                            Phone = bu.Phone
+                        },
+                        PasswordHash = PasswordHasher.Hash(bu.Password),
+                        RoleId = bu.RoleId,
+                        BranchId = bu.BranchId,
+                        Status = "Active",
+                        CreatedAt = DateTime.UtcNow.AddMonths(-18)
+                    });
+                    existingEmails.Add(bu.Email.ToLower());
+                }
+            }
+
+            if (toAdd.Count > 0)
+            {
+                db.Users.AddRange(toAdd);
                 await db.SaveChangesAsync();
+            }
 
-                var adminPerson = new Person { FirstName = "System", LastName = "Admin", Email = "admin@test.com", Phone = "09170000001" };
-                var managerPerson = new Person { FirstName = "Test", LastName = "Manager", Email = "manager@test.com", Phone = "09170000002" };
-                var agentPerson = new Person { FirstName = "Test", LastName = "Agent", Email = "agent@test.com", Phone = "09170000003" };
-
-                string specificEmail = tenantId switch
+            if (tenantId == 3 && hqBranchId != null)
+            {
+                var usersWithoutBranch = await db.Users.Where(u => u.BranchId == null).ToListAsync();
+                if (usersWithoutBranch.Count > 0)
                 {
-                    3 => "tenantc_admin@test.com",
-                    2 => "tenantb_admin@test.com",
-                    _ => "tenanta_admin@test.com"
-                };
-                string specificName = tenantId switch
-                {
-                    3 => "Tenant C",
-                    2 => "Tenant B",
-                    _ => "Tenant A"
-                };
-
-                var specificAdminPerson = new Person { FirstName = specificName, LastName = "Admin", Email = specificEmail, Phone = "09170000099" };
-
-                var users = new List<User>
-                {
-                    new User
+                    foreach (var u in usersWithoutBranch)
                     {
-                        Person = adminPerson,
-                        PasswordHash = PasswordHasher.Hash("Admin123!"),
-                        RoleId = adminRole.RoleId,
-                        Status = "Active",
-                        CreatedAt = DateTime.UtcNow.AddMonths(-18)
-                    },
-                    new User
-                    {
-                        Person = specificAdminPerson,
-                        PasswordHash = PasswordHasher.Hash("Admin123!"),
-                        RoleId = adminRole.RoleId,
-                        Status = "Active",
-                        CreatedAt = DateTime.UtcNow.AddMonths(-18)
-                    },
-                    new User
-                    {
-                        Person = managerPerson,
-                        PasswordHash = PasswordHasher.Hash("Manager123!"),
-                        RoleId = managerRole.RoleId,
-                        Status = "Active",
-                        CreatedAt = DateTime.UtcNow.AddMonths(-18)
-                    },
-                    new User
-                    {
-                        Person = agentPerson,
-                        PasswordHash = PasswordHasher.Hash("Agent123!"),
-                        RoleId = agentRole.RoleId,
-                        Status = "Active",
-                        CreatedAt = DateTime.UtcNow.AddMonths(-18)
+                        u.BranchId = hqBranchId;
                     }
-                };
-
-                db.Users.AddRange(users);
-                await db.SaveChangesAsync();
-
-                if (tenantId == 3 && !await db.Branches.AnyAsync())
-                {
-                    var hq = new Branch { TenantId = 3, BranchCode = "BR-MNL", BranchName = "Metro Manila HQ", Address = "Ayala Ave, Makati City", Phone = "02-8888-0001", IsActive = true };
-                    var cebu = new Branch { TenantId = 3, BranchCode = "BR-CEB", BranchName = "Cebu Central Branch", Address = "IT Park, Cebu City", Phone = "032-411-0002", IsActive = true };
-                    var davao = new Branch { TenantId = 3, BranchCode = "BR-DVO", BranchName = "Davao Regional Branch", Address = "Bajada, Davao City", Phone = "082-222-0003", IsActive = true };
-                    db.Branches.AddRange(hq, cebu, davao);
                     await db.SaveChangesAsync();
                 }
             }
@@ -108,18 +138,61 @@ namespace CRMS_Peguit.infrastructure.Seeding
             var existingEmails = await db.Users
                 .Include(u => u.Person)
                 .Where(u => u.Person != null && u.Person.Email != null)
-                .Select(u => u.Person!.Email.ToLower())
+                .Select(u => u.Person!.Email!.ToLower())
                 .ToListAsync();
 
-            var teamMembers = new (string FirstName, string LastName, string Email, string Phone, int RoleId, string Password)[]
+            var branches = await db.Branches.OrderBy(b => b.BranchId).ToListAsync();
+            int? hqBranchId = branches.FirstOrDefault(b => b.BranchCode == "BR-MNL")?.BranchId ?? branches.FirstOrDefault()?.BranchId;
+            int? cebuBranchId = branches.FirstOrDefault(b => b.BranchCode == "BR-CEB")?.BranchId ?? branches.Skip(1).FirstOrDefault()?.BranchId;
+            int? davaoBranchId = branches.FirstOrDefault(b => b.BranchCode == "BR-DVO")?.BranchId ?? branches.Skip(2).FirstOrDefault()?.BranchId;
+
+            (string FirstName, string LastName, string Email, string Phone, int RoleId, string Password, int? BranchId)[] teamMembers;
+
+            if (tenantId == 2)
             {
-                ("Sarah", "Jenkins", "sarah.jenkins@test.com", "09173344551", agentRole.RoleId, "Agent123!"),
-                ("Michael", "Chang", "michael.chang@test.com", "09184455662", agentRole.RoleId, "Agent123!"),
-                ("Jessica", "Torres", "jessica.torres@test.com", "09205566773", agentRole.RoleId, "Agent123!"),
-                ("David", "Reyes", "david.reyes@test.com", "09226677884", agentRole.RoleId, "Agent123!"),
-                ("Amanda", "Lim", "amanda.lim@test.com", "09157788995", agentRole.RoleId, "Agent123!"),
-                ("Robert", "Tan", "robert.tan@test.com", "09278899006", managerRole.RoleId, "Manager123!")
-            };
+                teamMembers = new (string FirstName, string LastName, string Email, string Phone, int RoleId, string Password, int? BranchId)[]
+                {
+                    ("Tenant B", "Manager", "manager.b@test.com", "09180000002", managerRole.RoleId, "Manager123!", null),
+                    ("Tenant B", "Agent", "agent.b@test.com", "09180000003", agentRole.RoleId, "Agent123!", null),
+                    ("Valerie", "Cross", "valerie.cross@test.com", "09281122334", managerRole.RoleId, "Manager123!", null),
+                    ("Elena", "Rostova", "elena.rostova@test.com", "09174455667", agentRole.RoleId, "Agent123!", null),
+                    ("Marcus", "Vance", "marcus.vance@test.com", "09185566778", agentRole.RoleId, "Agent123!", null),
+                    ("Chloe", "Bennett", "chloe.bennett@test.com", "09206677889", agentRole.RoleId, "Agent123!", null),
+                    ("Nathan", "Drake", "nathan.drake@test.com", "09227788990", agentRole.RoleId, "Agent123!", null)
+                };
+            }
+            else if (tenantId == 3)
+            {
+                teamMembers = new (string FirstName, string LastName, string Email, string Phone, int RoleId, string Password, int? BranchId)[]
+                {
+                    // Manila HQ (Branch 1)
+                    ("Tenant C", "Manager", "manager.c@test.com", "09190000002", managerRole.RoleId, "Manager123!", hqBranchId),
+                    ("Tenant C", "Agent", "agent.c@test.com", "09190000003", agentRole.RoleId, "Agent123!", hqBranchId),
+                    ("Gabriel", "Santos", "gabriel.santos@test.com", "09171234567", agentRole.RoleId, "Agent123!", hqBranchId),
+
+                    // Cebu Central (Branch 2)
+                    ("Carlos", "Mendoza", "carlos.mendoza@test.com", "09321122334", managerRole.RoleId, "Manager123!", cebuBranchId),
+                    ("Althea", "Garcia", "althea.garcia@test.com", "09322345678", agentRole.RoleId, "Agent123!", cebuBranchId),
+                    ("Mateo", "Lim", "mateo.lim@test.com", "09323456789", agentRole.RoleId, "Agent123!", cebuBranchId),
+
+                    // Davao Regional (Branch 3)
+                    ("Beatrice", "Ong", "beatrice.ong@test.com", "09452233445", managerRole.RoleId, "Manager123!", davaoBranchId),
+                    ("Patricia", "Alvarez", "patricia.alvarez@test.com", "09453456780", agentRole.RoleId, "Agent123!", davaoBranchId),
+                    ("Dominic", "Suarez", "dominic.suarez@test.com", "09454567891", agentRole.RoleId, "Agent123!", davaoBranchId)
+                };
+            }
+            else
+            {
+                teamMembers = new (string FirstName, string LastName, string Email, string Phone, int RoleId, string Password, int? BranchId)[]
+                {
+                    ("Sarah", "Jenkins", "sarah.jenkins@test.com", "09173344551", agentRole.RoleId, "Agent123!", null),
+                    ("Michael", "Chang", "michael.chang@test.com", "09184455662", agentRole.RoleId, "Agent123!", null),
+                    ("Jessica", "Torres", "jessica.torres@test.com", "09205566773", agentRole.RoleId, "Agent123!", null),
+                    ("David", "Reyes", "david.reyes@test.com", "09226677884", agentRole.RoleId, "Agent123!", null),
+                    ("Amanda", "Lim", "amanda.lim@test.com", "09157788995", agentRole.RoleId, "Agent123!", null),
+                    ("Robert", "Tan", "robert.tan@test.com", "09278899006", managerRole.RoleId, "Manager123!", null)
+                };
+            }
 
             var toAdd = new List<User>();
             foreach (var member in teamMembers)
@@ -139,9 +212,11 @@ namespace CRMS_Peguit.infrastructure.Seeding
                         Person = person,
                         PasswordHash = PasswordHasher.Hash(member.Password),
                         RoleId = member.RoleId,
+                        BranchId = member.BranchId,
                         Status = "Active",
                         CreatedAt = DateTime.UtcNow.AddMonths(-16)
                     });
+                    existingEmails.Add(member.Email.ToLower());
                 }
             }
 
@@ -174,7 +249,7 @@ namespace CRMS_Peguit.infrastructure.Seeding
             await EnsureCustomersAndBuyerProfilesAsync(db, agents, fallbackUserId);
 
             // 2. Properties (at least 85 properties across prime locations)
-            await EnsurePropertiesAsync(db, agents, fallbackUserId);
+            await EnsurePropertiesAsync(db, agents, fallbackUserId, tenantId);
 
             // 3. Transactions / Deals with DealContingency and DealClause (at least 350 transactions)
             await SeedTransactionsAsync(db, targetCount: 350, tenantId);
@@ -244,8 +319,13 @@ namespace CRMS_Peguit.infrastructure.Seeding
             }
         }
 
-        public static async Task EnsurePropertiesAsync(RealEstateDbContext db, List<User> agents, int fallbackUserId)
+        public static async Task EnsurePropertiesAsync(RealEstateDbContext db, List<User> agents, int fallbackUserId, int tenantId = 1)
         {
+            var branches = await db.Branches.OrderBy(b => b.BranchId).ToListAsync();
+            int? hqBranchId = branches.FirstOrDefault(b => b.BranchCode == "BR-MNL")?.BranchId ?? branches.FirstOrDefault()?.BranchId;
+            int? cebuBranchId = branches.FirstOrDefault(b => b.BranchCode == "BR-CEB")?.BranchId ?? branches.Skip(1).FirstOrDefault()?.BranchId;
+            int? davaoBranchId = branches.FirstOrDefault(b => b.BranchCode == "BR-DVO")?.BranchId ?? branches.Skip(2).FirstOrDefault()?.BranchId;
+
             int currentCount = await db.Properties.CountAsync();
             if (currentCount < 85)
             {
@@ -253,16 +333,25 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 if (customers.Count == 0) return;
 
                 int needed = 90 - currentCount;
-                var newProperties = GeneratePropertyCatalog(needed, customers, agents, fallbackUserId);
+                var newProperties = GeneratePropertyCatalog(needed, customers, agents, fallbackUserId, tenantId, hqBranchId, cebuBranchId, davaoBranchId);
                 db.Properties.AddRange(newProperties);
                 await db.SaveChangesAsync();
             }
+
+            if (tenantId == 3 && branches.Count > 0)
+            {
+                var propsWithoutBranch = await db.Properties.Where(p => p.BranchId == null).ToListAsync();
+                if (propsWithoutBranch.Count > 0)
+                {
+                    foreach (var p in propsWithoutBranch)
+                    {
+                        p.BranchId = ResolveBranchForLocation(p.Address, hqBranchId, cebuBranchId, davaoBranchId);
+                    }
+                    await db.SaveChangesAsync();
+                }
+            }
         }
 
-        /// <summary>
-        /// Seeds 350+ realistic real estate transactions (Deals) across various stages, properties, customers, and dates,
-        /// and populates child DealContingency and DealClause records.
-        /// </summary>
         public static async Task<int> SeedTransactionsAsync(RealEstateDbContext db, int targetCount = 350, int tenantId = 1)
         {
             var agents = await db.Users
@@ -280,6 +369,11 @@ namespace CRMS_Peguit.infrastructure.Seeding
 
             int fallbackUserId = salesAgents[0].UserId;
 
+            var branches = await db.Branches.OrderBy(b => b.BranchId).ToListAsync();
+            int? hqBranchId = branches.FirstOrDefault(b => b.BranchCode == "BR-MNL")?.BranchId ?? branches.FirstOrDefault()?.BranchId;
+            int? cebuBranchId = branches.FirstOrDefault(b => b.BranchCode == "BR-CEB")?.BranchId ?? branches.Skip(1).FirstOrDefault()?.BranchId;
+            int? davaoBranchId = branches.FirstOrDefault(b => b.BranchCode == "BR-DVO")?.BranchId ?? branches.Skip(2).FirstOrDefault()?.BranchId;
+
             // Ensure rich pools
             var existingCustomers = await db.Customers.Include(c => c.Person).Where(c => !c.IsDeleted).ToListAsync();
             if (existingCustomers.Count < 50)
@@ -293,7 +387,7 @@ namespace CRMS_Peguit.infrastructure.Seeding
             var existingProperties = await db.Properties.ToListAsync();
             if (existingProperties.Count < 60)
             {
-                var newProperties = GeneratePropertyCatalog(70 - existingProperties.Count, existingCustomers, salesAgents, fallbackUserId);
+                var newProperties = GeneratePropertyCatalog(70 - existingProperties.Count, existingCustomers, salesAgents, fallbackUserId, tenantId, hqBranchId, cebuBranchId, davaoBranchId);
                 db.Properties.AddRange(newProperties);
                 await db.SaveChangesAsync();
                 existingProperties = await db.Properties.ToListAsync();
@@ -303,7 +397,7 @@ namespace CRMS_Peguit.infrastructure.Seeding
             int dealsToCreate = targetCount - currentDealCount;
             if (dealsToCreate > 0)
             {
-                var deals = GenerateDealTransactions(dealsToCreate, existingCustomers, existingProperties, salesAgents, fallbackUserId);
+                var deals = GenerateDealTransactions(dealsToCreate, existingCustomers, existingProperties, salesAgents, fallbackUserId, tenantId);
                 db.Deals.AddRange(deals);
                 await db.SaveChangesAsync();
 
@@ -324,6 +418,43 @@ namespace CRMS_Peguit.infrastructure.Seeding
             {
                 AttachContingenciesAndClauses(db, dealsWithoutContingencies);
                 await db.SaveChangesAsync();
+            }
+
+            if (tenantId == 3 && branches.Count > 0)
+            {
+                var deals = await db.Deals.Include(d => d.Agent).Include(d => d.Property).Take(500).ToListAsync();
+                var cebuAgents = salesAgents.Where(a => a.BranchId == cebuBranchId).ToList();
+                var davaoAgents = salesAgents.Where(a => a.BranchId == davaoBranchId).ToList();
+                bool anyChanged = false;
+
+                for (int i = 0; i < deals.Count; i++)
+                {
+                    var d = deals[i];
+                    int? targetBranchId = d.Property != null
+                        ? (d.Property.BranchId ?? ResolveBranchForLocation(d.Property.Address, hqBranchId, cebuBranchId, davaoBranchId))
+                        : (d.Agent?.BranchId ?? hqBranchId);
+
+                    if (targetBranchId == cebuBranchId && cebuAgents.Count > 0)
+                    {
+                        var cAgent = cebuAgents[i % cebuAgents.Count];
+                        if (d.AgentId != cAgent.UserId) { d.AgentId = cAgent.UserId; d.CreatedByUserId = cAgent.UserId; anyChanged = true; }
+                    }
+                    else if (targetBranchId == davaoBranchId && davaoAgents.Count > 0)
+                    {
+                        var dAgent = davaoAgents[i % davaoAgents.Count];
+                        if (d.AgentId != dAgent.UserId) { d.AgentId = dAgent.UserId; d.CreatedByUserId = dAgent.UserId; anyChanged = true; }
+                    }
+
+                    if (d.BranchId != targetBranchId)
+                    {
+                        d.BranchId = targetBranchId;
+                        anyChanged = true;
+                    }
+                }
+                if (anyChanged)
+                {
+                    await db.SaveChangesAsync();
+                }
             }
 
             return Math.Max(dealsToCreate, 0);
@@ -456,7 +587,26 @@ namespace CRMS_Peguit.infrastructure.Seeding
             return customers;
         }
 
-        private static List<Property> GeneratePropertyCatalog(int count, List<Customer> customers, List<User> agents, int fallbackUserId)
+        private static int? ResolveBranchForLocation(string address, int? hqBranchId, int? cebuBranchId, int? davaoBranchId)
+        {
+            if (string.IsNullOrWhiteSpace(address)) return hqBranchId;
+            string lower = address.ToLower();
+            if (lower.Contains("cebu") || lower.Contains("mandaue") || lower.Contains("bohol") || lower.Contains("iloilo"))
+                return cebuBranchId ?? hqBranchId;
+            if (lower.Contains("davao"))
+                return davaoBranchId ?? hqBranchId;
+            return hqBranchId;
+        }
+
+        private static List<Property> GeneratePropertyCatalog(
+            int count,
+            List<Customer> customers,
+            List<User> agents,
+            int fallbackUserId,
+            int tenantId = 1,
+            int? hqBranchId = null,
+            int? cebuBranchId = null,
+            int? davaoBranchId = null)
         {
             var propertyTemplates = new (string Address, string Type, decimal Price)[]
             {
@@ -557,6 +707,8 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 int statRoll = rnd.Next(100);
                 string status = statRoll < 60 ? "available" : (statRoll < 80 ? "reserved" : (statRoll < 92 ? "sold" : "under offer"));
 
+                int? branchId = tenantId == 3 ? ResolveBranchForLocation(address, hqBranchId, cebuBranchId, davaoBranchId) : null;
+
                 var prop = new Property
                 {
                     Address = address,
@@ -567,6 +719,7 @@ namespace CRMS_Peguit.infrastructure.Seeding
                     OwnerCustomerId = owner.CustomerId,
                     ListedByAgentId = agent.UserId,
                     CreatedByUserId = agent.UserId,
+                    BranchId = branchId,
                     CreatedAt = DateTime.UtcNow.AddMonths(-rnd.Next(1, 18)).AddDays(-rnd.Next(1, 28))
                 };
 
@@ -581,7 +734,8 @@ namespace CRMS_Peguit.infrastructure.Seeding
             List<Customer> customers,
             List<Property> properties,
             List<User> agents,
-            int fallbackUserId)
+            int fallbackUserId,
+            int tenantId = 1)
         {
             var stipulationsPool = new[]
             {
@@ -682,12 +836,15 @@ namespace CRMS_Peguit.infrastructure.Seeding
                     stipulation = "Client retracted offer due to mortgage contingency or competing property acquisition.";
                 }
 
+                int? dealBranchId = tenantId == 3 ? (agent.BranchId ?? property.BranchId) : null;
+
                 var deal = new Deal
                 {
                     CustomerId = customer.CustomerId,
                     PropertyId = property.PropertyId,
                     AgentId = agent.UserId,
                     CreatedByUserId = agent.UserId,
+                    BranchId = dealBranchId,
                     Value = dealValue,
                     CommissionRate = commissionRate,
                     Stage = stage,
@@ -832,6 +989,7 @@ namespace CRMS_Peguit.infrastructure.Seeding
                         Notes = item.Note,
                         AssignedAgentId = agent.UserId,
                         CreatedByUserId = agent.UserId,
+                        BranchId = tenantId == 3 ? agent.BranchId : null,
                         AssignmentStatus = "approved",
                         ConvertedCustomerId = convertedCustId,
                         CreatedAt = created
@@ -842,6 +1000,21 @@ namespace CRMS_Peguit.infrastructure.Seeding
 
                 db.Leads.AddRange(leadsToAdd);
                 await db.SaveChangesAsync();
+            }
+
+            if (tenantId == 3)
+            {
+                var branches = await db.Branches.OrderBy(b => b.BranchId).ToListAsync();
+                int? defaultBranchId = branches.FirstOrDefault()?.BranchId;
+                var leadsWithoutBranch = await db.Leads.Include(l => l.AssignedAgent).Where(l => l.BranchId == null).Take(500).ToListAsync();
+                if (leadsWithoutBranch.Count > 0)
+                {
+                    foreach (var l in leadsWithoutBranch)
+                    {
+                        l.BranchId = l.AssignedAgent?.BranchId ?? defaultBranchId;
+                    }
+                    await db.SaveChangesAsync();
+                }
             }
 
             // 2. Seed Support Tickets & Comments (target: at least 40 tickets)

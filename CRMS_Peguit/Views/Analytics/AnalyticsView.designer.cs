@@ -37,53 +37,32 @@ namespace CRMS_Peguit.winforms.Views.Analytics
 
             this.pnlScrollableContent = new System.Windows.Forms.Panel();
             
-            this.pnlChartDealsClosed = new System.Windows.Forms.Panel();
-            this.plotDealsClosed = new ScottPlot.WinForms.FormsPlot();
-            this.lblChartDealsClosedTitle = new System.Windows.Forms.Label();
-            this.lblChartDealsClosedSubtitle = new System.Windows.Forms.Label();
-
-            this.pnlChartPipeline = new System.Windows.Forms.Panel();
-            this.plotPipeline = new ScottPlot.WinForms.FormsPlot();
-            this.lblChartPipelineTitle = new System.Windows.Forms.Label();
-            this.lblChartPipelineSubtitle = new System.Windows.Forms.Label();
-
-            this.pnlChartWonVsLost = new System.Windows.Forms.Panel();
-            this.plotWonVsLost = new ScottPlot.WinForms.FormsPlot();
-            this.lblChartWonVsLostTitle = new System.Windows.Forms.Label();
-            this.lblChartWonVsLostSubtitle = new System.Windows.Forms.Label();
-
-            this.pnlChartTickets = new System.Windows.Forms.Panel();
-            this.plotTickets = new ScottPlot.WinForms.FormsPlot();
-            this.lblChartTicketsTitle = new System.Windows.Forms.Label();
-            this.lblChartTicketsSubtitle = new System.Windows.Forms.Label();
-
-            this.pnlChartAgents = new System.Windows.Forms.Panel();
-            this.plotAgents = new ScottPlot.WinForms.FormsPlot();
-            this.lblChartAgentsTitle = new System.Windows.Forms.Label();
-            this.lblChartAgentsSubtitle = new System.Windows.Forms.Label();
-
-            this.pnlChartSources = new System.Windows.Forms.Panel();
-            this.plotSources = new ScottPlot.WinForms.FormsPlot();
-            this.lblChartSourcesTitle = new System.Windows.Forms.Label();
-            this.lblChartSourcesSubtitle = new System.Windows.Forms.Label();
+            this.chartDealsClosed = new CRMS_Peguit.winforms.Controls.ChartWrapperControl("Deals Closed Over Time", "Monthly closed deals in selected period", CRMS_Peguit.winforms.Controls.KpiClickMode.InPlaceFilter);
+            this.chartPipeline = new CRMS_Peguit.winforms.Controls.ChartWrapperControl("Lead Pipeline Funnel", "Stage-by-stage lead progression", CRMS_Peguit.winforms.Controls.KpiClickMode.InPlaceFilter);
+            this.chartWonVsLost = new CRMS_Peguit.winforms.Controls.ChartWrapperControl("Deals Won vs. Lost", "Win/loss outcome distribution", CRMS_Peguit.winforms.Controls.KpiClickMode.InPlaceFilter);
+            this.chartTickets = new CRMS_Peguit.winforms.Controls.ChartWrapperControl("Support Ticket Breakdown", "Ticket status across the queue", CRMS_Peguit.winforms.Controls.KpiClickMode.InPlaceFilter);
+            this.chartAgents = new CRMS_Peguit.winforms.Controls.ChartWrapperControl("Top-Performing Agents", "By total sales volume (₱ millions)", CRMS_Peguit.winforms.Controls.KpiClickMode.InPlaceFilter);
+            this.chartSources = new CRMS_Peguit.winforms.Controls.ChartWrapperControl("Lead Source Breakdown", "Leads generated per acquisition channel", CRMS_Peguit.winforms.Controls.KpiClickMode.InPlaceFilter);
 
             this.pnlRecentActivity = new System.Windows.Forms.Panel();
             this.lblRecentActivityTitle = new System.Windows.Forms.Label();
             this.lblRecentActivitySubtitle = new System.Windows.Forms.Label();
             this.pnlActivityFeedList = new System.Windows.Forms.FlowLayoutPanel();
 
+            this.pnlGridCard = new System.Windows.Forms.Panel();
+            this.pnlGridHeader = new System.Windows.Forms.Panel();
+            this.lblGridTitle = new System.Windows.Forms.Label();
+            this.lblGridSubtitle = new System.Windows.Forms.Label();
+            this.btnResetFilter = new System.Windows.Forms.Button();
+            this.gridAnalyticsDetails = new System.Windows.Forms.DataGridView();
+
             this.pnlHeader.SuspendLayout();
             this.pnlKpi.SuspendLayout();
             this.pnlScrollableContent.SuspendLayout();
-            
-            this.pnlChartDealsClosed.SuspendLayout();
-            this.pnlChartPipeline.SuspendLayout();
-            this.pnlChartWonVsLost.SuspendLayout();
-            this.pnlChartTickets.SuspendLayout();
-            this.pnlChartAgents.SuspendLayout();
-            this.pnlChartSources.SuspendLayout();
             this.pnlRecentActivity.SuspendLayout();
-            
+            this.pnlGridCard.SuspendLayout();
+            this.pnlGridHeader.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.gridAnalyticsDetails)).BeginInit();
             this.SuspendLayout();
 
             // pnlHeader
@@ -99,14 +78,14 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             
             // lblTitle
             this.lblTitle.AutoSize = true;
-            this.lblTitle.Font = new System.Drawing.Font("Segoe UI", 18F, System.Drawing.FontStyle.Bold);
+            this.lblTitle.Font = CRMS_Peguit.winforms.Services.UiStyleConstants.PageTitleFont;
             this.lblTitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextPrimary;
             this.lblTitle.Location = new System.Drawing.Point(20, 15);
             this.lblTitle.Text = "Analytics & Insights";
 
             // lblSubtitle
             this.lblSubtitle.AutoSize = true;
-            this.lblSubtitle.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.lblSubtitle.Font = CRMS_Peguit.winforms.Services.UiStyleConstants.SubtitleFont;
             this.lblSubtitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextSecondary;
             this.lblSubtitle.Location = new System.Drawing.Point(22, 50);
             this.lblSubtitle.Text = "Live business intelligence across your deals, leads, and operations";
@@ -182,17 +161,8 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             this.pnlScrollableContent.AutoScroll = true;
             this.pnlScrollableContent.Padding = new System.Windows.Forms.Padding(20);
 
-            // Setup chart panels
-            SetupChartPanel(pnlChartDealsClosed, lblChartDealsClosedTitle, lblChartDealsClosedSubtitle, plotDealsClosed, "Deals Closed Over Time", "Monthly closed deals in selected period");
-            SetupChartPanel(pnlChartPipeline, lblChartPipelineTitle, lblChartPipelineSubtitle, plotPipeline, "Lead Pipeline Funnel", "Stage-by-stage lead progression");
-            SetupChartPanel(pnlChartWonVsLost, lblChartWonVsLostTitle, lblChartWonVsLostSubtitle, plotWonVsLost, "Deals Won vs. Lost", "Win/loss outcome distribution");
-            SetupChartPanel(pnlChartTickets, lblChartTicketsTitle, lblChartTicketsSubtitle, plotTickets, "Support Ticket Breakdown", "Ticket status across the queue");
-            SetupChartPanel(pnlChartAgents, lblChartAgentsTitle, lblChartAgentsSubtitle, plotAgents, "Top-Performing Agents", "By total sales volume (₱ millions)");
-            SetupChartPanel(pnlChartSources, lblChartSourcesTitle, lblChartSourcesSubtitle, plotSources, "Lead Source Breakdown", "Leads generated per acquisition channel");
-
             // pnlRecentActivity
             this.pnlRecentActivity.BackColor = System.Drawing.Color.White;
-            
             this.lblRecentActivityTitle.Text = "Recent Activity Feed";
             this.lblRecentActivityTitle.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold);
             this.lblRecentActivityTitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextPrimary;
@@ -214,15 +184,62 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             this.pnlRecentActivity.Controls.Add(lblRecentActivitySubtitle);
             this.pnlRecentActivity.Controls.Add(pnlActivityFeedList);
 
+            // pnlGridCard
+            this.pnlGridCard.BackColor = System.Drawing.Color.White;
+            this.pnlGridCard.Padding = new System.Windows.Forms.Padding(16, 12, 16, 16);
+
+            // pnlGridHeader
+            this.pnlGridHeader.Dock = System.Windows.Forms.DockStyle.Top;
+            this.pnlGridHeader.Height = 56;
+            this.pnlGridHeader.BackColor = System.Drawing.Color.Transparent;
+
+            this.lblGridTitle.Text = "Analytics Drill-Down Ledger";
+            this.lblGridTitle.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold);
+            this.lblGridTitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextPrimary;
+            this.lblGridTitle.Location = new System.Drawing.Point(0, 4);
+            this.lblGridTitle.AutoSize = true;
+
+            this.lblGridSubtitle.Text = "Click any KPI card or chart segment to filter records in-place (Case 1 standard)";
+            this.lblGridSubtitle.Font = new System.Drawing.Font("Segoe UI", 8.5F);
+            this.lblGridSubtitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextSecondary;
+            this.lblGridSubtitle.Location = new System.Drawing.Point(1, 28);
+            this.lblGridSubtitle.AutoSize = true;
+
+            this.btnResetFilter.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnResetFilter.Font = new System.Drawing.Font("Segoe UI Semibold", 8.5F);
+            this.btnResetFilter.Text = "✕ Clear Drill-Down Filter";
+            this.btnResetFilter.Size = new System.Drawing.Size(180, 32);
+            this.btnResetFilter.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.btnResetFilter.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnResetFilter.BackColor = System.Drawing.Color.FromArgb(241, 245, 249);
+            this.btnResetFilter.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextSecondary;
+
+            this.pnlGridHeader.Controls.Add(this.lblGridTitle);
+            this.pnlGridHeader.Controls.Add(this.lblGridSubtitle);
+            this.pnlGridHeader.Controls.Add(this.btnResetFilter);
+
+            // gridAnalyticsDetails
+            this.gridAnalyticsDetails.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.gridAnalyticsDetails.AllowUserToAddRows = false;
+            this.gridAnalyticsDetails.AllowUserToDeleteRows = false;
+            this.gridAnalyticsDetails.ReadOnly = true;
+            this.gridAnalyticsDetails.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
+            this.gridAnalyticsDetails.BackgroundColor = System.Drawing.Color.White;
+            this.gridAnalyticsDetails.BorderStyle = System.Windows.Forms.BorderStyle.None;
+
+            this.pnlGridCard.Controls.Add(this.gridAnalyticsDetails);
+            this.pnlGridCard.Controls.Add(this.pnlGridHeader);
+
             // Add all to scrollable content
             this.pnlScrollableContent.Controls.Add(this.pnlKpi);
-            this.pnlScrollableContent.Controls.Add(pnlChartDealsClosed);
-            this.pnlScrollableContent.Controls.Add(pnlChartPipeline);
-            this.pnlScrollableContent.Controls.Add(pnlChartWonVsLost);
-            this.pnlScrollableContent.Controls.Add(pnlChartTickets);
-            this.pnlScrollableContent.Controls.Add(pnlChartAgents);
-            this.pnlScrollableContent.Controls.Add(pnlChartSources);
-            this.pnlScrollableContent.Controls.Add(pnlRecentActivity);
+            this.pnlScrollableContent.Controls.Add(this.chartDealsClosed);
+            this.pnlScrollableContent.Controls.Add(this.chartPipeline);
+            this.pnlScrollableContent.Controls.Add(this.chartWonVsLost);
+            this.pnlScrollableContent.Controls.Add(this.chartTickets);
+            this.pnlScrollableContent.Controls.Add(this.chartAgents);
+            this.pnlScrollableContent.Controls.Add(this.chartSources);
+            this.pnlScrollableContent.Controls.Add(this.pnlRecentActivity);
+            this.pnlScrollableContent.Controls.Add(this.pnlGridCard);
 
             // AnalyticsView
             this.Controls.Add(this.pnlScrollableContent);
@@ -233,38 +250,13 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             this.pnlHeader.ResumeLayout(false);
             this.pnlHeader.PerformLayout();
             this.pnlKpi.ResumeLayout(false);
-            this.pnlScrollableContent.ResumeLayout(false);
-            this.pnlChartDealsClosed.ResumeLayout(false);
-            this.pnlChartPipeline.ResumeLayout(false);
-            this.pnlChartWonVsLost.ResumeLayout(false);
-            this.pnlChartTickets.ResumeLayout(false);
-            this.pnlChartAgents.ResumeLayout(false);
-            this.pnlChartSources.ResumeLayout(false);
             this.pnlRecentActivity.ResumeLayout(false);
+            this.pnlGridHeader.ResumeLayout(false);
+            this.pnlGridHeader.PerformLayout();
+            this.pnlGridCard.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)(this.gridAnalyticsDetails)).EndInit();
+            this.pnlScrollableContent.ResumeLayout(false);
             this.ResumeLayout(false);
-        }
-
-        private void SetupChartPanel(System.Windows.Forms.Panel panel, System.Windows.Forms.Label titleLabel, System.Windows.Forms.Label subtitleLabel, ScottPlot.WinForms.FormsPlot plot, string title, string subtitle)
-        {
-            panel.BackColor = System.Drawing.Color.White;
-            
-            titleLabel.Text = title;
-            titleLabel.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold);
-            titleLabel.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextPrimary;
-            titleLabel.Location = new System.Drawing.Point(16, 14);
-            titleLabel.AutoSize = true;
-
-            subtitleLabel.Text = subtitle;
-            subtitleLabel.Font = new System.Drawing.Font("Segoe UI", 8.5F);
-            subtitleLabel.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextSecondary;
-            subtitleLabel.Location = new System.Drawing.Point(18, 36);
-            subtitleLabel.AutoSize = true;
-
-            plot.Location = new System.Drawing.Point(14, 58);
-
-            panel.Controls.Add(titleLabel);
-            panel.Controls.Add(subtitleLabel);
-            panel.Controls.Add(plot);
         }
 
         private System.Windows.Forms.Panel pnlHeader;
@@ -285,39 +277,23 @@ namespace CRMS_Peguit.winforms.Views.Analytics
 
         private System.Windows.Forms.Panel pnlScrollableContent;
         
-        private System.Windows.Forms.Panel pnlChartDealsClosed;
-        private ScottPlot.WinForms.FormsPlot plotDealsClosed;
-        private System.Windows.Forms.Label lblChartDealsClosedTitle;
-        private System.Windows.Forms.Label lblChartDealsClosedSubtitle;
-
-        private System.Windows.Forms.Panel pnlChartPipeline;
-        private ScottPlot.WinForms.FormsPlot plotPipeline;
-        private System.Windows.Forms.Label lblChartPipelineTitle;
-        private System.Windows.Forms.Label lblChartPipelineSubtitle;
-
-        private System.Windows.Forms.Panel pnlChartWonVsLost;
-        private ScottPlot.WinForms.FormsPlot plotWonVsLost;
-        private System.Windows.Forms.Label lblChartWonVsLostTitle;
-        private System.Windows.Forms.Label lblChartWonVsLostSubtitle;
-
-        private System.Windows.Forms.Panel pnlChartTickets;
-        private ScottPlot.WinForms.FormsPlot plotTickets;
-        private System.Windows.Forms.Label lblChartTicketsTitle;
-        private System.Windows.Forms.Label lblChartTicketsSubtitle;
-
-        private System.Windows.Forms.Panel pnlChartAgents;
-        private ScottPlot.WinForms.FormsPlot plotAgents;
-        private System.Windows.Forms.Label lblChartAgentsTitle;
-        private System.Windows.Forms.Label lblChartAgentsSubtitle;
-
-        private System.Windows.Forms.Panel pnlChartSources;
-        private ScottPlot.WinForms.FormsPlot plotSources;
-        private System.Windows.Forms.Label lblChartSourcesTitle;
-        private System.Windows.Forms.Label lblChartSourcesSubtitle;
+        private CRMS_Peguit.winforms.Controls.ChartWrapperControl chartDealsClosed;
+        private CRMS_Peguit.winforms.Controls.ChartWrapperControl chartPipeline;
+        private CRMS_Peguit.winforms.Controls.ChartWrapperControl chartWonVsLost;
+        private CRMS_Peguit.winforms.Controls.ChartWrapperControl chartTickets;
+        private CRMS_Peguit.winforms.Controls.ChartWrapperControl chartAgents;
+        private CRMS_Peguit.winforms.Controls.ChartWrapperControl chartSources;
 
         private System.Windows.Forms.Panel pnlRecentActivity;
         private System.Windows.Forms.Label lblRecentActivityTitle;
         private System.Windows.Forms.Label lblRecentActivitySubtitle;
         private System.Windows.Forms.FlowLayoutPanel pnlActivityFeedList;
+
+        private System.Windows.Forms.Panel pnlGridCard;
+        private System.Windows.Forms.Panel pnlGridHeader;
+        private System.Windows.Forms.Label lblGridTitle;
+        private System.Windows.Forms.Label lblGridSubtitle;
+        private System.Windows.Forms.Button btnResetFilter;
+        private System.Windows.Forms.DataGridView gridAnalyticsDetails;
     }
 }
