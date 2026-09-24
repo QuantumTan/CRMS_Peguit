@@ -71,6 +71,12 @@ namespace CRMS_Peguit.winforms.Views.Customers
         {
             UiRadiusHelper.StyleCard(pnlCard, 12);
             UiRadiusHelper.StyleButton(btnAdd, 8);
+
+            btnFilterAll.Width = 100;
+            btnFilterActive.Width = 120;
+            btnFilterFollowUp.Width = 120;
+            btnFilterInactive.Width = 120;
+
             UiRadiusHelper.ApplyPillShape(btnFilterAll);
             UiRadiusHelper.ApplyPillShape(btnFilterActive);
             UiRadiusHelper.ApplyPillShape(btnFilterFollowUp);

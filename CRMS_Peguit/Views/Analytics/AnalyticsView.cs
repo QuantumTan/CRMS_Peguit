@@ -89,6 +89,36 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             pnlScrollableContent.Resize += (_, _) => AutoLayoutCharts();
             this.Resize += (_, _) => AutoLayoutCharts();
             this.Load += (_, _) => AutoLayoutCharts();
+
+            // Wire KPI cards — each scrolls to its most relevant chart
+            kpiDealsClosed.SetAction(() => ScrollToChart(pnlChartDealsClosed, kpiDealsClosed));
+            kpiCommission.SetAction(() => ScrollToChart(pnlChartWonVsLost, kpiCommission));
+            kpiActiveLeads.SetAction(() => ScrollToChart(pnlChartPipeline, kpiActiveLeads));
+            kpiConversionRate.SetAction(() => ScrollToChart(pnlChartWonVsLost, kpiConversionRate));
+            kpiOpenTickets.SetAction(() => ScrollToChart(pnlChartTickets, kpiOpenTickets));
+            kpiAvgDays.SetAction(() => ScrollToChart(pnlChartDealsClosed, kpiAvgDays));
+        }
+
+        /// <summary>
+        /// Scrolls the scrollable content area so the target chart panel is visible,
+        /// then briefly selects the KPI card to give visual click feedback.
+        /// </summary>
+        private void ScrollToChart(Panel chartPanel, KpiCard card)
+        {
+            // Scroll the container so the chart top is visible
+            int targetY = chartPanel.Top - 12; // 12px padding above chart
+            pnlScrollableContent.AutoScrollPosition = new Point(0, Math.Max(0, targetY));
+
+            // Brief card selection flash for feedback
+            card.SetSelected(true);
+            var timer = new System.Windows.Forms.Timer { Interval = 800 };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                card.SetSelected(false);
+                timer.Dispose();
+            };
+            timer.Start();
         }
 
         private void ApplyRoleBasedRendering()
@@ -232,10 +262,10 @@ namespace CRMS_Peguit.winforms.Views.Analytics
 
             if (containerWidth >= 1200 && showActivity)
             {
-                // 3-column layout: 2 columns for charts + 1 column for activity feed
-                int activityWidth = 360;
+                // 3-column layout: 2 chart columns + 1 activity feed column
+                int activityWidth = 380;
                 int chartWidth = (containerWidth - activityWidth - (padding * 2)) / 2;
-                int chartHeight = 310;
+                int chartHeight = 320;
 
                 int x1 = 20;
                 int x2 = x1 + chartWidth + padding;
@@ -247,7 +277,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
 
                 pnlRecentActivity.Location = new Point(x3, y);
                 pnlRecentActivity.Size = new Size(activityWidth, (chartHeight * 2) + padding);
-                pnlActivityFeedList.Size = new Size(activityWidth - 32, pnlRecentActivity.Height - 65);
+                pnlActivityFeedList.Size = new Size(activityWidth - 32, pnlRecentActivity.Height - 72);
 
                 // Row 2
                 y += chartHeight + padding;
@@ -256,7 +286,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
 
                 maxY = Math.Max(pnlRecentActivity.Bottom, y + chartHeight);
 
-                // Row 3
+                // Row 3 (manager/admin only)
                 if (showAgents)
                 {
                     y += chartHeight + padding;
@@ -265,9 +295,43 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                     maxY = Math.Max(maxY, y + chartHeight);
                 }
             }
+            else if (containerWidth >= 900)
+            {
+                // 2-column layout (intermediate breakpoint) — taller charts
+                int chartWidth = (containerWidth - padding) / 2;
+                int chartHeight = 320;
+
+                int x1 = 20;
+                int x2 = x1 + chartWidth + padding;
+
+                PositionChart(pnlChartDealsClosed, plotDealsClosed, x1, y, chartWidth, chartHeight);
+                PositionChart(pnlChartPipeline, plotPipeline, x2, y, chartWidth, chartHeight);
+
+                y += chartHeight + padding;
+                PositionChart(pnlChartWonVsLost, plotWonVsLost, x1, y, chartWidth, chartHeight);
+                PositionChart(pnlChartTickets, plotTickets, x2, y, chartWidth, chartHeight);
+
+                if (showAgents)
+                {
+                    y += chartHeight + padding;
+                    PositionChart(pnlChartAgents, plotAgents, x1, y, chartWidth, chartHeight);
+                    PositionChart(pnlChartSources, plotSources, x2, y, chartWidth, chartHeight);
+                }
+
+                maxY = y + chartHeight;
+
+                if (showActivity)
+                {
+                    y += chartHeight + padding;
+                    pnlRecentActivity.Location = new Point(x1, y);
+                    pnlRecentActivity.Size = new Size(containerWidth, 380);
+                    pnlActivityFeedList.Size = new Size(pnlRecentActivity.Width - 32, pnlRecentActivity.Height - 72);
+                    maxY = pnlRecentActivity.Bottom;
+                }
+            }
             else
             {
-                // 2-column or 1-column layout
+                // 2-column (≥750px) or 1-column (<750px) layout
                 int cols = containerWidth >= 750 ? 2 : 1;
                 int chartWidth = cols == 2 ? (containerWidth - padding) / 2 : containerWidth;
                 int chartHeight = 300;
@@ -320,7 +384,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                     y += chartHeight + padding;
                     pnlRecentActivity.Location = new Point(x1, y);
                     pnlRecentActivity.Size = new Size(cols == 2 ? containerWidth : chartWidth, 380);
-                    pnlActivityFeedList.Size = new Size(pnlRecentActivity.Width - 32, pnlRecentActivity.Height - 65);
+                    pnlActivityFeedList.Size = new Size(pnlRecentActivity.Width - 32, pnlRecentActivity.Height - 72);
                     maxY = pnlRecentActivity.Bottom;
                 }
             }
@@ -333,8 +397,9 @@ namespace CRMS_Peguit.winforms.Views.Analytics
         {
             panel.Location = new Point(x, y);
             panel.Size = new Size(w, h);
-            plot.Location = new Point(14, 44);
-            plot.Size = new Size(Math.Max(100, w - 28), Math.Max(100, h - 56));
+            // plot starts at y=58 to accommodate title (12pt bold) + subtitle label
+            plot.Location = new Point(14, 58);
+            plot.Size = new Size(Math.Max(100, w - 28), Math.Max(100, h - 70));
         }
 
         private void RenderDealsOverTimeChart(List<MonthlyMetric>? metrics)
@@ -463,17 +528,23 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                 var rowPanel = new Panel
                 {
                     Width = Math.Max(280, pnlActivityFeedList.ClientSize.Width - 10),
-                    Height = 48,
-                    BackColor = Color.FromArgb(248, 250, 252),
-                    Margin = new Padding(0, 0, 0, 6)
+                    Height = 52,
+                    BackColor = Color.Transparent,
+                    Margin = new Padding(0, 0, 0, 0)
                 };
-                UiRadiusHelper.ApplyRoundedCorners(rowPanel, 8);
+
+                // Subtle top separator line
+                rowPanel.Paint += (s, e) =>
+                {
+                    using var pen = new Pen(Color.FromArgb(241, 245, 249), 1f);
+                    e.Graphics.DrawLine(pen, 0, 0, rowPanel.Width, 0);
+                };
 
                 var lblIcon = new Label
                 {
                     Text = item.Icon,
-                    Font = new Font("Segoe UI", 12f),
-                    Size = new Size(32, 32),
+                    Font = new Font("Segoe UI Emoji", 14f),
+                    Size = new Size(36, 36),
                     Location = new Point(8, 8),
                     TextAlign = ContentAlignment.MiddleCenter
                 };
@@ -483,8 +554,8 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                     Text = item.Description,
                     Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                     ForeColor = Theme.TextPrimary,
-                    Location = new Point(44, 6),
-                    Size = new Size(rowPanel.Width - 52, 18),
+                    Location = new Point(48, 7),
+                    Size = new Size(rowPanel.Width - 56, 18),
                     AutoEllipsis = true
                 };
 
@@ -493,8 +564,8 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                     Text = BiDisplayConstants.FormatDateTime(item.Timestamp),
                     Font = new Font("Segoe UI", 7.5F),
                     ForeColor = Theme.TextSecondary,
-                    Location = new Point(44, 26),
-                    Size = new Size(rowPanel.Width - 52, 16)
+                    Location = new Point(48, 27),
+                    Size = new Size(rowPanel.Width - 56, 16)
                 };
 
                 rowPanel.Controls.Add(lblIcon);
