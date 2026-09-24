@@ -4,6 +4,7 @@ using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services.Offline;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,6 +26,11 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public List<Deal> GetAll()
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                return LocalDataCache.Instance.GetCachedDeals(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+            }
+
             try
             {
                 var query = _db.Deals
@@ -226,6 +232,13 @@ namespace CRMS_Peguit.winforms.Controllers
                 }
             }
 
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var qItem = SyncService.Instance.EnqueueOfflineCreate("Deal", deal, TenantId, CurrentSession.UserId);
+                deal.DealId = -qItem.QueueId;
+                return deal;
+            }
+
             _db.Deals.Add(deal);
             _db.SaveChanges();
             return deal;
@@ -233,6 +246,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public void Update(Deal deal)
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                SyncService.Instance.EnqueueOfflineUpdate("Deal", deal.DealId, deal, TenantId, CurrentSession.UserId, deal.CreatedAt);
+                return;
+            }
+
             var item = _db.Deals.Include(d => d.Contingencies).Include(d => d.DealClauses).SingleOrDefault(x => x.DealId == deal.DealId);
             if (item is null) return;
 

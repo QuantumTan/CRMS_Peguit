@@ -33,7 +33,11 @@ if (string.IsNullOrWhiteSpace(masterConnection))
 // ==========================================================
 
 builder.Services.AddDbContext<MasterCrmsDbContext>(options =>
-    options.UseSqlServer(masterConnection)
+    options.UseSqlServer(masterConnection, sqlOptions =>
+        sqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(30),
+            errorNumbersToAdd: null))
 );
 
 // ==========================================================
@@ -74,7 +78,11 @@ builder.Services.AddScoped<RealEstateDbContext>(serviceProvider =>
 
     var options =
         new DbContextOptionsBuilder<RealEstateDbContext>()
-            .UseSqlServer(tenantConnection)
+            .UseSqlServer(tenantConnection, sqlOptions =>
+                sqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    errorNumbersToAdd: null))
             .Options;
 
     return new RealEstateDbContext(

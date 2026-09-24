@@ -7,6 +7,8 @@ using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
+using CRMS_Peguit.winforms.Services.Offline;
 using Microsoft.EntityFrameworkCore;
 
 namespace CRMS_Peguit.winforms.Controllers
@@ -27,6 +29,11 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public List<Lead> GetAll()
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                return LocalDataCache.Instance.GetCachedLeads(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+            }
+
             try
             {
                 var query = _db.Leads.AsNoTracking();
@@ -62,6 +69,28 @@ namespace CRMS_Peguit.winforms.Controllers
             string? sortColumn = null,
             bool isAscending = true)
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var cached = LocalDataCache.Instance.GetCachedLeads(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                if (!string.IsNullOrWhiteSpace(stage) && !string.Equals(stage, "All", StringComparison.OrdinalIgnoreCase))
+                {
+                    cached = cached.Where(l => l.Stage.Equals(stage, StringComparison.OrdinalIgnoreCase)).ToList();
+                }
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    string s = search.Trim().ToLowerInvariant();
+                    cached = cached.Where(l => (l.Person != null && (
+                        l.Person.FirstName.ToLowerInvariant().Contains(s) ||
+                        l.Person.LastName.ToLowerInvariant().Contains(s) ||
+                        (l.Person.Email != null && l.Person.Email.ToLowerInvariant().Contains(s)) ||
+                        (l.Person.Phone != null && l.Person.Phone.Contains(s)))) ||
+                        (l.Source != null && l.Source.ToLowerInvariant().Contains(s))).ToList();
+                }
+                int total = cached.Count;
+                var paged = cached.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
+                return new PagedResult<Lead>(paged, total, pageNumber, pageSize);
+            }
+
             try
             {
                 using var db = LocalDb.CreateContext(TenantId);
@@ -189,6 +218,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public Lead? GetById(int id)
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                return LocalDataCache.Instance.GetCachedLeads(TenantId, CurrentSession.UserId, RbacService.IsAgent)
+                    .FirstOrDefault(l => l.LeadId == id);
+            }
+
             var item = _db.Leads
                 .AsNoTracking()
                 .SingleOrDefault(x => x.LeadId == id);
@@ -234,6 +269,13 @@ namespace CRMS_Peguit.winforms.Controllers
                 ApplyAssignmentDefaults(lead);
             }
 
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var qItem = SyncService.Instance.EnqueueOfflineCreate("Lead", lead, TenantId, CurrentSession.UserId);
+                lead.LeadId = -qItem.QueueId;
+                return lead;
+            }
+
             _db.Leads.Add(lead);
             _db.SaveChanges();
             LogActivity("Lead Created", lead.LeadId, null, $"Lead '{lead.FullName}' was created.");
@@ -252,6 +294,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public void Update(Lead lead)
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                SyncService.Instance.EnqueueOfflineUpdate("Lead", lead.LeadId, lead, TenantId, CurrentSession.UserId, lead.CreatedAt);
+                return;
+            }
+
             var item = _db.Leads
                 .Include(l => l.Person)
                 .SingleOrDefault(x => x.LeadId == lead.LeadId);

@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using CRMS_Peguit.domain.entities;
+using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.infrastructure.Seeding;
 using CRMS_Peguit.winforms.Models.Services;
 
@@ -173,6 +175,38 @@ namespace CRMS_Peguit.winforms
                 return;
             }
 
+            if (args.Contains("--seed-cloud-tenants"))
+            {
+                var cloudConn = DbConfiguration.GetCloudConnectionString();
+                Console.WriteLine("==================================================");
+                Console.WriteLine("SEEDING CLOUD DATABASE FOR ALL TENANTS (1, 2, 3)");
+                Console.WriteLine("==================================================");
+                foreach (int tid in new[] { 1, 2, 3 })
+                {
+                    try
+                    {
+                        Console.WriteLine($"[CLOUD-SEED] Seeding Tenant {tid}...");
+                        using var cloud = new RealEstateDbContext(
+                            new DbContextOptionsBuilder<RealEstateDbContext>()
+                                .UseSqlServer(cloudConn, opt => opt.CommandTimeout(180).EnableRetryOnFailure(5, TimeSpan.FromSeconds(15), null))
+                                .Options, tid);
+                        SchemaRepairService.EnsureCrmPolishColumns(cloud);
+                        DbSeeder.SeedTestUsersAsync(cloud, tid).GetAwaiter().GetResult();
+                        Console.WriteLine($"[CLOUD-SEED] Tenant {tid} successfully seeded!");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[CLOUD-SEED] Tenant {tid} failed: {ex.Message}");
+                        if (ex.InnerException != null)
+                            Console.WriteLine($"[CLOUD-SEED] INNER: {ex.InnerException.Message}");
+                    }
+                }
+                Console.WriteLine("==================================================");
+                Console.WriteLine("ALL TENANTS POPULATED IN CLOUD DATABASE!");
+                Console.WriteLine("==================================================");
+                return;
+            }
+
             if (args.Contains("--verify-notifications"))
             {
                 using var startupDb = LocalDb.CreateContext();
@@ -286,8 +320,7 @@ namespace CRMS_Peguit.winforms
             // ==================================================
             if (!string.IsNullOrWhiteSpace(cloudConnection))
             {
-                _syncService = new SyncService(localConnection, cloudConnection);
-                _syncService.Start(30);
+                SyncService.Instance.Start(30);
             }
 
             // ==================================================
@@ -302,7 +335,7 @@ namespace CRMS_Peguit.winforms
             // CLEAN UP
             // ==================================================
 
-            _syncService?.Dispose();
+            SyncService.Instance.Dispose();
         }
     }
 }

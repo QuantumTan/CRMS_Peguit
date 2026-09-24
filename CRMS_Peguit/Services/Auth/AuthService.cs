@@ -24,9 +24,19 @@ namespace CRMS_Peguit.winforms.Auth
         // Point this at your monsterASP-hosted API, e.g. "https://your-app.runasp.net/"
         public AuthService(string apiBaseUrl)
         {
-            _httpClient = new HttpClient
+            var handler = new HttpClientHandler
             {
-                BaseAddress = new Uri(apiBaseUrl),
+                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
+                {
+                    if (message.RequestUri?.IsLoopback == true)
+                        return true;
+                    return errors == System.Net.Security.SslPolicyErrors.None;
+                }
+            };
+
+            _httpClient = new HttpClient(handler)
+            {
+                BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/"),
                 Timeout = TimeSpan.FromSeconds(6) // fail fast so offline fallback doesn't hang the UI
             };
             _localCache = new LocalAuthCache();

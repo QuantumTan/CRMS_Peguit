@@ -31,7 +31,10 @@ namespace CRMS_Peguit.winforms.Models.Services
             LocalDbHelper.EnsureLocalDbRunning(masterConn);
 
             var options = new DbContextOptionsBuilder<MasterCrmsDbContext>()
-                .UseSqlServer(masterConn, sql => sql.EnableRetryOnFailure())
+                .UseSqlServer(masterConn, sql => sql.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    errorNumbersToAdd: null))
                 .Options;
 
             var context = new MasterCrmsDbContext(options);
@@ -51,6 +54,24 @@ namespace CRMS_Peguit.winforms.Models.Services
             return context;
         }
 
+        public static async Task<bool> CanConnectAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var masterConn = MasterConnectionString;
+                LocalDbHelper.EnsureLocalDbRunning(masterConn);
+                var options = new DbContextOptionsBuilder<MasterCrmsDbContext>()
+                    .UseSqlServer(masterConn, sql => sql.EnableRetryOnFailure(3, TimeSpan.FromSeconds(5), null))
+                    .Options;
+                using var context = new MasterCrmsDbContext(options);
+                return await context.Database.CanConnectAsync(cancellationToken);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public static RealEstateDbContext CreateContext(int tenantId = 1)
         {
             if (tenantId <= 0) tenantId = 1;
@@ -58,7 +79,10 @@ namespace CRMS_Peguit.winforms.Models.Services
             LocalDbHelper.EnsureLocalDbRunning(tenantConn);
 
             var options = new DbContextOptionsBuilder<RealEstateDbContext>()
-                .UseSqlServer(tenantConn, sql => sql.EnableRetryOnFailure())
+                .UseSqlServer(tenantConn, sql => sql.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    errorNumbersToAdd: null))
                 .Options;
 
             var context = new RealEstateDbContext(options, tenantId: tenantId);
@@ -222,19 +246,24 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
         }
 
+        public static void EnsureAllSchemas(RealEstateDbContext context)
+        {
+            EnsureDealSchema(context);
+            EnsureSupportTicketSchema(context);
+            EnsureFollowUpSchema(context);
+            EnsureCampaignSchema(context);
+            EnsureActivitySchema(context);
+            EnsureAutomatedEmailSchema(context);
+            EnsureBranchSchema(context);
+        }
+
         private static void EnsureTenantDatabaseInitialized(RealEstateDbContext context, int tenantId)
         {
             try
             {
                 context.Database.EnsureCreated();
 
-                EnsureDealSchema(context);
-                EnsureSupportTicketSchema(context);
-                EnsureFollowUpSchema(context);
-                EnsureCampaignSchema(context);
-                EnsureActivitySchema(context);
-                EnsureAutomatedEmailSchema(context);
-                EnsureBranchSchema(context);
+                EnsureAllSchemas(context);
 
                 if (!context.Users.Any())
                 {

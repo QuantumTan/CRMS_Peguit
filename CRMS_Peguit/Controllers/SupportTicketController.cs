@@ -7,6 +7,7 @@ using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services.Offline;
 using Microsoft.EntityFrameworkCore;
 
 namespace CRMS_Peguit.winforms.Controllers
@@ -29,6 +30,11 @@ namespace CRMS_Peguit.winforms.Controllers
         // =========================================================================
         public List<SupportTicket> GetAll()
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                return LocalDataCache.Instance.GetCachedSupportTickets(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+            }
+
             try
             {
                 var query = _db.SupportTickets
@@ -222,6 +228,14 @@ namespace CRMS_Peguit.winforms.Controllers
 
             // SLA calculation:
             ticket.DueDate = CalculateSlaDueDate(ticket.Priority, ticket.CreatedAt);
+
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var qItem = SyncService.Instance.EnqueueOfflineCreate("SupportTicket", ticket, TenantId, CurrentSession.UserId);
+                ticket.TicketId = -qItem.QueueId;
+                ticket.TicketNumber = $"TCK-OFFLINE-{qItem.QueueId:D4}";
+                return ticket;
+            }
 
             // Temporary ticket number; will refine with TicketId after identity generation if needed
             ticket.TicketNumber = "TCK-TEMP";

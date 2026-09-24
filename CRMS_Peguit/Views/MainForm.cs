@@ -11,6 +11,7 @@ using CRMS_Peguit.winforms.Views.FollowUps;
 using CRMS_Peguit.Models;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
+using CRMS_Peguit.winforms.Services.Offline;
 using ReaLTaiizor.Forms;
 using System.Linq;
 using UserRole = CRMS_Peguit.winforms.Models.Roles.UserRole;
@@ -32,6 +33,13 @@ namespace CRMS_Peguit.winforms
         private ToolStripDropDown? _searchDropDown;
         private Panel? _pnlSearchBox;
 
+        // Data Synchronization Indicator & Banner
+        private Button _btnSyncIndicator = null!;
+        private Panel _pnlOfflineBanner = null!;
+        private Label _lblOfflineBannerText = null!;
+        private Button _btnBannerSyncQueue = null!;
+        private Button _btnBannerRetry = null!;
+
         public MainForm()
         {
             InitializeComponent();
@@ -40,6 +48,7 @@ namespace CRMS_Peguit.winforms
             InitNavButtons();
             BindEvents();
             ApplyRolePermissions();
+            InitSyncUi();
             if (CurrentSession.CurrentUser?.Role == UserRole.SuperAdmin)
             {
                 SetActiveNavButton(btnAdminPanel);
@@ -1060,6 +1069,206 @@ namespace CRMS_Peguit.winforms
             }
 
             Close();
+        }
+
+        // =========================================================================
+        // OFFLINE SYNC UI & CONNECTIVITY BANNER
+        // =========================================================================
+
+        private void InitSyncUi()
+        {
+            // Start background connectivity monitor (pings every 30s)
+            SyncService.Instance.Start(30);
+
+            // Scoped read-cache refresh when starting online
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(async () =>
+                {
+                    await SyncService.Instance.RefreshUserCacheAsync(
+                        CurrentSession.TenantId,
+                        CurrentSession.UserId,
+                        CurrentSession.CurrentUser?.Role.ToString() ?? "Agent");
+                });
+            }
+
+            // Top Header Sync Indicator Button
+            _btnSyncIndicator = new Button
+            {
+                Text = SyncService.Instance.IsOnline ? "🟢 Synced" : "🔴 Offline",
+                Size = new Size(125, 30),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(lblTenantTierBadge.Left - 135, 14),
+                BackColor = Color.FromArgb(241, 245, 249),
+                ForeColor = Color.FromArgb(15, 23, 42),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            _btnSyncIndicator.FlatAppearance.BorderSize = 0;
+            UiRadiusHelper.StyleButton(_btnSyncIndicator, 6);
+            mainToolTip.SetToolTip(_btnSyncIndicator, "Click to view Data Synchronization Status & Queue");
+            _btnSyncIndicator.Click += (_, _) =>
+            {
+                using var dlg = new Views.Sync.SyncStatusForm();
+                dlg.ShowDialog(this);
+            };
+            topHeaderPanel.Controls.Add(_btnSyncIndicator);
+
+            // Persistent Offline Warning Banner docked under topHeaderPanel
+            _pnlOfflineBanner = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 42,
+                BackColor = Color.FromArgb(254, 243, 199), // Amber-100
+                Visible = !SyncService.Instance.IsOnline || CurrentSession.IsOffline,
+                Padding = new Padding(16, 6, 16, 6)
+            };
+            _pnlOfflineBanner.Paint += (s, e) =>
+            {
+                using var pen = new Pen(Color.FromArgb(245, 158, 11), 1);
+                e.Graphics.DrawLine(pen, 0, _pnlOfflineBanner.Height - 1, _pnlOfflineBanner.Width, _pnlOfflineBanner.Height - 1);
+            };
+
+            _lblOfflineBannerText = new Label
+            {
+                Text = "⚡ Offline Mode — Working locally. Changes are queued and will sync when reconnected.",
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(146, 64, 14), // Amber-800
+                AutoSize = true,
+                Location = new Point(16, 12)
+            };
+
+            _btnBannerRetry = new Button
+            {
+                Text = "🔄 Check Connection",
+                Size = new Size(145, 28),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(_pnlOfflineBanner.Width - 280, 7),
+                BackColor = Color.FromArgb(251, 191, 36),
+                ForeColor = Color.FromArgb(120, 53, 15),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            _btnBannerRetry.FlatAppearance.BorderSize = 0;
+            UiRadiusHelper.StyleButton(_btnBannerRetry, 4);
+            _btnBannerRetry.Click += async (_, _) =>
+            {
+                _btnBannerRetry.Enabled = false;
+                _btnBannerRetry.Text = "Checking...";
+                try
+                {
+                    bool isOnline = await SyncService.Instance.CheckConnectivityAsync();
+                    if (isOnline)
+                    {
+                        _pnlOfflineBanner.Visible = false;
+                        UpdateSyncIndicator();
+                    }
+                    else
+                    {
+                        _btnBannerRetry.Text = "Still Offline ⚠️";
+                        await Task.Delay(1500);
+                    }
+                }
+                catch
+                {
+                    // Ignore transient retry errors
+                }
+                finally
+                {
+                    _btnBannerRetry.Text = "🔄 Check Connection";
+                    _btnBannerRetry.Enabled = true;
+                }
+            };
+
+            _btnBannerSyncQueue = new Button
+            {
+                Text = "📋 View Queue",
+                Size = new Size(115, 28),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(_pnlOfflineBanner.Width - 125, 7),
+                BackColor = Color.FromArgb(217, 119, 6),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            _btnBannerSyncQueue.FlatAppearance.BorderSize = 0;
+            UiRadiusHelper.StyleButton(_btnBannerSyncQueue, 4);
+            _btnBannerSyncQueue.Click += (_, _) =>
+            {
+                using var dlg = new Views.Sync.SyncStatusForm();
+                dlg.ShowDialog(this);
+            };
+
+            _pnlOfflineBanner.Controls.Add(_lblOfflineBannerText);
+            _pnlOfflineBanner.Controls.Add(_btnBannerRetry);
+            _pnlOfflineBanner.Controls.Add(_btnBannerSyncQueue);
+
+            contentWrapperPanel.Controls.Add(_pnlOfflineBanner);
+            topHeaderPanel.BringToFront(); // Ensures header remains on top and banner docks directly beneath it
+
+            // Subscribe to sync engine events
+            SyncService.Instance.ConnectivityChanged += OnSyncConnectivityChanged;
+            SyncService.Instance.SyncProgressChanged += OnSyncProgressChanged;
+            UpdateSyncIndicator();
+        }
+
+        private void OnSyncConnectivityChanged(object? sender, bool isOnline)
+        {
+            if (this.IsDisposed) return;
+            this.BeginInvoke(new Action(() =>
+            {
+                _pnlOfflineBanner.Visible = !isOnline || CurrentSession.IsOffline;
+                UpdateSyncIndicator();
+            }));
+        }
+
+        private void OnSyncProgressChanged(object? sender, SyncProgressEventArgs e)
+        {
+            if (this.IsDisposed) return;
+            this.BeginInvoke(new Action(() =>
+            {
+                UpdateSyncIndicator();
+            }));
+        }
+
+        private void UpdateSyncIndicator()
+        {
+            int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
+            var counts = LocalDataCache.Instance.GetQueueCounts(tenantId);
+
+            if (!SyncService.Instance.IsOnline || CurrentSession.IsOffline)
+            {
+                _btnSyncIndicator.Text = counts.Pending > 0 ? $"🔴 Offline ({counts.Pending})" : "🔴 Offline";
+                _btnSyncIndicator.BackColor = Color.FromArgb(254, 242, 242);
+                _btnSyncIndicator.ForeColor = Color.FromArgb(185, 28, 28);
+            }
+            else if (counts.Conflict > 0)
+            {
+                _btnSyncIndicator.Text = $"⚠️ Conflict ({counts.Conflict})";
+                _btnSyncIndicator.BackColor = Color.FromArgb(254, 243, 199);
+                _btnSyncIndicator.ForeColor = Color.FromArgb(180, 83, 9);
+            }
+            else if (counts.Failed > 0)
+            {
+                _btnSyncIndicator.Text = $"❌ Failed ({counts.Failed})";
+                _btnSyncIndicator.BackColor = Color.FromArgb(254, 242, 242);
+                _btnSyncIndicator.ForeColor = Color.FromArgb(185, 28, 28);
+            }
+            else if (counts.Pending > 0 || counts.Syncing > 0)
+            {
+                _btnSyncIndicator.Text = $"⏳ Syncing ({counts.Pending})";
+                _btnSyncIndicator.BackColor = Color.FromArgb(239, 246, 255);
+                _btnSyncIndicator.ForeColor = Color.FromArgb(37, 99, 235);
+            }
+            else
+            {
+                _btnSyncIndicator.Text = "🟢 Synced";
+                _btnSyncIndicator.BackColor = Color.FromArgb(240, 253, 244);
+                _btnSyncIndicator.ForeColor = Color.FromArgb(22, 163, 74);
+            }
         }
     }
 }

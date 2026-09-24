@@ -24,7 +24,7 @@ namespace CRMS_Peguit.winforms
         // ==========================================================
 
         public LoginForm()
-            : this("https://localhost:7259/")
+            : this(DbConfiguration.GetApiBaseUrl())
         {
         }
 

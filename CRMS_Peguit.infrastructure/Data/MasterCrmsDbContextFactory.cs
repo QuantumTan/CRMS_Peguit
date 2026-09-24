@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
 namespace CRMS_Peguit.infrastructure.data
@@ -14,7 +14,11 @@ namespace CRMS_Peguit.infrastructure.data
                 Environment.GetEnvironmentVariable("CRMS_CONNECTION")
                 ?? "Server=(localdb)\\mssqllocaldb;Database=CRMS_Master;Trusted_Connection=True;TrustServerCertificate=True;";
 
-            optionsBuilder.UseSqlServer(connectionString);
+            optionsBuilder.UseSqlServer(connectionString, sqlOptions =>
+                sqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    errorNumbersToAdd: null));
 
             return new MasterCrmsDbContext(optionsBuilder.Options);
         }

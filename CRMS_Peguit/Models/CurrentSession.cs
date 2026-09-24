@@ -157,6 +157,11 @@ namespace CRMS_Peguit.winforms.Auth
             return CurrentUser?.GetAccessibleModules().Contains(moduleName) ?? false;
         }
 
+        public static void SetOffline(bool isOffline)
+        {
+            IsOffline = isOffline;
+        }
+
         // ==============================================
         // SIGN OUT
         // ==============================================

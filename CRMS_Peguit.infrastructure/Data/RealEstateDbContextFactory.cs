@@ -14,7 +14,11 @@ namespace CRMS_Peguit.infrastructure.data
                 Environment.GetEnvironmentVariable("CRMS_CONNECTION")
                 ?? "Server=(localdb)\\mssqllocaldb;Database=CRMS_Local;Trusted_Connection=True;TrustServerCertificate=True;";
 
-            optionsBuilder.UseSqlServer(connectionString);
+            optionsBuilder.UseSqlServer(connectionString, sqlOptions =>
+                sqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    errorNumbersToAdd: null));
 
             return new RealEstateDbContext(optionsBuilder.Options);
         }

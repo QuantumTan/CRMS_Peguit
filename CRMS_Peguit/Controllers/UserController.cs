@@ -8,6 +8,7 @@ using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.infrastructure.Security;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Controllers
 {

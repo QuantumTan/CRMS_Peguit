@@ -7,6 +7,8 @@ using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
+using CRMS_Peguit.winforms.Services.Offline;
 using Microsoft.EntityFrameworkCore;
 
 namespace CRMS_Peguit.winforms.Controllers
@@ -27,6 +29,11 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public List<Customer> GetAll()
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                return LocalDataCache.Instance.GetCachedCustomers(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+            }
+
             try
             {
                 var query = _db.Customers.AsNoTracking();
@@ -60,6 +67,24 @@ namespace CRMS_Peguit.winforms.Controllers
             string? search = null,
             string? filterStatus = null)
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var cached = LocalDataCache.Instance.GetCachedCustomers(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    string s = search.Trim().ToLowerInvariant();
+                    cached = cached.Where(c => (c.Person != null && (
+                        c.Person.FirstName.ToLowerInvariant().Contains(s) ||
+                        c.Person.LastName.ToLowerInvariant().Contains(s) ||
+                        (c.Person.Email != null && c.Person.Email.ToLowerInvariant().Contains(s)) ||
+                        (c.Person.Phone != null && c.Person.Phone.Contains(s)))) ||
+                        c.Type.ToLowerInvariant().Contains(s)).ToList();
+                }
+                int total = cached.Count;
+                var paged = cached.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
+                return new PagedResult<Customer>(paged, total, pageNumber, pageSize);
+            }
+
             try
             {
                 using var db = LocalDb.CreateContext(TenantId);
@@ -128,6 +153,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public Customer? GetById(int id)
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                return LocalDataCache.Instance.GetCachedCustomers(TenantId, CurrentSession.UserId, RbacService.IsAgent)
+                    .FirstOrDefault(c => c.CustomerId == id);
+            }
+
             var item = _db.Customers
                 .AsNoTracking()
                 .SingleOrDefault(x => x.CustomerId == id);
@@ -173,6 +204,13 @@ namespace CRMS_Peguit.winforms.Controllers
                 ApplyAssignmentDefaults(customer);
             }
 
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var qItem = SyncService.Instance.EnqueueOfflineCreate("Customer", customer, TenantId, CurrentSession.UserId);
+                customer.CustomerId = -qItem.QueueId;
+                return customer;
+            }
+
             _db.Customers.Add(customer);
             _db.SaveChanges();
             LogActivity("Customer Created", null, customer.CustomerId, $"Customer '{customer.FullName}' was created.");
@@ -191,6 +229,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public void Update(Customer customer)
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                SyncService.Instance.EnqueueOfflineUpdate("Customer", customer.CustomerId, customer, TenantId, CurrentSession.UserId, customer.CreatedAt);
+                return;
+            }
+
             var item = _db.Customers
                 .Include(c => c.Person)
                 .SingleOrDefault(x => x.CustomerId == customer.CustomerId);

@@ -111,6 +111,23 @@ namespace CRMS_Peguit.winforms.Models.Services
             return null;
         }
 
+        public static string GetApiBaseUrl()
+        {
+            var env = Environment.GetEnvironmentVariable("CRMS_API_URL");
+            if (!string.IsNullOrWhiteSpace(env))
+            {
+                return env.Trim();
+            }
+
+            var fileSettings = LoadSettingsFromFile();
+            if (!string.IsNullOrWhiteSpace(fileSettings?.ApiBaseUrl))
+            {
+                return fileSettings.ApiBaseUrl.Trim();
+            }
+
+            return "https://localhost:7259/";
+        }
+
         private static DbSettingsFile? LoadSettingsFromFile()
         {
             foreach (var path in GetCandidatePaths())
@@ -151,6 +168,7 @@ namespace CRMS_Peguit.winforms.Models.Services
         {
             public string? LocalConnection { get; set; }
             public string? CloudConnection { get; set; }
+            public string? ApiBaseUrl { get; set; }
         }
     }
 }

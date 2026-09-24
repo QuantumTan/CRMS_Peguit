@@ -256,5 +256,10 @@ namespace CRMS_Peguit.winforms.Models.Services
             };
             label.Invalidate();
         }
+
+        public static void ApplyModernGridStyle(DataGridView grid, int rowHeight = 40)
+        {
+            UiGridHelper.ApplyModernGridStyle(grid, rowHeight);
+        }
     }
 }

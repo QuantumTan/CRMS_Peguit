@@ -595,7 +595,7 @@ namespace CRMS_Peguit.winforms
             this.txtGlobalSearch.Location = new System.Drawing.Point(58, 16);
             this.txtGlobalSearch.Name = "txtGlobalSearch";
             this.txtGlobalSearch.PlaceholderText = "🔍 Search records, contacts... (Ctrl+K)";
-            this.txtGlobalSearch.Size = new System.Drawing.Size(320, 24);
+            this.txtGlobalSearch.Size = new System.Drawing.Size(260, 24);
             this.txtGlobalSearch.TabIndex = 2;
             // 
             // notificationBell
