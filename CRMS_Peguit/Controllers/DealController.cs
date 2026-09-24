@@ -425,6 +425,11 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public static bool ValidateDealInput(object? customerValue, object? propertyValue, string dealValueText, out decimal dealValue, out string? errorMessage)
         {
+            return ValidateDealInput(customerValue, propertyValue, dealValueText, null, out dealValue, out errorMessage);
+        }
+
+        public static bool ValidateDealInput(object? customerValue, object? propertyValue, string dealValueText, DateTime? expectedCloseDate, out decimal dealValue, out string? errorMessage)
+        {
             dealValue = 0;
             if (customerValue == null)
             {
@@ -441,6 +446,12 @@ namespace CRMS_Peguit.winforms.Controllers
             if (!decimal.TryParse(dealValueText.Replace(",", "").Trim(), out dealValue) || dealValue <= 0)
             {
                 errorMessage = "Please enter a valid positive Deal Value.";
+                return false;
+            }
+
+            if (expectedCloseDate.HasValue && expectedCloseDate.Value.Date < DateTime.Today)
+            {
+                errorMessage = "Expected closing date must be today or in the future.";
                 return false;
             }
 

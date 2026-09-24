@@ -405,6 +405,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
                     if (dlg.ShowDialog() == DialogResult.OK)
                     {
                         _controller.AssignAgent(customer, dlg.SelectedAgentId, dlg.ApproveNow, dlg.ReviewNotes);
+                        MessageBox.Show("Agent assigned successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         RefreshGrid();
                     }
                 };
@@ -466,6 +467,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
             if (form.ShowDialog() == DialogResult.OK && form.Result is not null)
             {
                 _controller.Add(form.Result);
+                MessageBox.Show($"Customer '{form.Result.FullName}' was added successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 RefreshKpis();
                 RefreshGrid();
             }
@@ -485,6 +487,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
             if (form.ShowDialog() == DialogResult.OK && form.Result is not null)
             {
                 _controller.Update(form.Result);
+                MessageBox.Show($"Customer '{form.Result.FullName}' was updated successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 RefreshKpis();
                 RefreshGrid();
             }
@@ -506,6 +509,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
             if (confirm == DialogResult.Yes)
             {
                 _controller.SoftDelete(customer);
+                MessageBox.Show($"Customer '{customer.FullName}' was archived successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 RefreshGrid();
             }
         }

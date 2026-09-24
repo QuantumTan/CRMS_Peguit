@@ -310,14 +310,15 @@ namespace CRMS_Peguit.winforms.Views.Activities
 
         public void RefreshData()
         {
-            int agentId = CurrentSession.UserId;
-            if (agentId <= 0) return;
+            // For Managers and Admins, show all team activities.
+            // For Agents, show their own logged activities.
+            int? queryAgentId = (RbacService.IsManager || RbacService.HasFullOversight) ? null : CurrentSession.UserId;
 
             // Load items
-            _items = _controller.GetAllForAgent(agentId, _filterCategory, txtSearch.Text);
+            _items = _controller.GetAllForAgent(queryAgentId, _filterCategory, txtSearch.Text);
 
             // Update KPI cards
-            var (total, calls, emails, meetings) = _controller.GetActivityStatsForAgent(agentId);
+            var (total, calls, emails, meetings) = _controller.GetActivityStatsForAgent(queryAgentId);
             kpiTotal.SetValue(total.ToString("N0"));
             kpiCalls.SetValue(calls.ToString("N0"));
             kpiEmails.SetValue(emails.ToString("N0"));
@@ -379,7 +380,7 @@ namespace CRMS_Peguit.winforms.Views.Activities
             viewContactItem.Click += (_, _) => OpenContactDetailForSelectedRow(e.RowIndex);
             menu.Items.Add(viewContactItem);
 
-            if (RbacService.IsAgent && item.CanCreateFollowUp)
+            if (CurrentSession.CanAccessActions && RbacService.IsAgent && item.CanCreateFollowUp)
             {
                 var fuItem = new ToolStripMenuItem("➕ Schedule Follow-Up");
                 fuItem.Click += (_, _) =>

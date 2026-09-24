@@ -327,6 +327,25 @@ namespace CRMS_Peguit.winforms.Controllers
             item.IsDeleted = false;
             item.DeletedAt = null;
             _db.SaveChanges();
+            LogActivity("Lead Restored", item.LeadId, null, $"Lead '{item.FullName}' was restored from archive.");
+        }
+
+        public List<Lead> GetArchived()
+        {
+            try
+            {
+                return _db.Leads
+                    .AsNoTracking()
+                    .Include(l => l.Person)
+                    .Where(l => l.IsDeleted)
+                    .OrderByDescending(l => l.DeletedAt)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LeadController.GetArchived] Error: {ex.Message}");
+                return new List<Lead>();
+            }
         }
 
         public Customer ConvertToCustomer(Lead lead)
@@ -611,19 +630,30 @@ namespace CRMS_Peguit.winforms.Controllers
             out string? errorMessage,
             out string? errorField)
         {
+            return ValidateLeadInput(firstName, lastName, email, null, expectedValueText, out parsedExpectedValue, out errorMessage, out errorField);
+        }
+
+        public static bool ValidateLeadInput(
+            string firstName,
+            string lastName,
+            string? email,
+            string? phone,
+            string? expectedValueText,
+            out decimal? parsedExpectedValue,
+            out string? errorMessage,
+            out string? errorField)
+        {
             parsedExpectedValue = null;
             errorField = null;
 
-            if (string.IsNullOrWhiteSpace(firstName))
+            if (!ValidationHelper.IsValidPersonName(firstName, "First name", out errorMessage))
             {
-                errorMessage = "First name is required.";
                 errorField = "FirstName";
                 return false;
             }
 
-            if (string.IsNullOrWhiteSpace(lastName))
+            if (!ValidationHelper.IsValidPersonName(lastName, "Last name", out errorMessage))
             {
-                errorMessage = "Last name is required.";
                 errorField = "LastName";
                 return false;
             }
@@ -632,6 +662,12 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 errorMessage = "Enter a valid email address.";
                 errorField = "Email";
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(phone) && !ValidationHelper.IsValidPhoneNumber(phone, out errorMessage))
+            {
+                errorField = "Phone";
                 return false;
             }
 

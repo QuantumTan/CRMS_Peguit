@@ -202,59 +202,74 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             // 4 KPI Cards
             ConfigureKpiCard(kpi1, "MY ACTIVE LEADS", snapshot.ActiveLeadsCount, "Pipeline leads", BiDisplayConstants.PrimaryAccent, KpiIconType.Target, () => RequestNavigation("Leads:All"));
             ConfigureKpiCard(kpi2, "MY OPEN DEALS", snapshot.OpenDealsCount, "Active pipeline", BiDisplayConstants.HighlightAccent, KpiIconType.Briefcase, () => RequestNavigation("Deals:Offer"));
-            ConfigureKpiCard(kpi3, "FOLLOW-UPS TODAY", snapshot.FollowUpsDueTodayCount, "Due & overdue", BiDisplayConstants.StatusPending, KpiIconType.Clock, () => RequestNavigation("FollowUps:Today"));
+            if (CurrentSession.CanAccessActions)
+            {
+                ConfigureKpiCard(kpi3, "FOLLOW-UPS TODAY", snapshot.FollowUpsDueTodayCount, "Due & overdue", BiDisplayConstants.StatusPending, KpiIconType.Clock, () => RequestNavigation("FollowUps:Today"));
+            }
+            else
+            {
+                ConfigureKpiCard(kpi3, "PROPERTIES", snapshot.ActivePropertiesCount, "Active inventory", BiDisplayConstants.HighlightAccent, KpiIconType.Building, () => RequestNavigation("Properties"));
+            }
+
             ConfigureKpiCard(kpi4, "MY OPEN TICKETS", snapshot.OpenSupportTicketsCount, "Awaiting triage", BiDisplayConstants.SkyAccent, KpiIconType.Ticket, () => RequestNavigation("SupportTickets:Open"));
 
             // Glanceable Sparkline (last 30 days)
             _chartNavigationTarget = "Analytics:Deals";
             RenderAgentSparkline(snapshot.SparklineDealsClosed);
 
-            // Left Card: "Today's Follow-Ups" (max 5, clickable to open)
-            pnlLeftCard.Visible = true;
-            lblLeftTitle.Text = "Today's Follow-Ups";
-            lblLeftSubtitle.Text = snapshot.FollowUpsToday.Count > 0 ? $"{snapshot.FollowUpsToday.Count} due today" : "Due today";
-            pnlLeftList.Controls.Clear();
-
-            if (snapshot.FollowUpsToday.Count == 0)
+            // Left Card: "Today's Follow-Ups" (gated to Tenant B and Tenant C with Actions access)
+            if (CurrentSession.CanAccessActions)
             {
-                lblLeftEmpty.Text = "✓  No follow-ups due today. You're all caught up!";
-                lblLeftEmpty.Visible = true;
+                pnlLeftCard.Visible = true;
+                lblLeftTitle.Text = "Today's Follow-Ups";
+                lblLeftSubtitle.Text = snapshot.FollowUpsToday.Count > 0 ? $"{snapshot.FollowUpsToday.Count} due today" : "Due today";
+                pnlLeftList.Controls.Clear();
+
+                if (snapshot.FollowUpsToday.Count == 0)
+                {
+                    lblLeftEmpty.Text = "✓  No follow-ups due today. You're all caught up!";
+                    lblLeftEmpty.Visible = true;
+                }
+                else
+                {
+                    lblLeftEmpty.Visible = false;
+                    int y = 0;
+                    foreach (var item in snapshot.FollowUpsToday)
+                    {
+                        string sub = string.IsNullOrWhiteSpace(item.RelatedName) ? $"Priority: {item.Priority}" : $"{item.RelatedName} · {item.Priority}";
+
+                        var row = CreateItemRow(
+                            iconText: GetActivityIcon(item.Type),
+                            title: item.Title,
+                            subtitle: sub,
+                            statusText: item.Status,
+                            timeAgo: item.DueTimeText,
+                            onClick: () =>
+                            {
+                                using var fuCtrl = new FollowUpController();
+                                var reminder = fuCtrl.GetById(item.TaskReminderId);
+                                if (reminder != null)
+                                {
+                                    using var dlg = new FollowUpInputForm(fuCtrl, reminder);
+                                    if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Result != null)
+                                    {
+                                        fuCtrl.Update(dlg.Result);
+                                        LoadData();
+                                    }
+                                }
+                            }
+                        );
+
+                        row.Location = new Point(0, y);
+                        row.Width = Math.Max(200, pnlLeftList.ClientSize.Width - 4);
+                        pnlLeftList.Controls.Add(row);
+                        y += row.Height + 8;
+                    }
+                }
             }
             else
             {
-                lblLeftEmpty.Visible = false;
-                int y = 0;
-                foreach (var item in snapshot.FollowUpsToday)
-                {
-                    string sub = string.IsNullOrWhiteSpace(item.RelatedName) ? $"Priority: {item.Priority}" : $"{item.RelatedName} · {item.Priority}";
-
-                    var row = CreateItemRow(
-                        iconText: GetActivityIcon(item.Type),
-                        title: item.Title,
-                        subtitle: sub,
-                        statusText: item.Status,
-                        timeAgo: item.DueTimeText,
-                        onClick: () =>
-                        {
-                            using var fuCtrl = new FollowUpController();
-                            var reminder = fuCtrl.GetById(item.TaskReminderId);
-                            if (reminder != null)
-                            {
-                                using var dlg = new FollowUpInputForm(fuCtrl, reminder);
-                                if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Result != null)
-                                {
-                                    fuCtrl.Update(dlg.Result);
-                                    LoadData();
-                                }
-                            }
-                        }
-                    );
-
-                    row.Location = new Point(0, y);
-                    row.Width = Math.Max(200, pnlLeftList.ClientSize.Width - 4);
-                    pnlLeftList.Controls.Add(row);
-                    y += row.Height + 8;
-                }
+                pnlLeftCard.Visible = false;
             }
 
             // Middle Card: "My Recent Activity" (last 5, AvatarLabel, StatusText, relative time)

@@ -411,18 +411,23 @@ namespace CRMS_Peguit.winforms.Controllers
         /// <summary>
         /// Retrieves all interactions and events for an agent's activities view, with searching and filtering.
         /// </summary>
-        public List<TimelineItemDto> GetAllForAgent(int agentId, string filter = "All", string? search = null)
+        public List<TimelineItemDto> GetAllForAgent(int? agentId = null, string filter = "All", string? search = null)
         {
             var list = new List<TimelineItemDto>();
             try
             {
-                // 1. Activities logged by this agent
+                // 1. Activities logged by this agent (or all agents if agentId is null)
                 var manualQuery = _db.Activities
                     .AsNoTracking()
                     .Include(a => a.LoggedByAgent).ThenInclude(u => u.Person)
                     .Include(a => a.RelatedCustomer).ThenInclude(c => c!.Person)
                     .Include(a => a.RelatedLead).ThenInclude(l => l!.Person)
-                    .Where(a => a.LoggedByAgentId == agentId);
+                    .AsQueryable();
+
+                if (agentId.HasValue && agentId.Value > 0)
+                {
+                    manualQuery = manualQuery.Where(a => a.LoggedByAgentId == agentId.Value);
+                }
 
                 var manualActivities = manualQuery.ToList();
                 foreach (var a in manualActivities)
@@ -473,13 +478,18 @@ namespace CRMS_Peguit.winforms.Controllers
                     });
                 }
 
-                // 2. Completed Follow-Ups assigned to this agent
+                // 2. Completed Follow-Ups assigned to this agent (or all if agentId is null)
                 var taskQuery = _db.TaskReminders
                     .AsNoTracking()
                     .Include(t => t.AssignedToUser).ThenInclude(u => u.Person)
                     .Include(t => t.RelatedCustomer).ThenInclude(c => c!.Person)
                     .Include(t => t.RelatedLead).ThenInclude(l => l!.Person)
-                    .Where(t => t.AssignedToUserId == agentId && !t.IsDeleted && t.Status == "Completed");
+                    .Where(t => !t.IsDeleted && t.Status == "Completed");
+
+                if (agentId.HasValue && agentId.Value > 0)
+                {
+                    taskQuery = taskQuery.Where(t => t.AssignedToUserId == agentId.Value);
+                }
 
                 var completedTasks = taskQuery.ToList();
                 foreach (var t in completedTasks)
@@ -513,7 +523,12 @@ namespace CRMS_Peguit.winforms.Controllers
                     .Include(p => p.Activity).ThenInclude(a => a.LoggedByAgent).ThenInclude(u => u.Person)
                     .Include(p => p.Activity).ThenInclude(a => a.RelatedCustomer).ThenInclude(c => c!.Person)
                     .Include(p => p.Activity).ThenInclude(a => a.RelatedLead).ThenInclude(l => l!.Person)
-                    .Where(p => p.Activity.LoggedByAgentId == agentId);
+                    .AsQueryable();
+
+                if (agentId.HasValue && agentId.Value > 0)
+                {
+                    showingQuery = showingQuery.Where(p => p.Activity.LoggedByAgentId == agentId.Value);
+                }
 
                 var completedShowings = showingQuery.ToList();
                 foreach (var s in completedShowings)
@@ -569,11 +584,15 @@ namespace CRMS_Peguit.winforms.Controllers
             return list;
         }
 
-        public (int total, int calls, int emails, int meetings) GetActivityStatsForAgent(int agentId)
+        public (int total, int calls, int emails, int meetings) GetActivityStatsForAgent(int? agentId = null)
         {
             try
             {
-                var query = _db.Activities.AsNoTracking().Where(a => a.LoggedByAgentId == agentId);
+                var query = _db.Activities.AsNoTracking().AsQueryable();
+                if (agentId.HasValue && agentId.Value > 0)
+                {
+                    query = query.Where(a => a.LoggedByAgentId == agentId.Value);
+                }
                 int total = query.Count();
                 int calls = query.Count(a => a.Type == "Call");
                 int emails = query.Count(a => a.Type == "Email");

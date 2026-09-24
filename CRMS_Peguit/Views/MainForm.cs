@@ -91,6 +91,7 @@ namespace CRMS_Peguit.winforms
             _navButtonInfo[btnApprovals] = ("✓", "Approvals & Review");
             _navButtonInfo[btnManageManagers] = ("🛡", "Manage Managers");
             _navButtonInfo[btnManageAgents] = ("👥", "Manage Agents");
+            _navButtonInfo[btnArchives] = ("🗑", "Recycle Bin");
 
             _navButtons.AddRange(_navButtonInfo.Keys);
 
@@ -163,6 +164,7 @@ namespace CRMS_Peguit.winforms
             btnDashboard.Click += (s, e) => { SetActiveNavButton(btnDashboard); BtnDashboardClick(s, e); };
             btnManageManagers.Click += (s, e) => { SetActiveNavButton(btnManageManagers); BtnManageManagersClick(s, e); };
             btnManageAgents.Click += (s, e) => { SetActiveNavButton(btnManageAgents); BtnManageAgentsClick(s, e); };
+            btnArchives.Click += (s, e) => { SetActiveNavButton(btnArchives); BtnArchivesClick(s, e); };
             btnCustomers.Click += (s, e) => { SetActiveNavButton(btnCustomers); BtnCustomersClick(s, e); };
             btnLeads.Click += (s, e) => { SetActiveNavButton(btnLeads); BtnLeadsClick(s, e); };
             btnProperties.Click += (s, e) => { SetActiveNavButton(btnProperties); BtnPropertiesClick(s, e); };
@@ -286,7 +288,7 @@ namespace CRMS_Peguit.winforms
                 lblSalesSection.Visible = true;
                 lblSupportSection.Visible = true;
                 lblInsightsSection.Visible = btnAnalytics.Visible || btnReports.Visible;
-                lblAdminSection.Visible = btnManageManagers.Visible || btnManageAgents.Visible || btnApprovals.Visible || btnAdminPanel.Visible;
+                lblAdminSection.Visible = btnManageManagers.Visible || btnManageAgents.Visible || btnApprovals.Visible || btnAdminPanel.Visible || btnArchives.Visible;
                 foreach (var btn in _navButtons)
                 {
                     if (_navButtonInfo.TryGetValue(btn, out var info))
@@ -626,8 +628,9 @@ namespace CRMS_Peguit.winforms
             btnApprovals.Visible = CurrentSession.CanAccess("Approvals") && RbacService.CanApproveAssignments && CurrentSession.CanAccessActions;
             btnManageManagers.Visible = CurrentSession.CanAccess("Managers");
             btnManageAgents.Visible = CurrentSession.CanAccess("SalesStaff");
+            btnArchives.Visible = RbacService.IsAdmin || RbacService.IsManager || RbacService.IsSuperAdmin;
             lblAdminSection.Text = RbacService.IsAdmin ? "ADMINISTRATION" : "MANAGEMENT";
-            lblAdminSection.Visible = btnManageManagers.Visible || btnManageAgents.Visible || btnApprovals.Visible || btnAdminPanel.Visible;
+            lblAdminSection.Visible = btnManageManagers.Visible || btnManageAgents.Visible || btnApprovals.Visible || btnAdminPanel.Visible || btnArchives.Visible;
 
             // Base Tier (Tenant A, B, C): Data Collection & Main Transaction
             btnCustomers.Visible = CurrentSession.CanAccess("Customers");
@@ -798,6 +801,13 @@ namespace CRMS_Peguit.winforms
                         fuView.SetFilter(initialFilter);
                     }
                     break;
+                case "archives":
+                case "recyclebin":
+                case "archive":
+                    if (!RbacService.IsAdmin && !RbacService.IsManager && !RbacService.IsSuperAdmin) return;
+                    SetActiveNavButton(btnArchives);
+                    BtnArchivesClick(btnArchives, EventArgs.Empty);
+                    break;
                 case "reports":
                 case "reports:commission":
                 case "commission":
@@ -917,6 +927,12 @@ namespace CRMS_Peguit.winforms
         {
             if (!CurrentSession.CanAccess("SalesStaff")) return;
             ShowViewCached("ManageAgents", () => new AdminUserListForm("Agent"));
+        }
+
+        private void BtnArchivesClick(object? sender, EventArgs e)
+        {
+            if (!RbacService.IsAdmin && !RbacService.IsManager && !RbacService.IsSuperAdmin) return;
+            ShowViewCached("Archives", () => new CRMS_Peguit.winforms.Views.Archives.ArchivesView());
         }
 
         private void BtnCustomersClick(object? sender, EventArgs e)

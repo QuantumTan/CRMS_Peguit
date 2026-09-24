@@ -23,6 +23,12 @@ namespace CRMS_Peguit.winforms.Views.Leads
             UiRadiusHelper.AttachHoverFeedback(btnCancel, Color.White, Color.FromArgb(241, 245, 249));
             UiRadiusHelper.AttachHoverFeedback(btnSave, Theme.Primary, Theme.PrimaryDark);
             btnSave.Click += BtnSaveClick;
+
+            txtFirstName.MaxLength = 50;
+            txtMiddleName.MaxLength = 50;
+            txtLastName.MaxLength = 50;
+            txtPhone.MaxLength = 20;
+
             LoadData();
         }
 
@@ -128,8 +134,9 @@ namespace CRMS_Peguit.winforms.Views.Leads
                 cmbSource.Text = string.Empty;
 
                 cmbStage.Items.Clear();
-                cmbStage.Items.AddRange(new object[] { "new", "contacted", "qualified", "proposal", "negotiation", "lost" });
+                cmbStage.Items.Add("new");
                 cmbStage.SelectedItem = "new";
+                cmbStage.Enabled = false; // Initial stage is locked to "new" on creation
                 cmbPriority.SelectedItem = "medium";
             }
         }
@@ -166,6 +173,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
                 firstName,
                 lastName,
                 txtEmail.Text,
+                txtPhone.Text,
                 txtExpectedValue.Text,
                 out decimal? expectedValue,
                 out string? errorMessage,
@@ -176,6 +184,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
                     "FirstName" => txtFirstName,
                     "LastName" => txtLastName,
                     "Email" => txtEmail,
+                    "Phone" => txtPhone,
                     "ExpectedValue" => txtExpectedValue,
                     _ => txtFirstName
                 };

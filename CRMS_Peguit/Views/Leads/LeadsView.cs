@@ -671,6 +671,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
                     if (dlg.ShowDialog() == DialogResult.OK)
                     {
                         _controller.AssignAgent(lead, dlg.SelectedAgentId, dlg.ApproveNow, dlg.ReviewNotes);
+                        MessageBox.Show("Agent assigned successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         RefreshGrid();
                     }
                 };
@@ -707,6 +708,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
             if (form.ShowDialog() == DialogResult.OK && form.Result is not null)
             {
                 _controller.Update(form.Result);
+                MessageBox.Show($"Lead '{form.Result.FullName}' was updated successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 RefreshGrid();
             }
         }
@@ -720,6 +722,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
             if (confirmation != DialogResult.Yes) return;
 
             _controller.SoftDelete(lead);
+            MessageBox.Show($"Lead '{lead.FullName}' was archived successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
             RefreshGrid();
         }
 
@@ -729,6 +732,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
             if (form.ShowDialog() == DialogResult.OK && form.Result is not null)
             {
                 _controller.Add(form.Result);
+                MessageBox.Show($"Lead '{form.Result.FullName}' was created successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 RefreshGrid();
             }
         }

@@ -23,6 +23,12 @@ namespace CRMS_Peguit.winforms.Views.Customers
             UiRadiusHelper.AttachHoverFeedback(btnCancel, Color.White, Color.FromArgb(241, 245, 249));
             UiRadiusHelper.AttachHoverFeedback(btnSave, Theme.Primary, Theme.PrimaryDark);
             btnSave.Click += BtnSaveClick;
+
+            txtFirstName.MaxLength = 50;
+            txtMiddleName.MaxLength = 50;
+            txtLastName.MaxLength = 50;
+            txtPhone.MaxLength = 20;
+
             LoadData();
         }
 
@@ -61,6 +67,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
                 txtPhone.Text = _existingCustomer.Phone ?? string.Empty;
                 SelectComboValue(cmbType, _existingCustomer.Type, "buyer");
                 SelectComboValue(cmbStatus, _existingCustomer.Status, "active");
+                cmbStatus.Enabled = !isPendingReview;
 
                 if (isPendingReview)
                 {
@@ -80,6 +87,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
                 cmbSuffix.Text = string.Empty;
                 cmbType.SelectedItem = "buyer";
                 cmbStatus.SelectedItem = "active";
+                cmbStatus.Enabled = false; // New customers default to active
             }
         }
 
@@ -88,11 +96,13 @@ namespace CRMS_Peguit.winforms.Views.Customers
             string firstName = txtFirstName.Text.Trim();
             string lastName = txtLastName.Text.Trim();
 
-            if (!CustomerController.ValidateCustomerInput(firstName, lastName, txtEmail.Text, out string? error))
+            if (!CustomerController.ValidateCustomerInput(firstName, lastName, txtEmail.Text, txtPhone.Text, out string? error))
             {
                 Control target = error?.Contains("email", StringComparison.OrdinalIgnoreCase) == true
                     ? txtEmail
-                    : (error?.Contains("Last", StringComparison.OrdinalIgnoreCase) == true ? txtLastName : txtFirstName);
+                    : (error?.Contains("phone", StringComparison.OrdinalIgnoreCase) == true
+                        ? txtPhone
+                        : (error?.Contains("Last", StringComparison.OrdinalIgnoreCase) == true ? txtLastName : txtFirstName));
                 ShowValidationError(error ?? "Validation error.", target);
                 return;
             }

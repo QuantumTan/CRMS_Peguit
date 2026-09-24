@@ -820,8 +820,8 @@ namespace CRMS_Peguit.winforms.Views.Leads
             };
             row.Controls.Add(lblActor);
 
-            // Action button: "➕ Schedule Follow-Up" shortcut (if user is Agent)
-            if (RbacService.IsAgent && item.CanCreateFollowUp)
+            // Action button: "➕ Schedule Follow-Up" shortcut (if user is Agent and Actions module is enabled)
+            if (CurrentSession.CanAccessActions && RbacService.IsAgent && item.CanCreateFollowUp)
             {
                 var btnFollowUp = new Button
                 {

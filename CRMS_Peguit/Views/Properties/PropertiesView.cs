@@ -395,6 +395,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
                     if (dlg.ShowDialog() == DialogResult.OK)
                     {
                         _controller.AssignAgent(property, dlg.SelectedAgentId, dlg.ApproveNow, dlg.ReviewNotes);
+                        MessageBox.Show("Agent assigned successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         RefreshGrid();
                     }
                 };
@@ -429,6 +430,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
             if (form.ShowDialog() == DialogResult.OK && form.Result is not null)
             {
                 _controller.Update(form.Result);
+                MessageBox.Show("Property listing updated successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 RefreshGrid();
             }
         }
@@ -488,6 +490,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
             if (form.ShowDialog() == DialogResult.OK && form.Result is not null)
             {
                 _controller.Add(form.Result);
+                MessageBox.Show("Property listing created successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 RefreshGrid();
             }
         }

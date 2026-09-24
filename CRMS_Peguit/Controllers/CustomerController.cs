@@ -257,6 +257,25 @@ namespace CRMS_Peguit.winforms.Controllers
             item.IsDeleted = false;
             item.DeletedAt = null;
             _db.SaveChanges();
+            LogActivity("Customer Restored", null, item.CustomerId, $"Customer '{item.FullName}' was restored from archive.");
+        }
+
+        public List<Customer> GetArchived()
+        {
+            try
+            {
+                return _db.Customers
+                    .AsNoTracking()
+                    .Include(c => c.Person)
+                    .Where(c => c.IsDeleted)
+                    .OrderByDescending(c => c.DeletedAt)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CustomerController.GetArchived] Error: {ex.Message}");
+                return new List<Customer>();
+            }
         }
 
         public void Delete(Customer customer) => SoftDelete(customer);
@@ -529,21 +548,29 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public static bool ValidateCustomerInput(string firstName, string lastName, string? email, out string? errorMessage)
         {
-            if (string.IsNullOrWhiteSpace(firstName))
+            return ValidateCustomerInput(firstName, lastName, email, null, out errorMessage);
+        }
+
+        public static bool ValidateCustomerInput(string firstName, string lastName, string? email, string? phone, out string? errorMessage)
+        {
+            if (!ValidationHelper.IsValidPersonName(firstName, "First name", out errorMessage))
             {
-                errorMessage = "First name is required.";
                 return false;
             }
 
-            if (string.IsNullOrWhiteSpace(lastName))
+            if (!ValidationHelper.IsValidPersonName(lastName, "Last name", out errorMessage))
             {
-                errorMessage = "Last name is required.";
                 return false;
             }
 
             if (!string.IsNullOrWhiteSpace(email) && !ContactEmailService.IsValidEmail(email.Trim()))
             {
                 errorMessage = "Enter a valid email address.";
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(phone) && !ValidationHelper.IsValidPhoneNumber(phone, out errorMessage))
+            {
                 return false;
             }
 

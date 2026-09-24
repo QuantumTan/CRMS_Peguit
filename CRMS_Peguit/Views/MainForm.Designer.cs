@@ -28,6 +28,7 @@ namespace CRMS_Peguit.winforms
         private System.Windows.Forms.Button btnApprovals = null!;
         private System.Windows.Forms.Button btnManageManagers = null!;
         private System.Windows.Forms.Button btnManageAgents = null!;
+        private System.Windows.Forms.Button btnArchives = null!;
         private System.Windows.Forms.Button btnAdminPanel = null!;
         private System.Windows.Forms.Button btnBranching = null!;
         private System.Windows.Forms.Button btnLogout = null!;
@@ -80,6 +81,7 @@ namespace CRMS_Peguit.winforms
             this.btnApprovals = new System.Windows.Forms.Button();
             this.btnManageManagers = new System.Windows.Forms.Button();
             this.btnManageAgents = new System.Windows.Forms.Button();
+            this.btnArchives = new System.Windows.Forms.Button();
             this.btnAdminPanel = new System.Windows.Forms.Button();
             this.btnBranching = new System.Windows.Forms.Button();
             this.btnLogout = new System.Windows.Forms.Button();
@@ -150,6 +152,7 @@ namespace CRMS_Peguit.winforms
             // pnlNav
             // 
             this.pnlNav.AutoScroll = true;
+            this.pnlNav.Controls.Add(this.btnArchives);
             this.pnlNav.Controls.Add(this.btnManageAgents);
             this.pnlNav.Controls.Add(this.btnManageManagers);
             this.pnlNav.Controls.Add(this.btnApprovals);
@@ -462,6 +465,23 @@ namespace CRMS_Peguit.winforms
             this.btnManageAgents.Text = "  👥  Manage Agents";
             this.btnManageAgents.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             this.btnManageAgents.UseVisualStyleBackColor = true;
+            // 
+            // btnArchives
+            // 
+            this.btnArchives.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.btnArchives.Dock = System.Windows.Forms.DockStyle.Top;
+            this.btnArchives.FlatAppearance.BorderSize = 0;
+            this.btnArchives.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnArchives.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnArchives.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
+            this.btnArchives.Location = new System.Drawing.Point(0, 530);
+            this.btnArchives.Name = "btnArchives";
+            this.btnArchives.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
+            this.btnArchives.Size = new System.Drawing.Size(240, 38);
+            this.btnArchives.TabIndex = 15;
+            this.btnArchives.Text = "  🗑  Recycle Bin";
+            this.btnArchives.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.btnArchives.UseVisualStyleBackColor = true;
             // 
             // btnAdminPanel
             // 

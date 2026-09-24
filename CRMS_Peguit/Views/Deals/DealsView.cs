@@ -110,6 +110,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
                     if (form.ShowDialog(this.FindForm()) == DialogResult.OK && form.Result != null)
                     {
                         _controller.Add(form.Result);
+                        MessageBox.Show("Deal created successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         RefreshGrid();
                     }
                 };
@@ -431,6 +432,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
                     if (form.ShowDialog(this.FindForm()) == DialogResult.OK && form.Result != null)
                     {
                         _controller.Update(form.Result);
+                        MessageBox.Show("Deal updated successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         RefreshGrid();
                     }
                 };
