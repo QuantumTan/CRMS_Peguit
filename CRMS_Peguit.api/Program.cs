@@ -65,15 +65,23 @@ builder.Services.AddScoped<RealEstateDbContext>(serviceProvider =>
     string tenantConnection = masterConnection;
     try
     {
-        var scsb = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(masterConnection)
+        var scsb = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(masterConnection);
+        // Only rewrite InitialCatalog if localdb AND tenantId is a valid positive ID (> 0).
+        // For shared/cloud databases (like db66713) or when tenantId <= 0 (e.g. unauthenticated login),
+        // we must NEVER alter InitialCatalog to "CRMS_Tenant_0".
+        if (scsb.DataSource.Contains("localdb", StringComparison.OrdinalIgnoreCase) && tenantId > 0)
         {
-            InitialCatalog = $"CRMS_Tenant_{tenantId}"
-        };
-        tenantConnection = scsb.ConnectionString;
+            scsb.InitialCatalog = $"CRMS_Tenant_{tenantId}";
+            tenantConnection = scsb.ConnectionString;
+        }
+        else
+        {
+            tenantConnection = masterConnection;
+        }
     }
     catch
     {
-        // fallback
+        tenantConnection = masterConnection;
     }
 
     var options =

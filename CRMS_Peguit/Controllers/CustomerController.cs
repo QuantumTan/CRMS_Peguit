@@ -31,7 +31,8 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
             {
-                return LocalDataCache.Instance.GetCachedCustomers(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                var cached = LocalDataCache.Instance.GetCachedCustomers(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                if (cached.Count > 0) return cached;
             }
 
             try
@@ -49,10 +50,17 @@ namespace CRMS_Peguit.winforms.Controllers
                             : c.CreatedByUserId == currentUserId);
                 }
 
-                return query
+                var list = query
                     .OrderBy(x => x.Person.LastName)
                     .ThenBy(x => x.Person.FirstName)
                     .ToList();
+
+                if (list.Count > 0)
+                {
+                    _ = Task.Run(() => LocalDataCache.Instance.SaveCustomersMirror(TenantId, list));
+                }
+
+                return list;
             }
             catch (Exception ex)
             {
@@ -70,19 +78,45 @@ namespace CRMS_Peguit.winforms.Controllers
             if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
             {
                 var cached = LocalDataCache.Instance.GetCachedCustomers(TenantId, CurrentSession.UserId, RbacService.IsAgent);
-                if (!string.IsNullOrWhiteSpace(search))
+                if (cached.Count == 0)
                 {
-                    string s = search.Trim().ToLowerInvariant();
-                    cached = cached.Where(c => (c.Person != null && (
-                        c.Person.FirstName.ToLowerInvariant().Contains(s) ||
-                        c.Person.LastName.ToLowerInvariant().Contains(s) ||
-                        (c.Person.Email != null && c.Person.Email.ToLowerInvariant().Contains(s)) ||
-                        (c.Person.Phone != null && c.Person.Phone.Contains(s)))) ||
-                        c.Type.ToLowerInvariant().Contains(s)).ToList();
+                    try
+                    {
+                        var localQuery = _db.Customers.Include(c => c.Person).AsNoTracking().Where(c => !c.IsDeleted);
+                        if (!RbacService.HasFullOversight && RbacService.IsAgent)
+                        {
+                            int currentUserId = CurrentSession.UserId;
+                            localQuery = localQuery.Where(c =>
+                                (c.AssignedAgentId.HasValue && c.AssignedAgentId.Value > 0)
+                                    ? c.AssignedAgentId.Value == currentUserId
+                                    : c.CreatedByUserId == currentUserId);
+                        }
+                        var localList = await localQuery.ToListAsync();
+                        if (localList.Count > 0)
+                        {
+                            cached = localList;
+                            _ = Task.Run(() => LocalDataCache.Instance.SaveCustomersMirror(TenantId, localList));
+                        }
+                    }
+                    catch { }
                 }
-                int total = cached.Count;
-                var paged = cached.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
-                return new PagedResult<Customer>(paged, total, pageNumber, pageSize);
+
+                if (cached.Count > 0)
+                {
+                    if (!string.IsNullOrWhiteSpace(search))
+                    {
+                        string s = search.Trim().ToLowerInvariant();
+                        cached = cached.Where(c => (c.Person != null && (
+                            c.Person.FirstName.ToLowerInvariant().Contains(s) ||
+                            c.Person.LastName.ToLowerInvariant().Contains(s) ||
+                            (c.Person.Email != null && c.Person.Email.ToLowerInvariant().Contains(s)) ||
+                            (c.Person.Phone != null && c.Person.Phone.Contains(s)))) ||
+                            c.Type.ToLowerInvariant().Contains(s)).ToList();
+                    }
+                    int total = cached.Count;
+                    var paged = cached.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
+                    return new PagedResult<Customer>(paged, total, pageNumber, pageSize);
+                }
             }
 
             try

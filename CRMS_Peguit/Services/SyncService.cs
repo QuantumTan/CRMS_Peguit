@@ -64,9 +64,10 @@ namespace CRMS_Peguit.winforms.Models.Services
         private System.Threading.Timer? _timer;
         private bool _isSyncing;
         private readonly object _syncLock = new();
-        private int _failureCount;
         private int _baseIntervalSeconds;
 
+        private static bool _cloudSchemaEnsured = false;
+        private static int _consecutiveFailures = 0;
         public bool IsOnline { get; private set; } = true;
         public bool IsSyncing => _isSyncing;
         public bool IsDraining => _isSyncing;
@@ -104,7 +105,6 @@ namespace CRMS_Peguit.winforms.Models.Services
             };
             _localCache = LocalDataCache.Instance;
             _logPath = Path.Combine(AppContext.BaseDirectory, "sync-log.txt");
-            _failureCount = 0;
         }
 
         public SyncService(string? localConnection, string? cloudConnection)
@@ -139,56 +139,78 @@ namespace CRMS_Peguit.winforms.Models.Services
 
         public async Task<bool> CheckConnectivityAsync()
         {
+            bool hasNetwork = System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable();
+            if (!hasNetwork)
+            {
+                SetOnlineStatus(false, "No active network interface");
+                return false;
+            }
+
+            // 1. Fast HTTP API ping first (lightweight 3-second timeout)
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                var response = await _httpClient.GetAsync("api/auth/ping", cts.Token);
+                if (response.IsSuccessStatusCode)
+                {
+                    _consecutiveFailures = 0;
+                    SetOnlineStatus(true);
+                    return true;
+                }
+            }
+            catch
+            {
+                // Fall through to cloud database check
+            }
+
+            // 2. Direct Cloud SQL connection test with strict 3-second timeout
             if (!string.IsNullOrWhiteSpace(_cloudConnection))
             {
                 try
                 {
-                    using var conn = new Microsoft.Data.SqlClient.SqlConnection(_cloudConnection);
-                    await conn.OpenAsync();
-                    bool wasOnline = IsOnline;
-                    IsOnline = true;
-                    if (!wasOnline)
+                    var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(_cloudConnection)
                     {
-                        ConnectivityChanged?.Invoke(this, true);
-                    }
+                        ConnectTimeout = 3
+                    };
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                    using var conn = new Microsoft.Data.SqlClient.SqlConnection(builder.ConnectionString);
+                    await conn.OpenAsync(cts.Token);
+                    _consecutiveFailures = 0;
+                    SetOnlineStatus(true);
                     return true;
                 }
-                catch (Exception ex)
+                catch
                 {
-                    bool wasOnline = IsOnline;
-                    IsOnline = false;
-                    if (wasOnline)
-                    {
-                        ConnectivityChanged?.Invoke(this, false);
-                        Log($"Network status: OFFLINE ({ex.Message})");
-                    }
-                    return false;
+                    // Cloud DB ping failed
                 }
             }
 
-            // Fallback to HTTP ping
-            try
+            _consecutiveFailures++;
+            // If device has network connection, do not falsely label offline on a single transient hiccup
+            if (_consecutiveFailures >= 2)
             {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
-                var response = await _httpClient.GetAsync("api/auth/ping", cts.Token);
-                bool currentOnline = response.IsSuccessStatusCode;
-                bool wasOnline = IsOnline;
-                IsOnline = currentOnline;
-                if (wasOnline != currentOnline)
-                {
-                    ConnectivityChanged?.Invoke(this, currentOnline);
-                }
-                return currentOnline;
-            }
-            catch
-            {
-                bool wasOnline = IsOnline;
-                IsOnline = false;
-                if (wasOnline)
-                {
-                    ConnectivityChanged?.Invoke(this, false);
-                }
+                SetOnlineStatus(false, "Cloud server unreachable");
                 return false;
+            }
+
+            return IsOnline;
+        }
+
+        private void SetOnlineStatus(bool online, string? reason = null)
+        {
+            bool wasOnline = IsOnline;
+            IsOnline = online;
+            if (wasOnline != online)
+            {
+                ConnectivityChanged?.Invoke(this, online);
+                if (!online)
+                {
+                    Log($"Network status: OFFLINE ({reason ?? "Unreachable"})");
+                }
+                else
+                {
+                    Log("Network status: ONLINE (Connected)");
+                }
             }
         }
 
@@ -227,11 +249,28 @@ namespace CRMS_Peguit.winforms.Models.Services
                     int activeTenant = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
                     var tenantsToSync = new List<int> { activeTenant };
 
-                    // Also sync other tenants if running in elevated mode or database exists
-                    foreach (var tid in new[] { 1, 2, 3 })
+                    // Only sync other tenants if SuperAdmin or when not scoped to a specific tenant
+                    if (string.Equals(CurrentSession.CurrentUser?.Role.ToString(), "SuperAdmin", StringComparison.OrdinalIgnoreCase) || CurrentSession.TenantId <= 0)
                     {
-                        if (!tenantsToSync.Contains(tid))
-                            tenantsToSync.Add(tid);
+                        foreach (var tid in new[] { 1, 2, 3 })
+                        {
+                            if (!tenantsToSync.Contains(tid))
+                                tenantsToSync.Add(tid);
+                        }
+                    }
+
+                    if (!_cloudSchemaEnsured)
+                    {
+                        try
+                        {
+                            await using var testCloud = CreateCloudContext(1);
+                            SchemaRepairService.EnsureCrmPolishColumns(testCloud);
+                            _cloudSchemaEnsured = true;
+                        }
+                        catch (Exception ex)
+                        {
+                            Log($"Cloud schema check skipped: {ex.Message}");
+                        }
                     }
 
                     foreach (var tid in tenantsToSync)
@@ -240,9 +279,6 @@ namespace CRMS_Peguit.winforms.Models.Services
                         {
                             await using var local = LocalDb.CreateContext(tid);
                             await using var cloud = CreateCloudContext(tid);
-
-                            // Ensure cloud schema columns
-                            SchemaRepairService.EnsureCrmPolishColumns(cloud);
 
                             // Pull remotely registered users and roles
                             await PullMissingUsersAndRoles(local, cloud, tid);
@@ -409,9 +445,11 @@ namespace CRMS_Peguit.winforms.Models.Services
                     var safeTableName = tableName.Replace("]", "]]");
                     await using var tx = await cloud.Database.BeginTransactionAsync();
 
+#pragma warning disable EF1002
                     await cloud.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT [dbo].[{safeTableName}] ON;");
                     await cloud.SaveChangesAsync();
                     await cloud.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT [dbo].[{safeTableName}] OFF;");
+#pragma warning restore EF1002
 
                     await tx.CommitAsync();
                 });
@@ -453,7 +491,7 @@ namespace CRMS_Peguit.winforms.Models.Services
 
                 var localUsers = await local.Users.IgnoreQueryFilters().Include(u => u.Person).AsNoTracking().ToListAsync();
                 var cloudUsers = await cloud.Users.IgnoreQueryFilters().Include(u => u.Person).Include(u => u.Role).AsNoTracking().ToListAsync();
-                var missingUsers = cloudUsers.Where(cu => cu.Role?.TenantId == tenantId && !localUsers.Any(lu => lu.UserId == cu.UserId || (lu.Person != null && cu.Person != null && lu.Person.Email.ToLower() == cu.Person.Email.ToLower()))).ToList();
+                var missingUsers = cloudUsers.Where(cu => cu.Role?.TenantId == tenantId && !localUsers.Any(lu => lu.UserId == cu.UserId || (lu.Person?.Email != null && cu.Person?.Email != null && string.Equals(lu.Person.Email, cu.Person.Email, StringComparison.OrdinalIgnoreCase)))).ToList();
 
                 foreach (var user in missingUsers)
                 {

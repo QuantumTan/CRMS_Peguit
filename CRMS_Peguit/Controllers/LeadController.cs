@@ -31,7 +31,8 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
             {
-                return LocalDataCache.Instance.GetCachedLeads(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                var cached = LocalDataCache.Instance.GetCachedLeads(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                if (cached.Count > 0) return cached;
             }
 
             try
@@ -49,10 +50,17 @@ namespace CRMS_Peguit.winforms.Controllers
                             : l.CreatedByUserId == currentUserId);
                 }
 
-                return query
+                var list = query
                     .OrderBy(x => x.Person.LastName)
                     .ThenBy(x => x.Person.FirstName)
                     .ToList();
+
+                if (list.Count > 0)
+                {
+                    _ = Task.Run(() => LocalDataCache.Instance.SaveLeadsMirror(TenantId, list));
+                }
+
+                return list;
             }
             catch (Exception ex)
             {
@@ -72,23 +80,49 @@ namespace CRMS_Peguit.winforms.Controllers
             if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
             {
                 var cached = LocalDataCache.Instance.GetCachedLeads(TenantId, CurrentSession.UserId, RbacService.IsAgent);
-                if (!string.IsNullOrWhiteSpace(stage) && !string.Equals(stage, "All", StringComparison.OrdinalIgnoreCase))
+                if (cached.Count == 0)
                 {
-                    cached = cached.Where(l => l.Stage.Equals(stage, StringComparison.OrdinalIgnoreCase)).ToList();
+                    try
+                    {
+                        var localQuery = _db.Leads.Include(l => l.Person).AsNoTracking().Where(l => !l.IsDeleted);
+                        if (!RbacService.HasFullOversight && RbacService.IsAgent)
+                        {
+                            int currentUserId = CurrentSession.UserId;
+                            localQuery = localQuery.Where(l =>
+                                (l.AssignedAgentId.HasValue && l.AssignedAgentId.Value > 0)
+                                    ? l.AssignedAgentId.Value == currentUserId
+                                    : l.CreatedByUserId == currentUserId);
+                        }
+                        var localList = await localQuery.ToListAsync();
+                        if (localList.Count > 0)
+                        {
+                            cached = localList;
+                            _ = Task.Run(() => LocalDataCache.Instance.SaveLeadsMirror(TenantId, localList));
+                        }
+                    }
+                    catch { }
                 }
-                if (!string.IsNullOrWhiteSpace(search))
+
+                if (cached.Count > 0)
                 {
-                    string s = search.Trim().ToLowerInvariant();
-                    cached = cached.Where(l => (l.Person != null && (
-                        l.Person.FirstName.ToLowerInvariant().Contains(s) ||
-                        l.Person.LastName.ToLowerInvariant().Contains(s) ||
-                        (l.Person.Email != null && l.Person.Email.ToLowerInvariant().Contains(s)) ||
-                        (l.Person.Phone != null && l.Person.Phone.Contains(s)))) ||
-                        (l.Source != null && l.Source.ToLowerInvariant().Contains(s))).ToList();
+                    if (!string.IsNullOrWhiteSpace(stage) && !string.Equals(stage, "All", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cached = cached.Where(l => l.Stage.Equals(stage, StringComparison.OrdinalIgnoreCase)).ToList();
+                    }
+                    if (!string.IsNullOrWhiteSpace(search))
+                    {
+                        string s = search.Trim().ToLowerInvariant();
+                        cached = cached.Where(l => (l.Person != null && (
+                            l.Person.FirstName.ToLowerInvariant().Contains(s) ||
+                            l.Person.LastName.ToLowerInvariant().Contains(s) ||
+                            (l.Person.Email != null && l.Person.Email.ToLowerInvariant().Contains(s)) ||
+                            (l.Person.Phone != null && l.Person.Phone.Contains(s)))) ||
+                            (l.Source != null && l.Source.ToLowerInvariant().Contains(s))).ToList();
+                    }
+                    int total = cached.Count;
+                    var paged = cached.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
+                    return new PagedResult<Lead>(paged, total, pageNumber, pageSize);
                 }
-                int total = cached.Count;
-                var paged = cached.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
-                return new PagedResult<Lead>(paged, total, pageNumber, pageSize);
             }
 
             try

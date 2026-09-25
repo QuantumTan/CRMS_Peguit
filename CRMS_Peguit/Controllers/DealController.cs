@@ -28,7 +28,8 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
             {
-                return LocalDataCache.Instance.GetCachedDeals(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                var cached = LocalDataCache.Instance.GetCachedDeals(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                if (cached.Count > 0) return cached;
             }
 
             try
@@ -45,9 +46,16 @@ namespace CRMS_Peguit.winforms.Controllers
                     query = query.Where(d => d.AgentId == currentUserId);
                 }
 
-                return query
+                var list = query
                     .OrderByDescending(x => x.CreatedAt)
                     .ToList();
+
+                if (list.Count > 0)
+                {
+                    _ = Task.Run(() => LocalDataCache.Instance.SaveDealsMirror(TenantId, list));
+                }
+
+                return list;
             }
             catch (Exception ex)
             {

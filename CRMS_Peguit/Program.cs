@@ -8,8 +8,6 @@ namespace CRMS_Peguit.winforms
 {
     internal static class Program
     {
-        private static SyncService? _syncService;
-
         [STAThread]
         static void Main(string[] args)
         {
