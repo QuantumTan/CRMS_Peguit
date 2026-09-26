@@ -82,6 +82,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
             {
                 cmbPropertyType.SelectedItem = "house";
                 cmbStatus.SelectedItem = "available";
+                cmbStatus.Enabled = false; // New properties default to available
             }
 
             // R24. Only Manager or Admin may set or change ownership.

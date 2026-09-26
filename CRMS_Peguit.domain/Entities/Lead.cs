@@ -100,10 +100,12 @@ namespace CRMS_Peguit.domain.entities
 
         public bool IsDeleted { get; set; }
         public DateTime? DeletedAt { get; set; }
+        public int? BranchId { get; set; }
 
         public virtual Person Person { get; set; } = null!;
         public virtual User CreatedByUser { get; set; } = null!;
         public virtual User? AssignedAgent { get; set; }
         public virtual Customer? ConvertedCustomer { get; set; }
+        public virtual Branch? Branch { get; set; }
     }
 }

@@ -32,6 +32,68 @@ namespace CRMS_Peguit.winforms.Models.Services
             return DefaultLocalDbConnection;
         }
 
+        public static string GetMasterConnectionString()
+        {
+            var baseConn = GetLocalConnectionString();
+            try
+            {
+                var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(baseConn)
+                {
+                    InitialCatalog = "CRMS_Master"
+                };
+                return builder.ConnectionString;
+            }
+            catch
+            {
+                return ReplaceDatabaseInConnectionString(baseConn, "CRMS_Master");
+            }
+        }
+
+        public static string GetTenantConnectionString(int tenantId)
+        {
+            if (tenantId <= 0) tenantId = 1;
+            string dbName = $"CRMS_Tenant_{tenantId}";
+            var baseConn = GetLocalConnectionString();
+            try
+            {
+                var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(baseConn)
+                {
+                    InitialCatalog = dbName
+                };
+                return builder.ConnectionString;
+            }
+            catch
+            {
+                return ReplaceDatabaseInConnectionString(baseConn, dbName);
+            }
+        }
+
+        private static string ReplaceDatabaseInConnectionString(string connectionString, string newDatabaseName)
+        {
+            var parts = connectionString.Split(';');
+            var newParts = new List<string>();
+            bool replaced = false;
+            foreach (var part in parts)
+            {
+                var trimmed = part.Trim();
+                if (trimmed.StartsWith("Database=", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.StartsWith("Initial Catalog=", StringComparison.OrdinalIgnoreCase))
+                {
+                    newParts.Add($"Database={newDatabaseName}");
+                    replaced = true;
+                }
+                else if (!string.IsNullOrWhiteSpace(trimmed))
+                {
+                    newParts.Add(trimmed);
+                }
+            }
+            if (!replaced)
+            {
+                newParts.Add($"Database={newDatabaseName}");
+            }
+            return string.Join(";", newParts) + ";";
+        }
+
         public static string? GetCloudConnectionString()
         {
             var env = Environment.GetEnvironmentVariable("CRMS_CLOUD_CONNECTION");
@@ -47,6 +109,23 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
 
             return null;
+        }
+
+        public static string GetApiBaseUrl()
+        {
+            var env = Environment.GetEnvironmentVariable("CRMS_API_URL");
+            if (!string.IsNullOrWhiteSpace(env))
+            {
+                return env.Trim();
+            }
+
+            var fileSettings = LoadSettingsFromFile();
+            if (!string.IsNullOrWhiteSpace(fileSettings?.ApiBaseUrl))
+            {
+                return fileSettings.ApiBaseUrl.Trim();
+            }
+
+            return "https://localhost:7259/";
         }
 
         private static DbSettingsFile? LoadSettingsFromFile()
@@ -89,6 +168,7 @@ namespace CRMS_Peguit.winforms.Models.Services
         {
             public string? LocalConnection { get; set; }
             public string? CloudConnection { get; set; }
+            public string? ApiBaseUrl { get; set; }
         }
     }
 }

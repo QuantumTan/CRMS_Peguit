@@ -4,6 +4,7 @@ using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services.Offline;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,6 +26,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public List<Deal> GetAll()
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var cached = LocalDataCache.Instance.GetCachedDeals(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                if (cached.Count > 0) return cached;
+            }
+
             try
             {
                 var query = _db.Deals
@@ -39,9 +46,16 @@ namespace CRMS_Peguit.winforms.Controllers
                     query = query.Where(d => d.AgentId == currentUserId);
                 }
 
-                return query
+                var list = query
                     .OrderByDescending(x => x.CreatedAt)
                     .ToList();
+
+                if (list.Count > 0)
+                {
+                    _ = Task.Run(() => LocalDataCache.Instance.SaveDealsMirror(TenantId, list));
+                }
+
+                return list;
             }
             catch (Exception ex)
             {
@@ -226,6 +240,13 @@ namespace CRMS_Peguit.winforms.Controllers
                 }
             }
 
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var qItem = SyncService.Instance.EnqueueOfflineCreate("Deal", deal, TenantId, CurrentSession.UserId);
+                deal.DealId = -qItem.QueueId;
+                return deal;
+            }
+
             _db.Deals.Add(deal);
             _db.SaveChanges();
             return deal;
@@ -233,6 +254,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public void Update(Deal deal)
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                SyncService.Instance.EnqueueOfflineUpdate("Deal", deal.DealId, deal, TenantId, CurrentSession.UserId, deal.CreatedAt);
+                return;
+            }
+
             var item = _db.Deals.Include(d => d.Contingencies).Include(d => d.DealClauses).SingleOrDefault(x => x.DealId == deal.DealId);
             if (item is null) return;
 
@@ -425,6 +452,11 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public static bool ValidateDealInput(object? customerValue, object? propertyValue, string dealValueText, out decimal dealValue, out string? errorMessage)
         {
+            return ValidateDealInput(customerValue, propertyValue, dealValueText, null, out dealValue, out errorMessage);
+        }
+
+        public static bool ValidateDealInput(object? customerValue, object? propertyValue, string dealValueText, DateTime? expectedCloseDate, out decimal dealValue, out string? errorMessage)
+        {
             dealValue = 0;
             if (customerValue == null)
             {
@@ -441,6 +473,12 @@ namespace CRMS_Peguit.winforms.Controllers
             if (!decimal.TryParse(dealValueText.Replace(",", "").Trim(), out dealValue) || dealValue <= 0)
             {
                 errorMessage = "Please enter a valid positive Deal Value.";
+                return false;
+            }
+
+            if (expectedCloseDate.HasValue && expectedCloseDate.Value.Date < DateTime.Today)
+            {
+                errorMessage = "Expected closing date must be today or in the future.";
                 return false;
             }
 

@@ -33,7 +33,11 @@ if (string.IsNullOrWhiteSpace(masterConnection))
 // ==========================================================
 
 builder.Services.AddDbContext<MasterCrmsDbContext>(options =>
-    options.UseSqlServer(masterConnection)
+    options.UseSqlServer(masterConnection, sqlOptions =>
+        sqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(30),
+            errorNumbersToAdd: null))
 );
 
 // ==========================================================
@@ -58,9 +62,35 @@ builder.Services.AddScoped<RealEstateDbContext>(serviceProvider =>
     var tenantId =
         tenantResolver.GetTenantId();
 
+    string tenantConnection = masterConnection;
+    try
+    {
+        var scsb = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(masterConnection);
+        // Only rewrite InitialCatalog if localdb AND tenantId is a valid positive ID (> 0).
+        // For shared/cloud databases (like db66713) or when tenantId <= 0 (e.g. unauthenticated login),
+        // we must NEVER alter InitialCatalog to "CRMS_Tenant_0".
+        if (scsb.DataSource.Contains("localdb", StringComparison.OrdinalIgnoreCase) && tenantId > 0)
+        {
+            scsb.InitialCatalog = $"CRMS_Tenant_{tenantId}";
+            tenantConnection = scsb.ConnectionString;
+        }
+        else
+        {
+            tenantConnection = masterConnection;
+        }
+    }
+    catch
+    {
+        tenantConnection = masterConnection;
+    }
+
     var options =
         new DbContextOptionsBuilder<RealEstateDbContext>()
-            .UseSqlServer(masterConnection)
+            .UseSqlServer(tenantConnection, sqlOptions =>
+                sqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    errorNumbersToAdd: null))
             .Options;
 
     return new RealEstateDbContext(

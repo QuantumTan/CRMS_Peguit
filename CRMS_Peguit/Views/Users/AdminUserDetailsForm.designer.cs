@@ -129,11 +129,11 @@ namespace CRMS_Peguit.winforms.Views.Users
             this.btnChangePassword.Cursor = System.Windows.Forms.Cursors.Hand;
             this.btnChangePassword.FlatAppearance.BorderSize = 0;
             this.btnChangePassword.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnChangePassword.Font = new System.Drawing.Font("Segoe UI", 10F);
+            this.btnChangePassword.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
             this.btnChangePassword.ForeColor = System.Drawing.Color.White;
             this.btnChangePassword.Location = new System.Drawing.Point(20, 200);
             this.btnChangePassword.Name = "btnChangePassword";
-            this.btnChangePassword.Size = new System.Drawing.Size(150, 35);
+            this.btnChangePassword.Size = new System.Drawing.Size(150, 36);
             this.btnChangePassword.TabIndex = 8;
             this.btnChangePassword.Text = "Change Password";
             this.btnChangePassword.UseVisualStyleBackColor = false;
@@ -141,15 +141,15 @@ namespace CRMS_Peguit.winforms.Views.Users
             // btnToggleStatus
             // 
             this.btnToggleStatus.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
-            this.btnToggleStatus.BackColor = System.Drawing.Color.IndianRed;
+            this.btnToggleStatus.BackColor = System.Drawing.Color.FromArgb(153, 27, 27);
             this.btnToggleStatus.Cursor = System.Windows.Forms.Cursors.Hand;
             this.btnToggleStatus.FlatAppearance.BorderSize = 0;
             this.btnToggleStatus.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnToggleStatus.Font = new System.Drawing.Font("Segoe UI", 10F);
+            this.btnToggleStatus.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
             this.btnToggleStatus.ForeColor = System.Drawing.Color.White;
-            this.btnToggleStatus.Location = new System.Drawing.Point(190, 200);
+            this.btnToggleStatus.Location = new System.Drawing.Point(180, 200);
             this.btnToggleStatus.Name = "btnToggleStatus";
-            this.btnToggleStatus.Size = new System.Drawing.Size(150, 35);
+            this.btnToggleStatus.Size = new System.Drawing.Size(140, 36);
             this.btnToggleStatus.TabIndex = 9;
             this.btnToggleStatus.Text = "Deactivate User";
             this.btnToggleStatus.UseVisualStyleBackColor = false;
@@ -162,11 +162,11 @@ namespace CRMS_Peguit.winforms.Views.Users
             this.btnClose.DialogResult = System.Windows.Forms.DialogResult.OK;
             this.btnClose.FlatAppearance.BorderSize = 0;
             this.btnClose.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnClose.Font = new System.Drawing.Font("Segoe UI", 10F);
+            this.btnClose.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
             this.btnClose.ForeColor = System.Drawing.Color.White;
-            this.btnClose.Location = new System.Drawing.Point(240, 260);
+            this.btnClose.Location = new System.Drawing.Point(330, 200);
             this.btnClose.Name = "btnClose";
-            this.btnClose.Size = new System.Drawing.Size(100, 35);
+            this.btnClose.Size = new System.Drawing.Size(94, 36);
             this.btnClose.TabIndex = 10;
             this.btnClose.Text = "Close";
             this.btnClose.UseVisualStyleBackColor = false;
@@ -179,7 +179,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             this.AutoScroll = true;
             this.BackColor = System.Drawing.Color.White;
             this.CancelButton = this.btnClose;
-            this.ClientSize = new System.Drawing.Size(384, 321);
+            this.ClientSize = new System.Drawing.Size(444, 260);
             this.Controls.Add(this.lblNameHeader);
             this.Controls.Add(this.lblNameValue);
             this.Controls.Add(this.lblEmailHeader);
@@ -195,7 +195,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
-            this.MinimumSize = new System.Drawing.Size(384, 321);
+            this.MinimumSize = new System.Drawing.Size(444, 260);
             this.Name = "AdminUserDetailsForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "User Details";

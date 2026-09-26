@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
+using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Analytics;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -46,12 +47,33 @@ namespace CRMS_Peguit.winforms.Views.Reports
             LoadDropdowns();
             WireEvents();
 
-            // Run initial report on load
-            this.Load += (_, _) =>
+            // Run initial report on load or when view becomes visible
+            this.Load += (_, _) => EnsureReportLoaded();
+        }
+
+        public void EnsureReportLoaded()
+        {
+            if (this.IsDisposed) return;
+            LayoutReportControls();
+            if (_unfilteredData == null && !lblLoading.Visible)
             {
-                LayoutReportControls();
                 BtnRunReport_Click(this, EventArgs.Empty);
-            };
+            }
+        }
+
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            EnsureReportLoaded();
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            if (Visible)
+            {
+                EnsureReportLoaded();
+            }
         }
 
         private void SetupUI()
@@ -60,8 +82,13 @@ namespace CRMS_Peguit.winforms.Views.Reports
             UiGridHelper.ApplyModernGridStyle(gridData, 48);
             gridData.CellPainting += GridData_CellPainting;
 
-            UiRadiusHelper.StyleCard(pnlChartCard1, 10);
-            UiRadiusHelper.StyleCard(pnlChartCard2, 10);
+            kpi1.ClickMode = KpiClickMode.InPlaceFilter;
+            kpi2.ClickMode = KpiClickMode.InPlaceFilter;
+            kpi3.ClickMode = KpiClickMode.InPlaceFilter;
+            kpi4.ClickMode = KpiClickMode.InPlaceFilter;
+
+            chartReport1.SetMode(KpiClickMode.InPlaceFilter);
+            chartReport2.SetMode(KpiClickMode.InPlaceFilter);
 
             btnRunReport.BackColor = BiDisplayConstants.PrimaryAccent;
             btnRunReport.ForeColor = Theme.Surface;
@@ -73,15 +100,11 @@ namespace CRMS_Peguit.winforms.Views.Reports
             btnExportCsv.Enabled = false;
             btnExportPdf.Enabled = false;
 
-            ConfigurePlot(plotReport1);
-            ConfigurePlot(plotReport2);
+            // Remove docking and anchor constraints so absolute sizing in LayoutReportControls works unhindered
+            pnlCharts.Dock = DockStyle.None;
+            pnlGrid.Dock = DockStyle.None;
 
             UpdateViewModeButtons();
-        }
-
-        private void ConfigurePlot(ScottPlot.WinForms.FormsPlot plot)
-        {
-            BiDisplayConstants.ConfigureStandardPlot(plot);
         }
 
         private void LoadDropdowns()
@@ -177,6 +200,9 @@ namespace CRMS_Peguit.winforms.Views.Reports
             kpi3.Click += (_, _) => ToggleKpiFilter(3);
             kpi4.Click += (_, _) => ToggleKpiFilter(4);
 
+            chartReport1.InPlaceFilterChanged += key => ApplyChartFilter(1, key);
+            chartReport2.InPlaceFilterChanged += key => ApplyChartFilter(2, key);
+
             btnGoToAnalytics.Click += (_, _) =>
             {
                 if (ParentForm is MainForm main)
@@ -232,11 +258,11 @@ namespace CRMS_Peguit.winforms.Views.Reports
                     pnlCharts.Visible = true;
                     pnlGrid.Visible = true;
 
-                    int chartHeight = 345;
+                    int chartHeight = 420;
                     pnlCharts.Location = new Point(0, 0);
                     pnlCharts.Size = new Size(containerWidth, chartHeight);
 
-                    int gridHeight = Math.Max(350, containerHeight - chartHeight);
+                    int gridHeight = Math.Max(380, containerHeight - chartHeight);
                     pnlGrid.Location = new Point(0, pnlCharts.Bottom);
                     pnlGrid.Size = new Size(containerWidth, gridHeight);
 
@@ -248,8 +274,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
                     pnlCharts.Visible = true;
                     pnlGrid.Visible = false;
 
-                    // Prevent charts from stretching to abnormal vertical heights when "Chart Only" is active
-                    int chartHeight = Math.Clamp(containerHeight > 0 ? containerHeight : 450, 340, 560);
+                    int chartHeight = Math.Max(520, containerHeight - 20);
                     pnlCharts.Location = new Point(0, 0);
                     pnlCharts.Size = new Size(containerWidth, chartHeight);
 
@@ -271,26 +296,18 @@ namespace CRMS_Peguit.winforms.Views.Reports
             }
 
             // Layout child chart cards inside pnlCharts if visible
-            if (pnlCharts.Visible && pnlCharts.ClientSize.Width > 0)
+            if (pnlCharts.Visible && containerWidth > 0)
             {
                 int pad = 20;
-                int totalChartWidth = pnlCharts.ClientSize.Width - (pad * 2);
-                int cardWidth = Math.Max(280, (totalChartWidth - 16) / 2);
-                int cardHeight = Math.Max(220, pnlCharts.ClientSize.Height - 20);
+                int totalChartWidth = containerWidth - (pad * 2);
+                int cardWidth = Math.Max(300, (totalChartWidth - 16) / 2);
+                int cardHeight = Math.Max(260, pnlCharts.Height - 20);
 
-                pnlChartCard1.Location = new Point(pad, 10);
-                pnlChartCard1.Size = new Size(cardWidth, cardHeight);
+                chartReport1.Location = new Point(pad, 10);
+                chartReport1.Size = new Size(cardWidth, cardHeight);
 
-                pnlChartCard2.Location = new Point(pnlChartCard1.Right + 16, 10);
-                pnlChartCard2.Size = new Size(cardWidth, cardHeight);
-
-                // Explicitly size and position FormsPlots with comfortable margins below card title
-                int plotWidth = Math.Max(100, cardWidth - 24);
-                int plotHeight = Math.Max(100, cardHeight - 48);
-                plotReport1.Location = new Point(12, 36);
-                plotReport1.Size = new Size(plotWidth, plotHeight);
-                plotReport2.Location = new Point(12, 36);
-                plotReport2.Size = new Size(plotWidth, plotHeight);
+                chartReport2.Location = new Point(chartReport1.Right + 16, 10);
+                chartReport2.Size = new Size(cardWidth, cardHeight);
             }
 
             pnlScrollableContent.AutoScrollMinSize = new Size(0, totalContentHeight + 10);
@@ -379,6 +396,8 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
                 _unfilteredData = data;
                 _selectedKpiIndex = 0;
+                chartReport1.ClearFilter();
+                chartReport2.ClearFilter();
                 UpdateKpiSelectionStates();
                 ApplyKpiFilter();
 
@@ -577,83 +596,72 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
         private void RenderReportCharts(string rptType, object? data)
         {
-            plotReport1.Plot.Clear();
-            plotReport2.Plot.Clear();
-
-            BiDisplayConstants.ConfigureStandardPlot(plotReport1);
-            BiDisplayConstants.ConfigureStandardPlot(plotReport2);
+            chartReport1.ClearSegments();
+            chartReport2.ClearSegments();
 
             if (data == null)
             {
-                BiDisplayConstants.ShowPlotEmpty(plotReport1, "No data available");
-                BiDisplayConstants.ShowPlotEmpty(plotReport2, "No data available");
+                BiDisplayConstants.ShowPlotEmpty(chartReport1.PlotControl, "No data available");
+                BiDisplayConstants.ShowPlotEmpty(chartReport2.PlotControl, "No data available");
                 return;
             }
 
             if (rptType.Contains("Sales") && data is List<SalesReportRow> sales)
             {
-                lblChart1Title.Text = "Sales Volume by Agent (₱ Millions)";
-                lblChart2Title.Text = "Transactions by Pipeline Stage";
+                chartReport1.SetHeader("Sales Volume by Agent (₱ Millions)", "Click an agent to filter transaction ledger");
+                chartReport2.SetHeader("Transactions by Pipeline Stage", "Click a stage to filter transaction ledger");
 
                 if (sales.Count == 0)
                 {
-                    BiDisplayConstants.ShowPlotEmpty(plotReport1, "No sales in selected period");
-                    BiDisplayConstants.ShowPlotEmpty(plotReport2, "No transactions in selected period");
+                    BiDisplayConstants.ShowPlotEmpty(chartReport1.PlotControl, "No sales in selected period");
+                    BiDisplayConstants.ShowPlotEmpty(chartReport2.PlotControl, "No transactions in selected period");
                     return;
                 }
 
                 // Chart 1: Sales volume by agent
                 var agentSales = sales
                     .GroupBy(r => string.IsNullOrWhiteSpace(r.AgentName) ? "Unassigned" : r.AgentName)
-                    .Select(g => new { Name = g.Key, TotalM = (double)(g.Sum(r => r.DealValue) / 1_000_000m) })
-                    .OrderByDescending(x => x.TotalM)
+                    .Select(g => (label: g.Key, value: (double)(g.Sum(r => r.DealValue) / 1_000_000m), color: BiDisplayConstants.PrimaryAccent, key: (string?)g.Key))
+                    .OrderByDescending(x => x.value)
                     .Take(7)
                     .ToList();
 
-                BiDisplayConstants.RenderBarPlot(plotReport1,
-                    agentSales.Select(x => x.Name).ToArray(),
-                    agentSales.Select(x => x.TotalM).ToArray(),
-                    agentSales.Select(_ => BiDisplayConstants.PrimaryAccent).ToArray());
+                chartReport1.RenderBarPlot(agentSales);
 
                 // Chart 2: Transactions by stage
                 var stageGroups = sales
                     .GroupBy(r => string.IsNullOrWhiteSpace(r.Stage) ? "Unknown" : r.Stage)
-                    .Select(g => new { Stage = g.Key, Count = (double)g.Count() })
-                    .OrderByDescending(x => x.Count)
+                    .Select(g => (label: g.Key, value: (double)g.Count(), color: Color.Empty, key: (string?)g.Key))
+                    .OrderByDescending(x => x.value)
                     .ToList();
 
                 var stageColors = new[] { BiDisplayConstants.StatusWon, BiDisplayConstants.PrimaryAccent, BiDisplayConstants.StatusPending, BiDisplayConstants.SkyAccent, BiDisplayConstants.StatusLost, BiDisplayConstants.StatusNeutral };
-                BiDisplayConstants.RenderBarPlot(plotReport2,
-                    stageGroups.Select(x => x.Stage).ToArray(),
-                    stageGroups.Select(x => x.Count).ToArray(),
-                    stageGroups.Select((_, idx) => stageColors[idx % stageColors.Length]).ToArray());
+                var coloredStages = stageGroups.Select((item, idx) => (item.label, item.value, stageColors[idx % stageColors.Length], item.key)).ToList();
+                chartReport2.RenderDonutPlot(coloredStages);
             }
             else if (rptType.Contains("Commission") && data is List<CommissionReportRow> comms)
             {
-                lblChart1Title.Text = "Commissions Earned by Agent (₱k)";
-                lblChart2Title.Text = RbacService.CanViewBrokerageMargins
+                chartReport1.SetHeader("Commissions Earned by Agent (₱k)", "Click an agent to filter settlement ledger");
+                chartReport2.SetHeader(RbacService.CanViewBrokerageMargins
                     ? "Commission Revenue Split (₱k)"
-                    : "Agent Commission Share (%)";
+                    : "Agent Commission Share (%)", "Click a split segment to filter ledger");
 
                 if (comms.Count == 0)
                 {
-                    BiDisplayConstants.ShowPlotEmpty(plotReport1, "No commissions in selected period");
-                    BiDisplayConstants.ShowPlotEmpty(plotReport2, "No commissions in selected period");
+                    BiDisplayConstants.ShowPlotEmpty(chartReport1.PlotControl, "No commissions in selected period");
+                    BiDisplayConstants.ShowPlotEmpty(chartReport2.PlotControl, "No commissions in selected period");
                     return;
                 }
 
                 // Chart 1: Commissions per agent
                 var agentComms = comms
                     .GroupBy(r => string.IsNullOrWhiteSpace(r.AgentName) ? "Unassigned" : r.AgentName)
-                    .Select(g => new { Name = g.Key, TotalK = (double)(g.Sum(r => r.AgentPayoutAmount) / 1_000m) })
-                    .OrderByDescending(x => x.TotalK)
+                    .Select(g => (label: g.Key, value: (double)(g.Sum(r => r.AgentPayoutAmount) / 1_000m), color: BiDisplayConstants.StatusWon, key: (string?)g.Key))
+                    .OrderByDescending(x => x.value)
                     .Take(7)
                     .ToList();
 
-                BiDisplayConstants.RenderBarPlot(plotReport1,
-                    agentComms.Select(x => x.Name).ToArray(),
-                    agentComms.Select(x => x.TotalK).ToArray(),
-                    agentComms.Select(_ => BiDisplayConstants.StatusWon).ToArray());
+                chartReport1.RenderBarPlot(agentComms);
 
                 // Chart 2: Payout vs Brokerage Split (Admin) OR Agent Commission Share (Manager)
                 if (RbacService.CanViewBrokerageMargins)
@@ -661,149 +669,142 @@ namespace CRMS_Peguit.winforms.Views.Reports
                     double totalPayoutK = (double)(comms.Sum(c => c.AgentPayoutAmount) / 1_000m);
                     double totalBrokerageK = (double)(comms.Sum(c => c.BrokerageRetainedAmount) / 1_000m);
 
-                    var slices = new (string Label, double Value, Color Color)[]
+                    var slices = new (string label, double value, Color color, string? key)[]
                     {
-                        ("Agent Payouts", Math.Max(0.01, totalPayoutK), BiDisplayConstants.StatusWon),
-                        ("Brokerage Net", Math.Max(0.01, totalBrokerageK), BiDisplayConstants.PrimaryAccent)
+                        ("Agent Payouts", Math.Max(0.01, totalPayoutK), BiDisplayConstants.StatusWon, "Agent Payouts"),
+                        ("Brokerage Net", Math.Max(0.01, totalBrokerageK), BiDisplayConstants.PrimaryAccent, "Brokerage Net")
                     };
-                    BiDisplayConstants.RenderDonutPlot(plotReport2, slices);
+                    chartReport2.RenderDonutPlot(slices);
                 }
                 else
                 {
                     var palette = new[] { BiDisplayConstants.PrimaryAccent, BiDisplayConstants.StatusWon, BiDisplayConstants.StatusPending, BiDisplayConstants.SkyAccent, BiDisplayConstants.HighlightAccent };
-                    var slices = agentComms.Select((x, idx) => (x.Name, Math.Max(0.01, x.TotalK), palette[idx % palette.Length])).ToList();
-                    BiDisplayConstants.RenderDonutPlot(plotReport2, slices);
+                    var slices = agentComms.Select((x, idx) => (x.label, Math.Max(0.01, x.value), palette[idx % palette.Length], x.key)).ToList();
+                    chartReport2.RenderDonutPlot(slices);
                 }
             }
             else if (rptType.Contains("Property") && data is List<PropertyInventoryReportRow> props)
             {
-                lblChart1Title.Text = "Inventory by Property Type";
-                lblChart2Title.Text = "Average Days on Market (DOM)";
+                chartReport1.SetHeader("Inventory by Property Type", "Click a property type to filter inventory table");
+                chartReport2.SetHeader("Average Days on Market (DOM)", "Click a property type to filter inventory table");
 
                 if (props.Count == 0)
                 {
-                    BiDisplayConstants.ShowPlotEmpty(plotReport1, "No properties in selected period");
-                    BiDisplayConstants.ShowPlotEmpty(plotReport2, "No properties in selected period");
+                    BiDisplayConstants.ShowPlotEmpty(chartReport1.PlotControl, "No properties in selected period");
+                    BiDisplayConstants.ShowPlotEmpty(chartReport2.PlotControl, "No properties in selected period");
                     return;
                 }
 
                 // Chart 1: Inventory by Property Type
                 var typeGroups = props
                     .GroupBy(p => string.IsNullOrWhiteSpace(p.PropertyType) ? "General" : p.PropertyType)
-                    .Select(g => new { Type = g.Key, Count = (double)g.Count(), AvgDom = g.Average(p => p.DaysOnMarket) })
-                    .OrderByDescending(x => x.Count)
+                    .Select(g => (label: g.Key, value: (double)g.Count(), color: BiDisplayConstants.PrimaryAccent, key: (string?)g.Key))
+                    .OrderByDescending(x => x.value)
                     .ToList();
 
-                BiDisplayConstants.RenderBarPlot(plotReport1,
-                    typeGroups.Select(x => x.Type).ToArray(),
-                    typeGroups.Select(x => x.Count).ToArray(),
-                    typeGroups.Select(_ => BiDisplayConstants.PrimaryAccent).ToArray());
+                chartReport1.RenderBarPlot(typeGroups);
 
                 // Chart 2: Average Days on Market
-                BiDisplayConstants.RenderBarPlot(plotReport2,
-                    typeGroups.Select(x => x.Type).ToArray(),
-                    typeGroups.Select(x => Math.Round(x.AvgDom, 1)).ToArray(),
-                    typeGroups.Select(_ => BiDisplayConstants.StatusPending).ToArray());
+                var domGroups = props
+                    .GroupBy(p => string.IsNullOrWhiteSpace(p.PropertyType) ? "General" : p.PropertyType)
+                    .Select(g => (label: g.Key, value: Math.Round(g.Average(p => p.DaysOnMarket), 1), color: BiDisplayConstants.StatusPending, key: (string?)g.Key))
+                    .OrderByDescending(x => x.value)
+                    .ToList();
+
+                chartReport2.RenderBarPlot(domGroups);
             }
             else if (rptType.Contains("Lead") && data is List<LeadProgressRow> leads)
             {
-                lblChart1Title.Text = "Leads by Acquisition Source";
-                lblChart2Title.Text = "Pipeline Stage Breakdown";
+                chartReport1.SetHeader("Leads by Acquisition Source", "Click a source to filter pipeline ledger");
+                chartReport2.SetHeader("Pipeline Stage Breakdown", "Click a stage to filter pipeline ledger");
 
                 if (leads.Count == 0)
                 {
-                    BiDisplayConstants.ShowPlotEmpty(plotReport1, "No leads in selected period");
-                    BiDisplayConstants.ShowPlotEmpty(plotReport2, "No leads in selected period");
+                    BiDisplayConstants.ShowPlotEmpty(chartReport1.PlotControl, "No leads in selected period");
+                    BiDisplayConstants.ShowPlotEmpty(chartReport2.PlotControl, "No leads in selected period");
                     return;
                 }
 
                 // Chart 1: Source
                 var sources = leads
                     .GroupBy(r => string.IsNullOrWhiteSpace(r.Source) ? "Unknown" : r.Source)
-                    .Select(g => new { Source = g.Key, Count = (double)g.Count() })
-                    .OrderByDescending(x => x.Count)
+                    .Select(g => (label: g.Key, value: (double)g.Count(), color: BiDisplayConstants.PrimaryAccent, key: (string?)g.Key))
+                    .OrderByDescending(x => x.value)
                     .Take(7)
                     .ToList();
 
-                BiDisplayConstants.RenderBarPlot(plotReport1,
-                    sources.Select(x => x.Source).ToArray(),
-                    sources.Select(x => x.Count).ToArray(),
-                    sources.Select(_ => BiDisplayConstants.PrimaryAccent).ToArray());
+                chartReport1.RenderBarPlot(sources);
 
                 // Chart 2: Pipeline Stages
                 var stages = leads
                     .GroupBy(r => string.IsNullOrWhiteSpace(r.Stage) ? "Unknown" : r.Stage)
-                    .Select(g => new { Stage = g.Key, Count = (double)g.Count() })
-                    .OrderByDescending(x => x.Count)
+                    .Select(g => (label: g.Key, value: (double)g.Count(), color: Color.Empty, key: (string?)g.Key))
+                    .OrderByDescending(x => x.value)
                     .ToList();
 
                 var stageColors = new[] { BiDisplayConstants.StatusNeutral, BiDisplayConstants.StatusPending, BiDisplayConstants.PrimaryAccent, BiDisplayConstants.StatusWon, BiDisplayConstants.StatusLost };
-                BiDisplayConstants.RenderBarPlot(plotReport2,
-                    stages.Select(x => x.Stage).ToArray(),
-                    stages.Select(x => x.Count).ToArray(),
-                    stages.Select((_, idx) => stageColors[idx % stageColors.Length]).ToArray());
+                var coloredStages = stages.Select((x, idx) => (x.label, x.value, stageColors[idx % stageColors.Length], x.key)).ToList();
+                chartReport2.RenderDonutPlot(coloredStages);
             }
             else if (rptType.Contains("Ticket") && data is List<TicketResolutionRow> tickets)
             {
-                lblChart1Title.Text = "Tickets by Priority";
-                lblChart2Title.Text = "SLA Compliance Performance";
+                chartReport1.SetHeader("Tickets by Priority", "Click a priority to filter tickets table");
+                chartReport2.SetHeader("SLA Compliance Performance", "Click an SLA category to filter tickets table");
 
                 if (tickets.Count == 0)
                 {
-                    BiDisplayConstants.ShowPlotEmpty(plotReport1, "No tickets in selected period");
-                    BiDisplayConstants.ShowPlotEmpty(plotReport2, "No tickets in selected period");
+                    BiDisplayConstants.ShowPlotEmpty(chartReport1.PlotControl, "No tickets in selected period");
+                    BiDisplayConstants.ShowPlotEmpty(chartReport2.PlotControl, "No tickets in selected period");
                     return;
                 }
 
                 // Chart 1: Priority
                 var priorities = tickets
                     .GroupBy(r => string.IsNullOrWhiteSpace(r.Priority) ? "Normal" : r.Priority)
-                    .Select(g => new { Priority = g.Key, Count = (double)g.Count() })
-                    .OrderByDescending(x => x.Count)
+                    .Select(g => {
+                        Color clr = g.Key.ToLowerInvariant() switch
+                        {
+                            "urgent" or "critical" or "high" => BiDisplayConstants.StatusLost,
+                            "medium" or "normal" => BiDisplayConstants.StatusPending,
+                            _ => BiDisplayConstants.StatusNeutral
+                        };
+                        return (label: g.Key, value: (double)g.Count(), color: clr, key: (string?)g.Key);
+                    })
+                    .OrderByDescending(x => x.value)
                     .ToList();
 
-                var prioColors = priorities.Select(p => p.Priority.ToLowerInvariant() switch
-                {
-                    "urgent" or "critical" or "high" => BiDisplayConstants.StatusLost,
-                    "medium" or "normal" => BiDisplayConstants.StatusPending,
-                    _ => BiDisplayConstants.StatusNeutral
-                }).ToArray();
-
-                BiDisplayConstants.RenderBarPlot(plotReport1,
-                    priorities.Select(x => x.Priority).ToArray(),
-                    priorities.Select(x => x.Count).ToArray(),
-                    prioColors);
+                chartReport1.RenderBarPlot(priorities);
 
                 // Chart 2: SLA Met vs Missed (Donut)
                 int met = tickets.Count(t => t.SlaMet == "Yes");
                 int missed = tickets.Count(t => t.SlaMet == "No");
                 int pending = tickets.Count(t => t.SlaMet != "Yes" && t.SlaMet != "No");
 
-                var slices = new List<(string Label, double Value, Color Color)>();
-                if (met > 0) slices.Add(("Met SLA", (double)met, BiDisplayConstants.StatusWon));
-                if (missed > 0) slices.Add(("Breached", (double)missed, BiDisplayConstants.StatusLost));
-                if (pending > 0) slices.Add(("In Progress", (double)pending, BiDisplayConstants.StatusNeutral));
+                var slices = new List<(string label, double value, Color color, string? key)>();
+                if (met > 0) slices.Add(("Met SLA", (double)met, BiDisplayConstants.StatusWon, "Met SLA"));
+                if (missed > 0) slices.Add(("Breached", (double)missed, BiDisplayConstants.StatusLost, "Breached"));
+                if (pending > 0) slices.Add(("In Progress", (double)pending, BiDisplayConstants.StatusNeutral, "In Progress"));
 
-                BiDisplayConstants.RenderDonutPlot(plotReport2, slices);
+                chartReport2.RenderDonutPlot(slices);
             }
             else if (rptType.Contains("Agent") && data is List<AgentActivityRow> acts)
             {
-                lblChart1Title.Text = "Sales Volume by Agent (₱ Millions)";
-                lblChart2Title.Text = "Agency Operational Activity Breakdown";
+                chartReport1.SetHeader("Sales Volume by Agent (₱ Millions)", "Click an agent to filter activity rows");
+                chartReport2.SetHeader("Agency Operational Activity Breakdown", "Click an activity to filter rows");
 
                 if (acts.Count == 0)
                 {
-                    BiDisplayConstants.ShowPlotEmpty(plotReport1, "No activities recorded in selected period");
-                    BiDisplayConstants.ShowPlotEmpty(plotReport2, "No deals recorded in selected period");
+                    BiDisplayConstants.ShowPlotEmpty(chartReport1.PlotControl, "No activities recorded in selected period");
+                    BiDisplayConstants.ShowPlotEmpty(chartReport2.PlotControl, "No deals recorded in selected period");
                     return;
                 }
 
                 // Chart 1: Sales volume by agent
-                var topVol = acts.OrderByDescending(a => a.TotalSalesVolume).Take(7).ToList();
-                BiDisplayConstants.RenderBarPlot(plotReport1,
-                    topVol.Select(x => x.AgentName).ToArray(),
-                    topVol.Select(x => (double)(x.TotalSalesVolume / 1_000_000m)).ToArray(),
-                    topVol.Select(_ => BiDisplayConstants.PrimaryAccent).ToArray());
+                var topVol = acts.OrderByDescending(a => a.TotalSalesVolume).Take(7)
+                    .Select(x => (label: x.AgentName, value: (double)(x.TotalSalesVolume / 1_000_000m), color: BiDisplayConstants.PrimaryAccent, key: (string?)x.AgentName))
+                    .ToList();
+
+                chartReport1.RenderBarPlot(topVol);
 
                 // Chart 2: Operations breakdown
                 int totalLeads = acts.Sum(a => a.ActiveLeads);
@@ -811,28 +812,22 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 int totalFollowUps = acts.Sum(a => a.FollowUpsCompleted);
                 int totalTickets = acts.Sum(a => a.TicketsResolved);
 
-                List<string> labels = new();
-                List<double> vals = new();
-                List<Color> colors = new();
-
-                labels.Add("Leads"); vals.Add(totalLeads); colors.Add(BiDisplayConstants.PrimaryAccent);
-                labels.Add("Deals"); vals.Add(totalDeals); colors.Add(BiDisplayConstants.StatusWon);
+                var actSlices = new List<(string label, double value, Color color, string? key)>
+                {
+                    ("Leads", (double)totalLeads, BiDisplayConstants.PrimaryAccent, "Leads"),
+                    ("Deals", (double)totalDeals, BiDisplayConstants.StatusWon, "Deals")
+                };
 
                 // Strictly enforce Manager RBAC boundary: NO individual Agent Follow-Ups visibility
                 if (!RbacService.IsManager)
                 {
-                    labels.Add("Follow-Ups"); vals.Add(totalFollowUps); colors.Add(BiDisplayConstants.StatusPending);
+                    actSlices.Add(("Follow-Ups", (double)totalFollowUps, BiDisplayConstants.StatusPending, "Follow-Ups"));
                 }
 
-                labels.Add("Tickets"); vals.Add(totalTickets); colors.Add(BiDisplayConstants.SkyAccent);
+                actSlices.Add(("Tickets", (double)totalTickets, BiDisplayConstants.SkyAccent, "Tickets"));
 
-                BiDisplayConstants.RenderBarPlot(plotReport2, labels.ToArray(), vals.ToArray(), colors.ToArray());
+                chartReport2.RenderBarPlot(actSlices);
             }
-        }
-
-        private void ShowPlotEmpty(ScottPlot.WinForms.FormsPlot plot, string message)
-        {
-            BiDisplayConstants.ShowPlotEmpty(plot, message);
         }
 
         private DateRangeFilter GetDateRange()
@@ -1034,6 +1029,10 @@ namespace CRMS_Peguit.winforms.Views.Reports
         {
             if (_unfilteredData == null) return;
 
+            // Mutual exclusivity: selecting a KPI card clears any active chart filter
+            chartReport1.ClearFilter();
+            chartReport2.ClearFilter();
+
             if (_selectedKpiIndex == kpiIndex)
             {
                 _selectedKpiIndex = 0;
@@ -1045,6 +1044,112 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
             UpdateKpiSelectionStates();
             ApplyKpiFilter();
+        }
+
+        private void ApplyChartFilter(int chartNumber, string? filterKey)
+        {
+            if (_unfilteredData == null) return;
+            var rpt = cboReportType.SelectedItem?.ToString() ?? "Sales & Revenue Report";
+
+            // Mutual exclusivity: selecting a chart filter clears KPI cards and the other chart
+            _selectedKpiIndex = 0;
+            UpdateKpiSelectionStates();
+
+            if (chartNumber == 1)
+            {
+                chartReport2.ClearFilter();
+            }
+            else
+            {
+                chartReport1.ClearFilter();
+            }
+
+            if (string.IsNullOrEmpty(filterKey))
+            {
+                // Filter cleared back to all
+                _currentData = _unfilteredData;
+                gridData.DataSource = null;
+                gridData.DataSource = _currentData;
+                FormatGrid(rpt);
+                if (_currentHeader != null)
+                    lblReportHeader.Text = $"{_currentHeader.ReportName} · {_currentHeader.DateRange} · Generated by {_currentHeader.GeneratedBy} at {_currentHeader.GeneratedAt:g}";
+                return;
+            }
+
+            object? filtered = _unfilteredData;
+
+            if (rpt.Contains("Sales") && _unfilteredData is List<SalesReportRow> sales)
+            {
+                if (chartNumber == 1)
+                    filtered = sales.Where(s => string.Equals(s.AgentName, filterKey, StringComparison.OrdinalIgnoreCase)).ToList();
+                else
+                    filtered = sales.Where(s => string.Equals(s.Stage, filterKey, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            else if (rpt.Contains("Commission") && _unfilteredData is List<CommissionReportRow> comms)
+            {
+                if (chartNumber == 1)
+                    filtered = comms.Where(c => string.Equals(c.AgentName, filterKey, StringComparison.OrdinalIgnoreCase)).ToList();
+                else
+                {
+                    if (string.Equals(filterKey, "Agent Payouts", StringComparison.OrdinalIgnoreCase))
+                        filtered = comms.Where(c => c.AgentPayoutAmount > 0).ToList();
+                    else if (string.Equals(filterKey, "Brokerage Net", StringComparison.OrdinalIgnoreCase))
+                        filtered = comms.Where(c => c.BrokerageRetainedAmount > 0).ToList();
+                    else
+                        filtered = comms.Where(c => string.Equals(c.AgentName, filterKey, StringComparison.OrdinalIgnoreCase)).ToList();
+                }
+            }
+            else if (rpt.Contains("Property") && _unfilteredData is List<PropertyInventoryReportRow> props)
+            {
+                filtered = props.Where(p => string.Equals(p.PropertyType, filterKey, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            else if (rpt.Contains("Lead") && _unfilteredData is List<LeadProgressRow> leads)
+            {
+                if (chartNumber == 1)
+                    filtered = leads.Where(l => string.Equals(l.Source, filterKey, StringComparison.OrdinalIgnoreCase)).ToList();
+                else
+                    filtered = leads.Where(l => string.Equals(l.Stage, filterKey, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            else if (rpt.Contains("Ticket") && _unfilteredData is List<TicketResolutionRow> tickets)
+            {
+                if (chartNumber == 1)
+                    filtered = tickets.Where(t => string.Equals(t.Priority, filterKey, StringComparison.OrdinalIgnoreCase)).ToList();
+                else
+                {
+                    if (string.Equals(filterKey, "Met SLA", StringComparison.OrdinalIgnoreCase))
+                        filtered = tickets.Where(t => string.Equals(t.SlaMet, "Yes", StringComparison.OrdinalIgnoreCase)).ToList();
+                    else if (string.Equals(filterKey, "Breached", StringComparison.OrdinalIgnoreCase))
+                        filtered = tickets.Where(t => string.Equals(t.SlaMet, "No", StringComparison.OrdinalIgnoreCase)).ToList();
+                    else
+                        filtered = tickets.Where(t => !string.Equals(t.SlaMet, "Yes", StringComparison.OrdinalIgnoreCase) && !string.Equals(t.SlaMet, "No", StringComparison.OrdinalIgnoreCase)).ToList();
+                }
+            }
+            else if (rpt.Contains("Agent") && _unfilteredData is List<AgentActivityRow> acts)
+            {
+                if (chartNumber == 1)
+                    filtered = acts.Where(a => string.Equals(a.AgentName, filterKey, StringComparison.OrdinalIgnoreCase)).ToList();
+                else
+                {
+                    filtered = filterKey.ToLowerInvariant() switch
+                    {
+                        "leads" => acts.Where(a => a.ActiveLeads > 0).ToList(),
+                        "deals" => acts.Where(a => a.DealsClosed > 0).ToList(),
+                        "follow-ups" => acts.Where(a => a.FollowUpsCompleted > 0).ToList(),
+                        "tickets" => acts.Where(a => a.TicketsResolved > 0).ToList(),
+                        _ => acts
+                    };
+                }
+            }
+
+            _currentData = filtered;
+            gridData.DataSource = null;
+            gridData.DataSource = _currentData;
+            FormatGrid(rpt);
+
+            if (_currentHeader != null)
+            {
+                lblReportHeader.Text = $"{_currentHeader.ReportName} (Filtered by: {filterKey}) · {_currentHeader.DateRange} · Generated by {_currentHeader.GeneratedBy} at {_currentHeader.GeneratedAt:g}";
+            }
         }
 
         private void UpdateKpiSelectionStates()
@@ -1168,15 +1273,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 return;
             }
 
-            // 2. Avatar cells with initials and bold text for persons
-            if (colName.Contains("Customer") || colName.Contains("Agent") || colName.Contains("Lead") || colName == "ListingAgent")
-            {
-                e.Handled = true;
-                UiGridHelper.PaintAvatarCell(gridData, e, text);
-                return;
-            }
-
-            // 3. Bold identifiers
+            // 2. Bold identifiers
             if (colName.EndsWith("Ref") || colName == "TicketNumber" || colName.EndsWith("Id"))
             {
                 e.Handled = true;

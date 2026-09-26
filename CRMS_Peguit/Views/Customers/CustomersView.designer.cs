@@ -18,12 +18,13 @@ namespace CRMS_Peguit.winforms.Views.Customers
         private System.Windows.Forms.Panel pnlCard = null!;
         private System.Windows.Forms.DataGridView grid = null!;
 
-        // Backward compatibility fields (hidden)
+        // KPI Cards & Container
+        private System.Windows.Forms.TableLayoutPanel pnlKpiContainer = null!;
         private System.Windows.Forms.ComboBox cmbFilter = null!;
         private CRMS_Peguit.winforms.Controls.KpiCard kpiTotal = null!;
         private CRMS_Peguit.winforms.Controls.KpiCard kpiActive = null!;
+        private CRMS_Peguit.winforms.Controls.KpiCard kpiFollowUp = null!;
         private CRMS_Peguit.winforms.Controls.KpiCard kpiInactive = null!;
-        private CRMS_Peguit.winforms.Controls.KpiCard kpiThisMonth = null!;
 
         /// <summary> 
         /// Clean up any resources being used.
@@ -52,11 +53,13 @@ namespace CRMS_Peguit.winforms.Views.Customers
             this.btnFilterInactive = new System.Windows.Forms.Button();
             this.pnlCard = new System.Windows.Forms.Panel();
             this.grid = new System.Windows.Forms.DataGridView();
+            this.pnlKpiContainer = new System.Windows.Forms.TableLayoutPanel();
             this.cmbFilter = new System.Windows.Forms.ComboBox();
-            this.kpiTotal = new CRMS_Peguit.winforms.Controls.KpiCard();
-            this.kpiActive = new CRMS_Peguit.winforms.Controls.KpiCard();
-            this.kpiInactive = new CRMS_Peguit.winforms.Controls.KpiCard();
-            this.kpiThisMonth = new CRMS_Peguit.winforms.Controls.KpiCard();
+            this.kpiTotal = new CRMS_Peguit.winforms.Controls.KpiCard("TOTAL CUSTOMERS", "all", System.Drawing.Color.FromArgb(15, 91, 158));
+            this.kpiActive = new CRMS_Peguit.winforms.Controls.KpiCard("ACTIVE", "active", System.Drawing.Color.FromArgb(16, 185, 129));
+            this.kpiFollowUp = new CRMS_Peguit.winforms.Controls.KpiCard("FOLLOW UP", "follow up", System.Drawing.Color.FromArgb(245, 158, 11));
+            this.kpiInactive = new CRMS_Peguit.winforms.Controls.KpiCard("INACTIVE", "inactive", System.Drawing.Color.FromArgb(100, 116, 139));
+            this.pnlKpiContainer.SuspendLayout();
             this.pnlCard.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.grid)).BeginInit();
             this.SuspendLayout();
@@ -65,7 +68,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
             // 
             this.lblTitle.AutoSize = true;
             this.lblTitle.Font = new System.Drawing.Font("Segoe UI", 20F, System.Drawing.FontStyle.Bold);
-            this.lblTitle.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
+            this.lblTitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextPrimary;
             this.lblTitle.Location = new System.Drawing.Point(30, 20);
             this.lblTitle.Name = "lblTitle";
             this.lblTitle.Size = new System.Drawing.Size(153, 37);
@@ -76,7 +79,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
             // 
             this.lblSubtitle.AutoSize = true;
             this.lblSubtitle.Font = new System.Drawing.Font("Segoe UI", 9.5F);
-            this.lblSubtitle.ForeColor = System.Drawing.Color.FromArgb(100, 116, 139);
+            this.lblSubtitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextSecondary;
             this.lblSubtitle.Location = new System.Drawing.Point(32, 58);
             this.lblSubtitle.Name = "lblSubtitle";
             this.lblSubtitle.Size = new System.Drawing.Size(99, 17);
@@ -85,9 +88,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
             // 
             // btnAdd
             // 
-            // btnAdd
-            // 
-            this.btnAdd.BackColor = System.Drawing.Color.FromArgb(15, 91, 158);
+            this.btnAdd.BackColor = CRMS_Peguit.winforms.Models.Services.Theme.Primary;
             this.btnAdd.Cursor = System.Windows.Forms.Cursors.Hand;
             this.btnAdd.FlatAppearance.BorderSize = 0;
             this.btnAdd.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
@@ -216,37 +217,51 @@ namespace CRMS_Peguit.winforms.Views.Customers
             this.cmbFilter.TabIndex = 10;
             this.cmbFilter.Visible = false;
             // 
+            // pnlKpiContainer
+            // 
+            this.pnlKpiContainer.ColumnCount = 4;
+            this.pnlKpiContainer.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 25F));
+            this.pnlKpiContainer.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 25F));
+            this.pnlKpiContainer.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 25F));
+            this.pnlKpiContainer.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 25F));
+            this.pnlKpiContainer.Controls.Add(this.kpiTotal, 0, 0);
+            this.pnlKpiContainer.Controls.Add(this.kpiActive, 1, 0);
+            this.pnlKpiContainer.Controls.Add(this.kpiFollowUp, 2, 0);
+            this.pnlKpiContainer.Controls.Add(this.kpiInactive, 3, 0);
+            this.pnlKpiContainer.Location = new System.Drawing.Point(30, 80);
+            this.pnlKpiContainer.Name = "pnlKpiContainer";
+            this.pnlKpiContainer.RowCount = 1;
+            this.pnlKpiContainer.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.pnlKpiContainer.Size = new System.Drawing.Size(970, 88);
+            this.pnlKpiContainer.TabIndex = 11;
+            // 
             // kpiTotal
             // 
-            this.kpiTotal.Location = new System.Drawing.Point(0, 0);
+            this.kpiTotal.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.kpiTotal.Margin = new System.Windows.Forms.Padding(0, 0, 8, 0);
             this.kpiTotal.Name = "kpiTotal";
-            this.kpiTotal.Size = new System.Drawing.Size(0, 0);
-            this.kpiTotal.TabIndex = 11;
-            this.kpiTotal.Visible = false;
+            this.kpiTotal.TabIndex = 0;
             // 
             // kpiActive
             // 
-            this.kpiActive.Location = new System.Drawing.Point(0, 0);
+            this.kpiActive.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.kpiActive.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.kpiActive.Name = "kpiActive";
-            this.kpiActive.Size = new System.Drawing.Size(0, 0);
-            this.kpiActive.TabIndex = 12;
-            this.kpiActive.Visible = false;
+            this.kpiActive.TabIndex = 1;
+            // 
+            // kpiFollowUp
+            // 
+            this.kpiFollowUp.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.kpiFollowUp.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.kpiFollowUp.Name = "kpiFollowUp";
+            this.kpiFollowUp.TabIndex = 2;
             // 
             // kpiInactive
             // 
-            this.kpiInactive.Location = new System.Drawing.Point(0, 0);
+            this.kpiInactive.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.kpiInactive.Margin = new System.Windows.Forms.Padding(8, 0, 0, 0);
             this.kpiInactive.Name = "kpiInactive";
-            this.kpiInactive.Size = new System.Drawing.Size(0, 0);
-            this.kpiInactive.TabIndex = 13;
-            this.kpiInactive.Visible = false;
-            // 
-            // kpiThisMonth
-            // 
-            this.kpiThisMonth.Location = new System.Drawing.Point(0, 0);
-            this.kpiThisMonth.Name = "kpiThisMonth";
-            this.kpiThisMonth.Size = new System.Drawing.Size(0, 0);
-            this.kpiThisMonth.TabIndex = 14;
-            this.kpiThisMonth.Visible = false;
+            this.kpiInactive.TabIndex = 3;
             // 
             // CustomersView
             // 
@@ -263,12 +278,10 @@ namespace CRMS_Peguit.winforms.Views.Customers
             this.Controls.Add(this.lblSubtitle);
             this.Controls.Add(this.lblTitle);
             this.Controls.Add(this.cmbFilter);
-            this.Controls.Add(this.kpiTotal);
-            this.Controls.Add(this.kpiActive);
-            this.Controls.Add(this.kpiInactive);
-            this.Controls.Add(this.kpiThisMonth);
+            this.Controls.Add(this.pnlKpiContainer);
             this.Name = "CustomersView";
             this.Size = new System.Drawing.Size(1030, 700);
+            this.pnlKpiContainer.ResumeLayout(false);
             this.pnlCard.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.grid)).EndInit();
             this.ResumeLayout(false);

@@ -11,8 +11,11 @@ using CRMS_Peguit.winforms.Views.FollowUps;
 using CRMS_Peguit.Models;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
+using CRMS_Peguit.winforms.Services.Offline;
 using ReaLTaiizor.Forms;
 using System.Linq;
+using UserRole = CRMS_Peguit.winforms.Models.Roles.UserRole;
+using TenantTier = CRMS_Peguit.domain.entities.TenantTier;
 
 namespace CRMS_Peguit.winforms
 {
@@ -30,6 +33,13 @@ namespace CRMS_Peguit.winforms
         private ToolStripDropDown? _searchDropDown;
         private Panel? _pnlSearchBox;
 
+        // Data Synchronization Indicator & Banner
+        private Button _btnSyncIndicator = null!;
+        private Panel _pnlOfflineBanner = null!;
+        private Label _lblOfflineBannerText = null!;
+        private Button _btnBannerSyncQueue = null!;
+        private Button _btnBannerRetry = null!;
+
         public MainForm()
         {
             InitializeComponent();
@@ -38,8 +48,20 @@ namespace CRMS_Peguit.winforms
             InitNavButtons();
             BindEvents();
             ApplyRolePermissions();
-            SetActiveNavButton(btnDashboard);
-            BtnDashboardClick(btnDashboard, EventArgs.Empty);
+            InitSyncUi();
+            if (CurrentSession.CurrentUser?.Role == UserRole.SuperAdmin)
+            {
+                SetActiveNavButton(btnAdminPanel);
+                BtnAdminPanelClick(btnAdminPanel, EventArgs.Empty);
+            }
+            else
+            {
+                SetActiveNavButton(btnDashboard);
+                BtnDashboardClick(btnDashboard, EventArgs.Empty);
+            }
+
+            // Start automated market update background worker
+            MarketUpdateBackgroundService.Instance.Start();
         }
 
         private void ApplyBranding()
@@ -63,9 +85,11 @@ namespace CRMS_Peguit.winforms
         private void InitNavButtons()
         {
             _navButtonInfo[btnDashboard] = ("⊞", "Dashboard");
+            _navButtonInfo[btnAdminPanel] = ("👑", "Admin Panel");
             _navButtonInfo[btnLeads] = ("◎", "Leads");
             _navButtonInfo[btnCustomers] = ("👥", "Customers");
             _navButtonInfo[btnProperties] = ("🏢", "Properties");
+            _navButtonInfo[btnBranching] = ("🏢", "Branches");
             _navButtonInfo[btnDeals] = ("💼", "Deals");
             _navButtonInfo[btnCampaigns] = ("📣", "Campaigns");
             _navButtonInfo[btnActivities] = ("📈", "Activities");
@@ -76,6 +100,7 @@ namespace CRMS_Peguit.winforms
             _navButtonInfo[btnApprovals] = ("✓", "Approvals & Review");
             _navButtonInfo[btnManageManagers] = ("🛡", "Manage Managers");
             _navButtonInfo[btnManageAgents] = ("👥", "Manage Agents");
+            _navButtonInfo[btnArchives] = ("🗑", "Recycle Bin");
 
             _navButtons.AddRange(_navButtonInfo.Keys);
 
@@ -148,6 +173,7 @@ namespace CRMS_Peguit.winforms
             btnDashboard.Click += (s, e) => { SetActiveNavButton(btnDashboard); BtnDashboardClick(s, e); };
             btnManageManagers.Click += (s, e) => { SetActiveNavButton(btnManageManagers); BtnManageManagersClick(s, e); };
             btnManageAgents.Click += (s, e) => { SetActiveNavButton(btnManageAgents); BtnManageAgentsClick(s, e); };
+            btnArchives.Click += (s, e) => { SetActiveNavButton(btnArchives); BtnArchivesClick(s, e); };
             btnCustomers.Click += (s, e) => { SetActiveNavButton(btnCustomers); BtnCustomersClick(s, e); };
             btnLeads.Click += (s, e) => { SetActiveNavButton(btnLeads); BtnLeadsClick(s, e); };
             btnProperties.Click += (s, e) => { SetActiveNavButton(btnProperties); BtnPropertiesClick(s, e); };
@@ -159,6 +185,8 @@ namespace CRMS_Peguit.winforms
             btnReports.Click += (s, e) => { SetActiveNavButton(btnReports); BtnReportsClick(s, e); };
             btnApprovals.Click += (s, e) => { SetActiveNavButton(btnApprovals); BtnApprovalsClick(s, e); };
             btnSupportTickets.Click += (s, e) => { SetActiveNavButton(btnSupportTickets); BtnSupportTicketsClick(s, e); };
+            btnAdminPanel.Click += (s, e) => { SetActiveNavButton(btnAdminPanel); BtnAdminPanelClick(s, e); };
+            btnBranching.Click += (s, e) => { SetActiveNavButton(btnBranching); BtnBranchingClick(s, e); };
 
             // ── Global Search: debounced TextChanged → floating results dropdown ──
             _searchDebounce = new System.Windows.Forms.Timer { Interval = 300 };
@@ -269,7 +297,7 @@ namespace CRMS_Peguit.winforms
                 lblSalesSection.Visible = true;
                 lblSupportSection.Visible = true;
                 lblInsightsSection.Visible = btnAnalytics.Visible || btnReports.Visible;
-                lblAdminSection.Visible = btnManageManagers.Visible || btnManageAgents.Visible || btnApprovals.Visible;
+                lblAdminSection.Visible = btnManageManagers.Visible || btnManageAgents.Visible || btnApprovals.Visible || btnAdminPanel.Visible || btnArchives.Visible;
                 foreach (var btn in _navButtons)
                 {
                     if (_navButtonInfo.TryGetValue(btn, out var info))
@@ -574,20 +602,58 @@ namespace CRMS_Peguit.winforms
                 _pnlSearchBox.Top = (topHeaderPanel.Height - _pnlSearchBox.Height) / 2;
             }
 
-            btnApprovals.Visible = CurrentSession.CanAccess("Approvals") && RbacService.CanApproveAssignments;
+            // ── Tenant Tier Badge (Exam Requirements) ──
+            if (CurrentSession.CurrentUser?.Role == UserRole.SuperAdmin)
+            {
+                lblTenantTierBadge.Text = "👑 Master Admin • Platform Oversight";
+                lblTenantTierBadge.BackColor = Color.FromArgb(238, 242, 255);
+                lblTenantTierBadge.ForeColor = Color.FromArgb(67, 56, 202);
+            }
+            else if (CurrentSession.TenantTier == TenantTier.TenantC)
+            {
+                string branchStr = string.IsNullOrWhiteSpace(CurrentSession.ActiveBranchName) ? "All Branches" : CurrentSession.ActiveBranchName;
+                lblTenantTierBadge.Text = $"🏢 Tenant C (Enterprise) • {branchStr}";
+                lblTenantTierBadge.BackColor = Color.FromArgb(236, 253, 245);
+                lblTenantTierBadge.ForeColor = Color.FromArgb(4, 120, 87);
+            }
+            else if (CurrentSession.TenantTier == TenantTier.TenantB)
+            {
+                lblTenantTierBadge.Text = "💼 Tenant B (Professional) • BI & Actions";
+                lblTenantTierBadge.BackColor = Color.FromArgb(239, 246, 255);
+                lblTenantTierBadge.ForeColor = Color.FromArgb(29, 78, 216);
+            }
+            else
+            {
+                lblTenantTierBadge.Text = "📁 Tenant A (Standard) • Transactions & Data";
+                lblTenantTierBadge.BackColor = Color.FromArgb(241, 245, 249);
+                lblTenantTierBadge.ForeColor = Color.FromArgb(71, 85, 105);
+            }
+            lblTenantTierBadge.Visible = true;
+
+            // ── Master & Multi-Tenant Navigation Gating ──
+            btnAdminPanel.Visible = CurrentSession.CurrentUser?.Role == UserRole.SuperAdmin;
+            btnBranching.Visible = CurrentSession.CanAccessBranching;
+
+            btnApprovals.Visible = CurrentSession.CanAccess("Approvals") && RbacService.CanApproveAssignments && CurrentSession.CanAccessActions;
             btnManageManagers.Visible = CurrentSession.CanAccess("Managers");
             btnManageAgents.Visible = CurrentSession.CanAccess("SalesStaff");
+            btnArchives.Visible = RbacService.IsAdmin || RbacService.IsManager || RbacService.IsSuperAdmin;
             lblAdminSection.Text = RbacService.IsAdmin ? "ADMINISTRATION" : "MANAGEMENT";
-            lblAdminSection.Visible = btnManageManagers.Visible || btnManageAgents.Visible || btnApprovals.Visible;
+            lblAdminSection.Visible = btnManageManagers.Visible || btnManageAgents.Visible || btnApprovals.Visible || btnAdminPanel.Visible || btnArchives.Visible;
 
+            // Base Tier (Tenant A, B, C): Data Collection & Main Transaction
             btnCustomers.Visible = CurrentSession.CanAccess("Customers");
             btnLeads.Visible = CurrentSession.CanAccess("Leads");
             btnProperties.Visible = CurrentSession.CanAccess("Properties");
             btnDeals.Visible = CurrentSession.CanAccess("Deals");
-            btnCampaigns.Visible = CurrentSession.CanAccess("Campaigns");
+
+            // Actions: Gated to Tenant B and Tenant C
+            btnCampaigns.Visible = CurrentSession.CanAccess("Campaigns") && CurrentSession.CanAccessActions;
             btnActivities.Visible = CurrentSession.CanAccess("Activities");
-            btnFollowUps.Visible = CurrentSession.CanAccess("TasksReminders") && RbacService.IsAgent;
-            btnAnalytics.Visible = CurrentSession.CanAccess("Analytics") || CurrentSession.CanAccess("Reports");
+            btnFollowUps.Visible = CurrentSession.CanAccess("TasksReminders") && RbacService.IsAgent && CurrentSession.CanAccessActions;
+
+            // Business Intelligence: Gated to Tenant B and Tenant C
+            btnAnalytics.Visible = (CurrentSession.CanAccess("Analytics") || CurrentSession.CanAccess("Reports")) && CurrentSession.CanAccessBusinessIntelligence;
             if (RbacService.IsAgent)
             {
                 _navButtonInfo[btnAnalytics] = ("📊", "My Performance");
@@ -599,8 +665,8 @@ namespace CRMS_Peguit.winforms
                 btnAnalytics.Text = "  📊  Analytics";
             }
 
-            // Reports & Exports: restricted to Admin and Manager only
-            btnReports.Visible = CurrentSession.CanAccess("Reports") && !RbacService.IsAgent;
+            // Reports & Exports: restricted to Admin and Manager only + Tier B/C
+            btnReports.Visible = CurrentSession.CanAccess("Reports") && !RbacService.IsAgent && CurrentSession.CanAccessBusinessIntelligence;
             _navButtonInfo[btnReports] = ("📋", "Reports & Exports");
             btnReports.Text = "  📋  Reports & Exports";
 
@@ -667,17 +733,37 @@ namespace CRMS_Peguit.winforms
 
         public void NavigateTo(string module)
         {
+            NavigateTo(module, null);
+        }
+
+        public void NavigateTo(string module, string? initialFilter)
+        {
+            if (string.IsNullOrWhiteSpace(initialFilter) && module.Contains(':'))
+            {
+                var parts = module.Split(':', 2);
+                module = parts[0].Trim();
+                initialFilter = parts[1].Trim();
+            }
+
             switch (module.ToLowerInvariant())
             {
                 case "customers":
                     if (!CurrentSession.CanAccess("Customers")) return;
                     SetActiveNavButton(btnCustomers);
                     BtnCustomersClick(btnCustomers, EventArgs.Empty);
+                    if (!string.IsNullOrWhiteSpace(initialFilter) && _viewCache.TryGetValue("Customers", out var cv) && cv is CustomersView custView)
+                    {
+                        custView.SetFilter(initialFilter);
+                    }
                     break;
                 case "leads":
                     if (!CurrentSession.CanAccess("Leads")) return;
                     SetActiveNavButton(btnLeads);
                     BtnLeadsClick(btnLeads, EventArgs.Empty);
+                    if (!string.IsNullOrWhiteSpace(initialFilter) && _viewCache.TryGetValue("Leads", out var lv) && lv is LeadsView leadsView)
+                    {
+                        leadsView.SetFilter(initialFilter);
+                    }
                     break;
                 case "properties":
                     if (!CurrentSession.CanAccess("Properties")) return;
@@ -688,6 +774,10 @@ namespace CRMS_Peguit.winforms
                     if (!CurrentSession.CanAccess("Deals")) return;
                     SetActiveNavButton(btnDeals);
                     BtnDealsClick(btnDeals, EventArgs.Empty);
+                    if (!string.IsNullOrWhiteSpace(initialFilter) && _viewCache.TryGetValue("Deals", out var dv) && dv is DealsView dealsView)
+                    {
+                        dealsView.SetFilter(initialFilter);
+                    }
                     break;
                 case "campaigns":
                     if (!CurrentSession.CanAccess("Campaigns")) return;
@@ -704,6 +794,10 @@ namespace CRMS_Peguit.winforms
                     if (!CurrentSession.CanAccess("SupportTickets")) return;
                     SetActiveNavButton(btnSupportTickets);
                     BtnSupportTicketsClick(btnSupportTickets, EventArgs.Empty);
+                    if (!string.IsNullOrWhiteSpace(initialFilter) && _viewCache.TryGetValue("SupportTickets", out var stv) && stv is CRMS_Peguit.winforms.Views.SupportTickets.SupportTicketsView ticketsView)
+                    {
+                        ticketsView.SetFilter(initialFilter);
+                    }
                     break;
                 case "followups":
                 case "tasksreminders":
@@ -711,6 +805,17 @@ namespace CRMS_Peguit.winforms
                     if (!CurrentSession.CanAccess("TasksReminders") || !RbacService.IsAgent) return;
                     SetActiveNavButton(btnFollowUps);
                     BtnFollowUpsClick(btnFollowUps, EventArgs.Empty);
+                    if (!string.IsNullOrWhiteSpace(initialFilter) && _viewCache.TryGetValue("FollowUps", out var fv) && fv is FollowUpsView fuView)
+                    {
+                        fuView.SetFilter(initialFilter);
+                    }
+                    break;
+                case "archives":
+                case "recyclebin":
+                case "archive":
+                    if (!RbacService.IsAdmin && !RbacService.IsManager && !RbacService.IsSuperAdmin) return;
+                    SetActiveNavButton(btnArchives);
+                    BtnArchivesClick(btnArchives, EventArgs.Empty);
                     break;
                 case "reports":
                 case "reports:commission":
@@ -733,11 +838,9 @@ namespace CRMS_Peguit.winforms
                         {
                             rptView.SelectReport("Commission");
                         }
-                        else if (modLower.Contains(':'))
+                        else if (!string.IsNullOrWhiteSpace(initialFilter))
                         {
-                            var subReport = module.Split(':', 2)[1].Trim();
-                            if (!string.IsNullOrEmpty(subReport))
-                                rptView.SelectReport(subReport);
+                            rptView.SelectReport(initialFilter);
                         }
                     }
                     break;
@@ -753,6 +856,10 @@ namespace CRMS_Peguit.winforms
                         ana.NavigationRequested += m => NavigateTo(m);
                         return ana;
                     });
+                    if (!string.IsNullOrWhiteSpace(initialFilter) && _viewCache.TryGetValue("Analytics", out var cachedAna) && cachedAna is CRMS_Peguit.winforms.Views.Analytics.AnalyticsView anaView)
+                    {
+                        anaView.SetFilter(initialFilter);
+                    }
                     break;
                 case "salesstaff":
                 case "manageagents":
@@ -779,6 +886,20 @@ namespace CRMS_Peguit.winforms
                         SetActiveNavButton(btnManageManagers);
                         BtnManageManagersClick(btnManageManagers, EventArgs.Empty);
                     }
+                    break;
+                case "adminpanel":
+                case "subscriptions":
+                case "master":
+                    if (CurrentSession.CurrentUser?.Role != UserRole.SuperAdmin) return;
+                    SetActiveNavButton(btnAdminPanel);
+                    BtnAdminPanelClick(btnAdminPanel, EventArgs.Empty);
+                    break;
+                case "branching":
+                case "branches":
+                case "branch":
+                    if (!CurrentSession.CanAccessBranching) return;
+                    SetActiveNavButton(btnBranching);
+                    BtnBranchingClick(btnBranching, EventArgs.Empty);
                     break;
             }
         }
@@ -815,6 +936,12 @@ namespace CRMS_Peguit.winforms
         {
             if (!CurrentSession.CanAccess("SalesStaff")) return;
             ShowViewCached("ManageAgents", () => new AdminUserListForm("Agent"));
+        }
+
+        private void BtnArchivesClick(object? sender, EventArgs e)
+        {
+            if (!RbacService.IsAdmin && !RbacService.IsManager && !RbacService.IsSuperAdmin) return;
+            ShowViewCached("Archives", () => new CRMS_Peguit.winforms.Views.Archives.ArchivesView());
         }
 
         private void BtnCustomersClick(object? sender, EventArgs e)
@@ -883,6 +1010,26 @@ namespace CRMS_Peguit.winforms
             ShowViewCached("SupportTickets", () => new CRMS_Peguit.winforms.Views.SupportTickets.SupportTicketsView());
         }
 
+        private void BtnAdminPanelClick(object? sender, EventArgs e)
+        {
+            if (CurrentSession.CurrentUser?.Role != UserRole.SuperAdmin) return;
+            ShowViewCached("AdminPanelMasterView", () => new CRMS_Peguit.winforms.Views.SuperAdmin.AdminPanelMasterView());
+        }
+
+        private void BtnBranchingClick(object? sender, EventArgs e)
+        {
+            if (!CurrentSession.CanAccessBranching) return;
+            ShowViewCached("BranchesView", () =>
+            {
+                var branchView = new CRMS_Peguit.winforms.Views.Branching.BranchesView();
+                branchView.ActiveBranchChanged += (bId, bName) =>
+                {
+                    ApplyRolePermissions();
+                };
+                return branchView;
+            });
+        }
+
         // =====================================================
         // LOGOUT
         // =====================================================
@@ -922,6 +1069,206 @@ namespace CRMS_Peguit.winforms
             }
 
             Close();
+        }
+
+        // =========================================================================
+        // OFFLINE SYNC UI & CONNECTIVITY BANNER
+        // =========================================================================
+
+        private void InitSyncUi()
+        {
+            // Start background connectivity monitor (pings every 30s)
+            SyncService.Instance.Start(30);
+
+            // Scoped read-cache refresh when starting online
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(async () =>
+                {
+                    await SyncService.Instance.RefreshUserCacheAsync(
+                        CurrentSession.TenantId,
+                        CurrentSession.UserId,
+                        CurrentSession.CurrentUser?.Role.ToString() ?? "Agent");
+                });
+            }
+
+            // Top Header Sync Indicator Button
+            _btnSyncIndicator = new Button
+            {
+                Text = SyncService.Instance.IsOnline ? "🟢 Synced" : "🔴 Offline",
+                Size = new Size(125, 30),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(lblTenantTierBadge.Left - 135, 14),
+                BackColor = Color.FromArgb(241, 245, 249),
+                ForeColor = Color.FromArgb(15, 23, 42),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            _btnSyncIndicator.FlatAppearance.BorderSize = 0;
+            UiRadiusHelper.StyleButton(_btnSyncIndicator, 6);
+            mainToolTip.SetToolTip(_btnSyncIndicator, "Click to view Data Synchronization Status & Queue");
+            _btnSyncIndicator.Click += (_, _) =>
+            {
+                using var dlg = new Views.Sync.SyncStatusForm();
+                dlg.ShowDialog(this);
+            };
+            topHeaderPanel.Controls.Add(_btnSyncIndicator);
+
+            // Persistent Offline Warning Banner docked under topHeaderPanel
+            _pnlOfflineBanner = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 42,
+                BackColor = Color.FromArgb(254, 243, 199), // Amber-100
+                Visible = !SyncService.Instance.IsOnline || CurrentSession.IsOffline,
+                Padding = new Padding(16, 6, 16, 6)
+            };
+            _pnlOfflineBanner.Paint += (s, e) =>
+            {
+                using var pen = new Pen(Color.FromArgb(245, 158, 11), 1);
+                e.Graphics.DrawLine(pen, 0, _pnlOfflineBanner.Height - 1, _pnlOfflineBanner.Width, _pnlOfflineBanner.Height - 1);
+            };
+
+            _lblOfflineBannerText = new Label
+            {
+                Text = "⚡ Offline Mode — Working locally. Changes are queued and will sync when reconnected.",
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(146, 64, 14), // Amber-800
+                AutoSize = true,
+                Location = new Point(16, 12)
+            };
+
+            _btnBannerRetry = new Button
+            {
+                Text = "🔄 Check Connection",
+                Size = new Size(145, 28),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(_pnlOfflineBanner.Width - 280, 7),
+                BackColor = Color.FromArgb(251, 191, 36),
+                ForeColor = Color.FromArgb(120, 53, 15),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            _btnBannerRetry.FlatAppearance.BorderSize = 0;
+            UiRadiusHelper.StyleButton(_btnBannerRetry, 4);
+            _btnBannerRetry.Click += async (_, _) =>
+            {
+                _btnBannerRetry.Enabled = false;
+                _btnBannerRetry.Text = "Checking...";
+                try
+                {
+                    bool isOnline = await SyncService.Instance.CheckConnectivityAsync();
+                    if (isOnline)
+                    {
+                        _pnlOfflineBanner.Visible = false;
+                        UpdateSyncIndicator();
+                    }
+                    else
+                    {
+                        _btnBannerRetry.Text = "Still Offline ⚠️";
+                        await Task.Delay(1500);
+                    }
+                }
+                catch
+                {
+                    // Ignore transient retry errors
+                }
+                finally
+                {
+                    _btnBannerRetry.Text = "🔄 Check Connection";
+                    _btnBannerRetry.Enabled = true;
+                }
+            };
+
+            _btnBannerSyncQueue = new Button
+            {
+                Text = "📋 View Queue",
+                Size = new Size(115, 28),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(_pnlOfflineBanner.Width - 125, 7),
+                BackColor = Color.FromArgb(217, 119, 6),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            _btnBannerSyncQueue.FlatAppearance.BorderSize = 0;
+            UiRadiusHelper.StyleButton(_btnBannerSyncQueue, 4);
+            _btnBannerSyncQueue.Click += (_, _) =>
+            {
+                using var dlg = new Views.Sync.SyncStatusForm();
+                dlg.ShowDialog(this);
+            };
+
+            _pnlOfflineBanner.Controls.Add(_lblOfflineBannerText);
+            _pnlOfflineBanner.Controls.Add(_btnBannerRetry);
+            _pnlOfflineBanner.Controls.Add(_btnBannerSyncQueue);
+
+            contentWrapperPanel.Controls.Add(_pnlOfflineBanner);
+            topHeaderPanel.BringToFront(); // Ensures header remains on top and banner docks directly beneath it
+
+            // Subscribe to sync engine events
+            SyncService.Instance.ConnectivityChanged += OnSyncConnectivityChanged;
+            SyncService.Instance.SyncProgressChanged += OnSyncProgressChanged;
+            UpdateSyncIndicator();
+        }
+
+        private void OnSyncConnectivityChanged(object? sender, bool isOnline)
+        {
+            if (this.IsDisposed) return;
+            this.BeginInvoke(new Action(() =>
+            {
+                _pnlOfflineBanner.Visible = !isOnline || CurrentSession.IsOffline;
+                UpdateSyncIndicator();
+            }));
+        }
+
+        private void OnSyncProgressChanged(object? sender, SyncProgressEventArgs e)
+        {
+            if (this.IsDisposed) return;
+            this.BeginInvoke(new Action(() =>
+            {
+                UpdateSyncIndicator();
+            }));
+        }
+
+        private void UpdateSyncIndicator()
+        {
+            int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
+            var counts = LocalDataCache.Instance.GetQueueCounts(tenantId);
+
+            if (!SyncService.Instance.IsOnline || CurrentSession.IsOffline)
+            {
+                _btnSyncIndicator.Text = counts.Pending > 0 ? $"🔴 Offline ({counts.Pending})" : "🔴 Offline";
+                _btnSyncIndicator.BackColor = Color.FromArgb(254, 242, 242);
+                _btnSyncIndicator.ForeColor = Color.FromArgb(185, 28, 28);
+            }
+            else if (counts.Conflict > 0)
+            {
+                _btnSyncIndicator.Text = $"⚠️ Conflict ({counts.Conflict})";
+                _btnSyncIndicator.BackColor = Color.FromArgb(254, 243, 199);
+                _btnSyncIndicator.ForeColor = Color.FromArgb(180, 83, 9);
+            }
+            else if (counts.Failed > 0)
+            {
+                _btnSyncIndicator.Text = $"❌ Failed ({counts.Failed})";
+                _btnSyncIndicator.BackColor = Color.FromArgb(254, 242, 242);
+                _btnSyncIndicator.ForeColor = Color.FromArgb(185, 28, 28);
+            }
+            else if (counts.Pending > 0 || counts.Syncing > 0)
+            {
+                _btnSyncIndicator.Text = $"⏳ Syncing ({counts.Pending})";
+                _btnSyncIndicator.BackColor = Color.FromArgb(239, 246, 255);
+                _btnSyncIndicator.ForeColor = Color.FromArgb(37, 99, 235);
+            }
+            else
+            {
+                _btnSyncIndicator.Text = "🟢 Synced";
+                _btnSyncIndicator.BackColor = Color.FromArgb(240, 253, 244);
+                _btnSyncIndicator.ForeColor = Color.FromArgb(22, 163, 74);
+            }
         }
     }
 }

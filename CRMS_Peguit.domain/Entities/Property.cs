@@ -18,9 +18,11 @@ namespace CRMS_Peguit.domain.entities
         public DateTime? AssignmentReviewedAt { get; set; }
         public string? AssignmentReviewNotes { get; set; }
         public DateTime CreatedAt { get; set; }
+        public int? BranchId { get; set; }
 
         public virtual Customer OwnerCustomer { get; set; } = null!;
         public virtual User CreatedByUser { get; set; } = null!;
         public virtual User? ListedByAgent { get; set; }
+        public virtual Branch? Branch { get; set; }
     }
 }

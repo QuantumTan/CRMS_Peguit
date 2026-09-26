@@ -21,9 +21,9 @@ namespace CRMS_Peguit.winforms.Controllers
     {
         private readonly AuthService _authService;
 
-        public AuthController(string apiBaseUrl = "https://localhost:7259/")
+        public AuthController(string? apiBaseUrl = null)
         {
-            _authService = new AuthService(apiBaseUrl);
+            _authService = new AuthService(apiBaseUrl ?? DbConfiguration.GetApiBaseUrl());
         }
 
         public AuthController(AuthService authService)

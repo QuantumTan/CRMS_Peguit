@@ -1,43 +1,279 @@
+using System;
+using System.Collections.Concurrent;
+using System.Linq;
 using Microsoft.EntityFrameworkCore;
+using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
+using CRMS_Peguit.infrastructure.Security;
+using CRMS_Peguit.infrastructure.Seeding;
 
 namespace CRMS_Peguit.winforms.Models.Services
 {
     public static class LocalDb
     {
-        private static bool _dealSchemaChecked = false;
+        private static readonly ConcurrentDictionary<int, bool> _initializedTenants = new();
+        private static bool _masterDbInitialized = false;
+        private static readonly object _masterLock = new();
         private static readonly object _lockObj = new();
+
+        public static string MasterConnectionString =>
+            DbConfiguration.GetMasterConnectionString();
+
+        public static string GetTenantConnectionString(int tenantId) =>
+            DbConfiguration.GetTenantConnectionString(tenantId);
 
         public static string ConnectionString =>
             DbConfiguration.GetLocalConnectionString();
 
-        public static RealEstateDbContext CreateContext(int tenantId = 1)
+        public static MasterCrmsDbContext CreateMasterContext()
         {
-            LocalDbHelper.EnsureLocalDbRunning(ConnectionString);
+            var masterConn = MasterConnectionString;
+            LocalDbHelper.EnsureLocalDbRunning(masterConn);
 
-            var options = new DbContextOptionsBuilder<RealEstateDbContext>()
-                .UseSqlServer(ConnectionString, sql => sql.EnableRetryOnFailure())
+            var options = new DbContextOptionsBuilder<MasterCrmsDbContext>()
+                .UseSqlServer(masterConn, sql => sql.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    errorNumbersToAdd: null))
                 .Options;
 
-            var context = new RealEstateDbContext(options, tenantId: tenantId);
+            var context = new MasterCrmsDbContext(options);
 
-            if (!_dealSchemaChecked)
+            if (!_masterDbInitialized)
             {
-                lock (_lockObj)
+                lock (_masterLock)
                 {
-                    if (!_dealSchemaChecked)
+                    if (!_masterDbInitialized)
                     {
-                        EnsureDealSchema(context);
-                        EnsureSupportTicketSchema(context);
-                        EnsureFollowUpSchema(context);
-                        EnsureCampaignSchema(context);
-                        EnsureActivitySchema(context);
-                        _dealSchemaChecked = true;
+                        EnsureMasterDatabaseInitialized(context);
+                        _masterDbInitialized = true;
                     }
                 }
             }
 
             return context;
+        }
+
+        public static async Task<bool> CanConnectAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var masterConn = MasterConnectionString;
+                LocalDbHelper.EnsureLocalDbRunning(masterConn);
+                var options = new DbContextOptionsBuilder<MasterCrmsDbContext>()
+                    .UseSqlServer(masterConn, sql => sql.EnableRetryOnFailure(3, TimeSpan.FromSeconds(5), null))
+                    .Options;
+                using var context = new MasterCrmsDbContext(options);
+                return await context.Database.CanConnectAsync(cancellationToken);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public static RealEstateDbContext CreateContext(int tenantId = 1)
+        {
+            if (tenantId <= 0) tenantId = 1;
+            var tenantConn = GetTenantConnectionString(tenantId);
+            LocalDbHelper.EnsureLocalDbRunning(tenantConn);
+
+            var options = new DbContextOptionsBuilder<RealEstateDbContext>()
+                .UseSqlServer(tenantConn, sql => sql.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    errorNumbersToAdd: null))
+                .Options;
+
+            var context = new RealEstateDbContext(options, tenantId: tenantId);
+
+            if (!_initializedTenants.ContainsKey(tenantId))
+            {
+                lock (_lockObj)
+                {
+                    if (!_initializedTenants.ContainsKey(tenantId))
+                    {
+                        EnsureTenantDatabaseInitialized(context, tenantId);
+                        _initializedTenants[tenantId] = true;
+                    }
+                }
+            }
+
+            return context;
+        }
+
+        public static async Task SeedAllTenantsAsync(IProgress<string>? progress = null)
+        {
+            progress?.Report("Ensuring Master Platform database and physical database mapping...");
+            using (var masterDb = CreateMasterContext())
+            {
+                // Master DB initialization and subscription records ensured by CreateMasterContext()
+            }
+
+            int[] tenantIds = { 1, 2, 3 };
+            foreach (var tid in tenantIds)
+            {
+                string tenantName = tid switch
+                {
+                    1 => "Apex Realty (Tenant 1)",
+                    2 => "BlueHorizon Properties (Tenant 2)",
+                    3 => "Crestview Holdings (Tenant 3 - Multi-Branch)",
+                    _ => $"Tenant {tid}"
+                };
+
+                progress?.Report($"[Tenant {tid}] Initializing schema & seeding datasets for {tenantName}...");
+                using var tenantDb = CreateContext(tid);
+                await DbSeeder.SeedTestUsersAsync(tenantDb, tid);
+                progress?.Report($"[Tenant {tid}] Completed seeding for {tenantName}.");
+            }
+
+            progress?.Report("All tenants successfully seeded!");
+        }
+
+        public static void SeedAllTenants() => SeedAllTenantsAsync().GetAwaiter().GetResult();
+
+        private static void EnsureMasterDatabaseInitialized(MasterCrmsDbContext context)
+        {
+            try
+            {
+                context.Database.EnsureCreated();
+
+                // 1. Ensure Companies
+                if (!context.Companies.Any())
+                {
+                    var compA = new Company
+                    {
+                        CompanyCode = "TENANT-A",
+                        CompanyName = "Apex Realty (Tenant A)",
+                        CreatedAt = DateTime.UtcNow.AddMonths(-6)
+                    };
+                    var compB = new Company
+                    {
+                        CompanyCode = "TENANT-B",
+                        CompanyName = "BlueHorizon Properties (Tenant B)",
+                        CreatedAt = DateTime.UtcNow.AddMonths(-4)
+                    };
+                    var compC = new Company
+                    {
+                        CompanyCode = "TENANT-C",
+                        CompanyName = "Crestview Holdings (Tenant C)",
+                        CreatedAt = DateTime.UtcNow.AddMonths(-2)
+                    };
+
+                    context.Companies.AddRange(compA, compB, compC);
+                    context.SaveChanges();
+
+                    // 2. Ensure CompanyDatabases (Physical Database mapping)
+                    var dbA = new CompanyDatabase
+                    {
+                        CompanyId = compA.CompanyId,
+                        ServerName = "(localdb)\\mssqllocaldb",
+                        DatabaseName = "CRMS_Tenant_1",
+                        CredentialKey = "TenantA",
+                        IsActive = true
+                    };
+                    var dbB = new CompanyDatabase
+                    {
+                        CompanyId = compB.CompanyId,
+                        ServerName = "(localdb)\\mssqllocaldb",
+                        DatabaseName = "CRMS_Tenant_2",
+                        CredentialKey = "TenantB",
+                        IsActive = true
+                    };
+                    var dbC = new CompanyDatabase
+                    {
+                        CompanyId = compC.CompanyId,
+                        ServerName = "(localdb)\\mssqllocaldb",
+                        DatabaseName = "CRMS_Tenant_3",
+                        CredentialKey = "TenantC",
+                        IsActive = true
+                    };
+
+                    context.CompanyDatabases.AddRange(dbA, dbB, dbC);
+
+                    // 3. Ensure Subscriptions
+                    var subA = new Subscription
+                    {
+                        CompanyId = compA.CompanyId,
+                        PlanName = "Tenant A",
+                        StartDate = DateTime.UtcNow.AddMonths(-6),
+                        EndDate = DateTime.UtcNow.AddMonths(6),
+                        BillingAmount = 2500m,
+                        Status = "Active"
+                    };
+                    var subB = new Subscription
+                    {
+                        CompanyId = compB.CompanyId,
+                        PlanName = "Tenant B",
+                        StartDate = DateTime.UtcNow.AddMonths(-4),
+                        EndDate = DateTime.UtcNow.AddMonths(8),
+                        BillingAmount = 7500m,
+                        Status = "Active"
+                    };
+                    var subC = new Subscription
+                    {
+                        CompanyId = compC.CompanyId,
+                        PlanName = "Tenant C",
+                        StartDate = DateTime.UtcNow.AddMonths(-2),
+                        EndDate = DateTime.UtcNow.AddMonths(10),
+                        BillingAmount = 15000m,
+                        Status = "Active"
+                    };
+
+                    context.Subscriptions.AddRange(subA, subB, subC);
+                    context.SaveChanges();
+                }
+
+                // 4. Ensure SuperAdmin in Master
+                if (!context.SuperAdmins.Any())
+                {
+                    var sa = new SuperAdmin
+                    {
+                        FirstName = "Platform",
+                        LastName = "Super Admin",
+                        Email = "superadmin@crms.com",
+                        PasswordHash = PasswordHasher.Hash("SuperAdmin123!"),
+                        IsActive = true,
+                        CreatedAt = DateTime.UtcNow.AddYears(-1)
+                    };
+                    context.SuperAdmins.Add(sa);
+                    context.SaveChanges();
+                }
+            }
+            catch
+            {
+                // Fallback gracefully if database initialization encounters transient error
+            }
+        }
+
+        public static void EnsureAllSchemas(RealEstateDbContext context)
+        {
+            EnsureDealSchema(context);
+            EnsureSupportTicketSchema(context);
+            EnsureFollowUpSchema(context);
+            EnsureCampaignSchema(context);
+            EnsureActivitySchema(context);
+            EnsureAutomatedEmailSchema(context);
+            EnsureBranchSchema(context);
+        }
+
+        private static void EnsureTenantDatabaseInitialized(RealEstateDbContext context, int tenantId)
+        {
+            try
+            {
+                context.Database.EnsureCreated();
+
+                EnsureAllSchemas(context);
+
+                if (!context.Users.Any())
+                {
+                    DbSeeder.SeedTestUsersAsync(context, tenantId).GetAwaiter().GetResult();
+                }
+            }
+            catch
+            {
+                // Graceful fallback for schema updates
+            }
         }
 
         private static void EnsureDealSchema(RealEstateDbContext context)
@@ -287,6 +523,140 @@ namespace CRMS_Peguit.winforms.Models.Services
             catch
             {
                 // Silent fallback if server offline or already updated
+            }
+        }
+
+        private static void EnsureAutomatedEmailSchema(RealEstateDbContext context)
+        {
+            try
+            {
+                context.Database.ExecuteSqlRaw(@"
+                    IF OBJECT_ID('Customers', 'U') IS NOT NULL
+                    BEGIN
+                        IF COL_LENGTH('Customers', 'LastMarketUpdateSentAt') IS NULL
+                        BEGIN
+                            ALTER TABLE Customers ADD LastMarketUpdateSentAt DATETIME2 NULL;
+                        END
+                    END
+
+                    IF OBJECT_ID('AutomatedEmailSettings', 'U') IS NULL
+                    BEGIN
+                        CREATE TABLE [dbo].[AutomatedEmailSettings] (
+                            [SettingsId] INT IDENTITY(1,1) NOT NULL,
+                            [TenantId] INT NOT NULL DEFAULT 1,
+                            [IsEnabled] BIT NOT NULL DEFAULT 0,
+                            [FrequencyDays] INT NOT NULL DEFAULT 180,
+                            [AnnualAppreciationRatePercent] DECIMAL(5,2) NOT NULL DEFAULT 5.0,
+                            [EmailFormat] NVARCHAR(20) NOT NULL DEFAULT 'Html',
+                            [TargetAudience] NVARCHAR(50) NOT NULL DEFAULT 'All',
+                            [BrokerageName] NVARCHAR(150) NOT NULL DEFAULT 'NEXA Real Estate Advisory',
+                            [CallToActionText] NVARCHAR(200) NOT NULL DEFAULT 'Schedule a Complimentary Equity Consultation',
+                            [CallToActionUrl] NVARCHAR(500) NOT NULL DEFAULT 'https://nexacrm.local/cma-request',
+                            [SubjectTemplate] NVARCHAR(300) NOT NULL,
+                            [BodyTemplate] NVARCHAR(MAX) NOT NULL,
+                            [LastBatchRunAt] DATETIME2 NULL,
+                            [LastBatchStatus] NVARCHAR(500) NULL,
+                            [UpdatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                            CONSTRAINT [PK_AutomatedEmailSettings] PRIMARY KEY CLUSTERED ([SettingsId] ASC)
+                        );
+
+                        CREATE INDEX [IX_AutomatedEmailSettings_TenantId] ON [dbo].[AutomatedEmailSettings] ([TenantId]);
+                    END
+                    ELSE
+                    BEGIN
+                        IF COL_LENGTH('AutomatedEmailSettings', 'EmailFormat') IS NULL
+                            ALTER TABLE AutomatedEmailSettings ADD EmailFormat NVARCHAR(20) NOT NULL CONSTRAINT DF_AES_EmailFormat DEFAULT 'Html';
+                        IF COL_LENGTH('AutomatedEmailSettings', 'TargetAudience') IS NULL
+                            ALTER TABLE AutomatedEmailSettings ADD TargetAudience NVARCHAR(50) NOT NULL CONSTRAINT DF_AES_TargetAudience DEFAULT 'All';
+                        IF COL_LENGTH('AutomatedEmailSettings', 'BrokerageName') IS NULL
+                            ALTER TABLE AutomatedEmailSettings ADD BrokerageName NVARCHAR(150) NOT NULL CONSTRAINT DF_AES_BrokerageName DEFAULT 'NEXA Real Estate Advisory';
+                        IF COL_LENGTH('AutomatedEmailSettings', 'CallToActionText') IS NULL
+                            ALTER TABLE AutomatedEmailSettings ADD CallToActionText NVARCHAR(200) NOT NULL CONSTRAINT DF_AES_CtaText DEFAULT 'Schedule a Complimentary Equity Consultation';
+                        IF COL_LENGTH('AutomatedEmailSettings', 'CallToActionUrl') IS NULL
+                            ALTER TABLE AutomatedEmailSettings ADD CallToActionUrl NVARCHAR(500) NOT NULL CONSTRAINT DF_AES_CtaUrl DEFAULT 'https://nexacrm.local/cma-request';
+                    END
+
+                    IF OBJECT_ID('MarketUpdateLogs', 'U') IS NULL
+                    BEGIN
+                        CREATE TABLE [dbo].[MarketUpdateLogs] (
+                            [LogId] INT IDENTITY(1,1) NOT NULL,
+                            [TenantId] INT NOT NULL DEFAULT 1,
+                            [CustomerId] INT NULL,
+                            [CustomerName] NVARCHAR(150) NOT NULL,
+                            [RecipientEmail] NVARCHAR(255) NOT NULL,
+                            [PropertyAddress] NVARCHAR(300) NULL,
+                            [PropertyType] NVARCHAR(50) NULL,
+                            [OriginalPrice] DECIMAL(18,2) NOT NULL DEFAULT 0,
+                            [EstimatedValue] DECIMAL(18,2) NOT NULL DEFAULT 0,
+                            [EquityGainAmount] DECIMAL(18,2) NOT NULL DEFAULT 0,
+                            [EquityGainPercent] DECIMAL(6,2) NOT NULL DEFAULT 0,
+                            [EmailFormat] NVARCHAR(20) NOT NULL DEFAULT 'Html',
+                            [Status] NVARCHAR(30) NOT NULL DEFAULT 'Sent',
+                            [ErrorMessage] NVARCHAR(MAX) NULL,
+                            [TriggerType] NVARCHAR(30) NOT NULL DEFAULT 'Scheduler',
+                            [SentAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                            CONSTRAINT [PK_MarketUpdateLogs] PRIMARY KEY CLUSTERED ([LogId] ASC),
+                            CONSTRAINT [FK_MarketUpdateLogs_Customers_CustomerId] FOREIGN KEY ([CustomerId]) REFERENCES [dbo].[Customers] ([CustomerId]) ON DELETE SET NULL
+                        );
+
+                        CREATE INDEX [IX_MarketUpdateLogs_TenantId] ON [dbo].[MarketUpdateLogs] ([TenantId]);
+                        CREATE INDEX [IX_MarketUpdateLogs_SentAt] ON [dbo].[MarketUpdateLogs] ([SentAt]);
+                        CREATE INDEX [IX_MarketUpdateLogs_CustomerId] ON [dbo].[MarketUpdateLogs] ([CustomerId]);
+                    END
+                ");
+            }
+            catch
+            {
+                // Silent fallback if server offline or already created
+            }
+        }
+
+        private static void EnsureBranchSchema(RealEstateDbContext context)
+        {
+            try
+            {
+                context.Database.ExecuteSqlRaw(@"
+                    IF OBJECT_ID('Branches', 'U') IS NULL
+                    BEGIN
+                        CREATE TABLE [dbo].[Branches] (
+                            [BranchId] INT IDENTITY(1,1) NOT NULL,
+                            [TenantId] INT NOT NULL DEFAULT 1,
+                            [BranchCode] NVARCHAR(50) NOT NULL,
+                            [BranchName] NVARCHAR(150) NOT NULL,
+                            [Address] NVARCHAR(300) NULL,
+                            [Phone] NVARCHAR(50) NULL,
+                            [ManagerUserId] INT NULL,
+                            [IsActive] BIT NOT NULL DEFAULT 1,
+                            [CreatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                            CONSTRAINT [PK_Branches] PRIMARY KEY CLUSTERED ([BranchId] ASC)
+                        );
+                        CREATE INDEX [IX_Branches_TenantId] ON [dbo].[Branches] ([TenantId]);
+                    END
+
+                    IF OBJECT_ID('Users', 'U') IS NOT NULL AND COL_LENGTH('Users', 'BranchId') IS NULL
+                    BEGIN
+                        ALTER TABLE Users ADD BranchId INT NULL;
+                    END
+
+                    IF OBJECT_ID('Properties', 'U') IS NOT NULL AND COL_LENGTH('Properties', 'BranchId') IS NULL
+                    BEGIN
+                        ALTER TABLE Properties ADD BranchId INT NULL;
+                    END
+
+                    IF OBJECT_ID('Leads', 'U') IS NOT NULL AND COL_LENGTH('Leads', 'BranchId') IS NULL
+                    BEGIN
+                        ALTER TABLE Leads ADD BranchId INT NULL;
+                    END
+
+                    IF OBJECT_ID('Deals', 'U') IS NOT NULL AND COL_LENGTH('Deals', 'BranchId') IS NULL
+                    BEGIN
+                        ALTER TABLE Deals ADD BranchId INT NULL;
+                    END
+                ");
+            }
+            catch
+            {
+                // Silent fallback if server offline or already created
             }
         }
     }

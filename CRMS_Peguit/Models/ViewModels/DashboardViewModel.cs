@@ -16,6 +16,7 @@ namespace CRMS_Peguit.winforms.Models.ViewModels
         public int OpenDealsCount { get; set; }
         public int FollowUpsDueTodayCount { get; set; }
         public int OpenSupportTicketsCount { get; set; }
+        public int ActivePropertiesCount { get; set; }
 
         // Glanceable Chart (Sparkline: daily closed deals last 30 days)
         public List<double> SparklineDealsClosed { get; set; } = new();

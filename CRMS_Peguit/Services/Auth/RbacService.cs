@@ -61,7 +61,7 @@ namespace CRMS_Peguit.winforms.Auth
             IsAgent || IsSuperAdmin;
 
         public static bool CanExportData =>
-            IsAdmin || IsManager;
+            IsAdmin || IsManager || IsSuperAdmin;
 
         public static bool CanViewBrokerageMargins =>
             IsAdmin || IsSuperAdmin;

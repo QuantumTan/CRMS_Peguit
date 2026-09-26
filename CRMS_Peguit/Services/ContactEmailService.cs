@@ -30,7 +30,8 @@ namespace CRMS_Peguit.winforms.Models.Services
         public static async Task<EmailSendResult> SendAsync(
             string recipientEmail,
             string subject,
-            string body)
+            string body,
+            bool isBodyHtml = false)
         {
             var validation = ValidateMessage(recipientEmail, subject, body);
             if (!validation.Success)
@@ -52,7 +53,7 @@ namespace CRMS_Peguit.winforms.Models.Services
                     From = new MailAddress(config.Username!, "NEXA CRMS"),
                     Subject = subject.Trim(),
                     Body = body.Trim(),
-                    IsBodyHtml = false
+                    IsBodyHtml = isBodyHtml
                 };
                 mail.To.Add(recipientEmail.Trim());
 

@@ -20,6 +20,9 @@ namespace CRMS_Peguit.winforms.Views.Analytics
     {
         private readonly AnalyticsController _controller;
         private AnalyticsSnapshot? _currentSnapshot;
+        private List<AnalyticsDetailRow> _allDrillDownRows = new();
+        private string? _activeFilterCategory = null;
+        private string? _activeFilterKey = null;
 
         public event Action<string>? NavigationRequested;
 
@@ -32,41 +35,156 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             BindEvents();
             ApplyRoleBasedRendering();
 
-            // Default to "This Year" or "Past 12 Months" to immediately display populated charts
-            cboDateRange.SelectedIndex = 2; // "This Year" triggers ReloadSnapshot
+            // Default to "This Year" to immediately display populated metrics
+            cboDateRange.SelectedIndex = 2; // triggers ReloadSnapshot
         }
 
         private void ApplyStyling()
         {
             this.BackColor = Theme.Background;
 
-            UiRadiusHelper.StyleCard(pnlChartDealsClosed, 12);
-            UiRadiusHelper.StyleCard(pnlChartPipeline, 12);
-            UiRadiusHelper.StyleCard(pnlChartWonVsLost, 12);
-            UiRadiusHelper.StyleCard(pnlChartTickets, 12);
-            UiRadiusHelper.StyleCard(pnlChartAgents, 12);
-            UiRadiusHelper.StyleCard(pnlChartSources, 12);
             UiRadiusHelper.StyleCard(pnlRecentActivity, 12);
+            UiRadiusHelper.StyleCard(pnlGridCard, 12);
 
             UiRadiusHelper.StyleButton(btnExport, 8);
-            btnExport.BackColor = Color.White;
-            btnExport.ForeColor = Theme.Primary;
-            btnExport.FlatAppearance.BorderColor = Theme.BorderAccessible;
-            btnExport.FlatAppearance.BorderSize = 1;
+            btnExport.BackColor = Theme.Primary;
+            btnExport.ForeColor = Color.White;
+            btnExport.Font = new Font("Segoe UI Semibold", 9.5f);
+            UiRadiusHelper.AttachHoverFeedback(btnExport, Theme.Primary, Theme.PrimaryDark);
 
             UiRadiusHelper.StyleButton(btnGoToReports, 8);
+            btnGoToReports.BackColor = Color.White;
+            btnGoToReports.ForeColor = Theme.Primary;
+            btnGoToReports.FlatAppearance.BorderColor = Color.FromArgb(203, 213, 225);
+            btnGoToReports.FlatAppearance.BorderSize = 1;
+            btnGoToReports.Font = new Font("Segoe UI Semibold", 9.5f);
+            UiRadiusHelper.AttachHoverFeedback(btnGoToReports, Color.White, Color.FromArgb(248, 250, 252));
 
-            ConfigurePlot(plotDealsClosed);
-            ConfigurePlot(plotPipeline);
-            ConfigurePlot(plotWonVsLost);
-            ConfigurePlot(plotTickets);
-            ConfigurePlot(plotAgents);
-            ConfigurePlot(plotSources);
+            UiRadiusHelper.StyleButton(btnResetFilter, 6);
+
+            // Configure Case 1: InPlaceFilter mode on all 6 KPI cards
+            kpiDealsClosed.ClickMode = KpiClickMode.InPlaceFilter;
+            kpiCommission.ClickMode = KpiClickMode.InPlaceFilter;
+            kpiActiveLeads.ClickMode = KpiClickMode.InPlaceFilter;
+            kpiConversionRate.ClickMode = KpiClickMode.InPlaceFilter;
+            kpiOpenTickets.ClickMode = KpiClickMode.InPlaceFilter;
+            kpiAvgDays.ClickMode = KpiClickMode.InPlaceFilter;
+
+            // Configure Case 1: InPlaceFilter mode on all 6 Chart wrappers
+            chartDealsClosed.SetMode(KpiClickMode.InPlaceFilter);
+            chartPipeline.SetMode(KpiClickMode.InPlaceFilter);
+            chartWonVsLost.SetMode(KpiClickMode.InPlaceFilter);
+            chartTickets.SetMode(KpiClickMode.InPlaceFilter);
+            chartAgents.SetMode(KpiClickMode.InPlaceFilter);
+            chartSources.SetMode(KpiClickMode.InPlaceFilter);
+
+            SetupGridColumns();
         }
 
-        private void ConfigurePlot(ScottPlot.WinForms.FormsPlot plot)
+        private void SetupGridColumns()
         {
-            BiDisplayConstants.ConfigureStandardPlot(plot);
+            UiGridHelper.ApplyModernGridStyle(gridAnalyticsDetails, 44);
+
+            gridAnalyticsDetails.AutoGenerateColumns = false;
+            gridAnalyticsDetails.Columns.Clear();
+
+            gridAnalyticsDetails.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "RecordType",
+                HeaderText = "TYPE",
+                Name = "colRecordType",
+                Width = 90
+            });
+            gridAnalyticsDetails.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "Reference",
+                HeaderText = "REF #",
+                Name = "colReference",
+                Width = 110
+            });
+            gridAnalyticsDetails.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "Title",
+                HeaderText = "TITLE / CONTACT / SUBJECT",
+                Name = "colTitle",
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+                MinimumWidth = 200
+            });
+            gridAnalyticsDetails.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "Status",
+                HeaderText = "STATUS",
+                Name = "colStatus",
+                Width = 115
+            });
+            gridAnalyticsDetails.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "AssignedTo",
+                HeaderText = "ASSIGNED AGENT",
+                Name = "colAssignedTo",
+                Width = 150
+            });
+            gridAnalyticsDetails.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "Value",
+                HeaderText = "VALUE / BUDGET",
+                Name = "colValue",
+                Width = 135
+            });
+            gridAnalyticsDetails.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "Date",
+                HeaderText = "DATE",
+                Name = "colDate",
+                Width = 115
+            });
+            gridAnalyticsDetails.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "Details",
+                HeaderText = "DETAILS",
+                Name = "colDetails",
+                Width = 140
+            });
+
+            gridAnalyticsDetails.CellFormatting += (s, e) =>
+            {
+                if (e.RowIndex < 0) return;
+                string colName = gridAnalyticsDetails.Columns[e.ColumnIndex].Name;
+                if (colName == "colValue" && e.Value is decimal val)
+                {
+                    e.Value = val > 0 ? BiDisplayConstants.FormatCompactCurrency(val) : "—";
+                    e.FormattingApplied = true;
+                }
+                else if (colName == "colDate" && e.Value is DateTime dt)
+                {
+                    e.Value = dt.ToString("MMM dd, yyyy");
+                    e.FormattingApplied = true;
+                }
+            };
+
+            gridAnalyticsDetails.CellPainting += (s, e) =>
+            {
+                if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+                string colName = gridAnalyticsDetails.Columns[e.ColumnIndex].Name;
+                if (colName == "colStatus")
+                {
+                    e.Handled = true;
+                    string st = e.Value?.ToString() ?? "";
+                    UiGridHelper.PaintStatusBadge(gridAnalyticsDetails, e, st);
+                }
+                else if (colName == "colRecordType")
+                {
+                    e.Handled = true;
+                    string t = e.Value?.ToString() ?? "";
+                    UiGridHelper.PaintStatusBadge(gridAnalyticsDetails, e, t);
+                }
+                else if (colName == "colReference")
+                {
+                    e.Handled = true;
+                    using var boldFont = new Font("Segoe UI", 9f, FontStyle.Bold);
+                    UiGridHelper.PaintTextCell(gridAnalyticsDetails, e, e.Value?.ToString() ?? "", boldFont, Theme.TextPrimary);
+                }
+            };
         }
 
         private void BindEvents()
@@ -86,39 +204,213 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                 }
             };
 
+            pnlHeader.Resize += (_, _) => LayoutHeaderControls();
             pnlScrollableContent.Resize += (_, _) => AutoLayoutCharts();
-            this.Resize += (_, _) => AutoLayoutCharts();
-            this.Load += (_, _) => AutoLayoutCharts();
+            this.Resize += (_, _) => { LayoutHeaderControls(); AutoLayoutCharts(); };
+            this.Load += (_, _) => { LayoutHeaderControls(); AutoLayoutCharts(); };
 
-            // Wire KPI cards — each scrolls to its most relevant chart
-            kpiDealsClosed.SetAction(() => ScrollToChart(pnlChartDealsClosed, kpiDealsClosed));
-            kpiCommission.SetAction(() => ScrollToChart(pnlChartWonVsLost, kpiCommission));
-            kpiActiveLeads.SetAction(() => ScrollToChart(pnlChartPipeline, kpiActiveLeads));
-            kpiConversionRate.SetAction(() => ScrollToChart(pnlChartWonVsLost, kpiConversionRate));
-            kpiOpenTickets.SetAction(() => ScrollToChart(pnlChartTickets, kpiOpenTickets));
-            kpiAvgDays.SetAction(() => ScrollToChart(pnlChartDealsClosed, kpiAvgDays));
+            // KPI card click shortcuts (Case 1: in-place drill-down filter)
+            kpiDealsClosed.Click += (_, _) => ToggleKpiFilter("KPI:DealsClosed");
+            kpiCommission.Click += (_, _) => ToggleKpiFilter("KPI:Commission");
+            kpiActiveLeads.Click += (_, _) => ToggleKpiFilter("KPI:ActiveLeads");
+            kpiConversionRate.Click += (_, _) => ToggleKpiFilter("KPI:ConversionRate");
+            kpiOpenTickets.Click += (_, _) => ToggleKpiFilter("KPI:OpenTickets");
+            kpiAvgDays.Click += (_, _) => ToggleKpiFilter("KPI:AvgDays");
+
+            // Chart click events (Case 1: in-place drill-down filter)
+            chartDealsClosed.InPlaceFilterChanged += key => ApplyChartFilter(chartDealsClosed, "DealsOverTime", key);
+            chartPipeline.InPlaceFilterChanged += key => ApplyChartFilter(chartPipeline, "Pipeline", key);
+            chartWonVsLost.InPlaceFilterChanged += key => ApplyChartFilter(chartWonVsLost, "WonLost", key);
+            chartTickets.InPlaceFilterChanged += key => ApplyChartFilter(chartTickets, "Tickets", key);
+            chartAgents.InPlaceFilterChanged += key => ApplyChartFilter(chartAgents, "Agents", key);
+            chartSources.InPlaceFilterChanged += key => ApplyChartFilter(chartSources, "Sources", key);
+
+            btnResetFilter.Click += (_, _) => ResetAllFilters();
         }
 
-        /// <summary>
-        /// Scrolls the scrollable content area so the target chart panel is visible,
-        /// then briefly selects the KPI card to give visual click feedback.
-        /// </summary>
-        private void ScrollToChart(Panel chartPanel, KpiCard card)
+        public void SetFilter(string filter)
         {
-            // Scroll the container so the chart top is visible
-            int targetY = chartPanel.Top - 12; // 12px padding above chart
-            pnlScrollableContent.AutoScrollPosition = new Point(0, Math.Max(0, targetY));
-
-            // Brief card selection flash for feedback
-            card.SetSelected(true);
-            var timer = new System.Windows.Forms.Timer { Interval = 800 };
-            timer.Tick += (_, _) =>
+            if (string.IsNullOrWhiteSpace(filter))
             {
-                timer.Stop();
-                card.SetSelected(false);
-                timer.Dispose();
-            };
-            timer.Start();
+                ResetAllFilters();
+                return;
+            }
+
+            string fLower = filter.ToLowerInvariant();
+            if (fLower.Contains("won") || fLower.Contains("deal") || fLower.Contains("closed"))
+            {
+                ToggleKpiFilter("KPI:DealsClosed", force: true);
+            }
+            else if (fLower.Contains("lost"))
+            {
+                chartWonVsLost.SetActiveFilter("Lost");
+                ApplyChartFilter(chartWonVsLost, "WonLost", "Lost");
+            }
+            else if (fLower.Contains("lead"))
+            {
+                ToggleKpiFilter("KPI:ActiveLeads", force: true);
+            }
+            else if (fLower.Contains("comm"))
+            {
+                ToggleKpiFilter("KPI:Commission", force: true);
+            }
+            else if (fLower.Contains("ticket"))
+            {
+                ToggleKpiFilter("KPI:OpenTickets", force: true);
+            }
+            else if (fLower.Contains("conv"))
+            {
+                ToggleKpiFilter("KPI:ConversionRate", force: true);
+            }
+            else
+            {
+                ResetAllFilters();
+            }
+        }
+
+        private void ToggleKpiFilter(string category, bool force = false)
+        {
+            if (!force && string.Equals(_activeFilterCategory, category, StringComparison.OrdinalIgnoreCase))
+            {
+                ResetAllFilters();
+                return;
+            }
+
+            _activeFilterCategory = category;
+            _activeFilterKey = null;
+
+            // Mutual exclusivity: clear all chart filters
+            chartDealsClosed.ClearFilter();
+            chartPipeline.ClearFilter();
+            chartWonVsLost.ClearFilter();
+            chartTickets.ClearFilter();
+            chartAgents.ClearFilter();
+            chartSources.ClearFilter();
+
+            UpdateKpiSelectionStates();
+            ApplyDrillDownFilter();
+        }
+
+        private void ApplyChartFilter(ChartWrapperControl activeChart, string category, string? key)
+        {
+            if (string.IsNullOrEmpty(key))
+            {
+                ResetAllFilters();
+                return;
+            }
+
+            _activeFilterCategory = $"Chart:{category}";
+            _activeFilterKey = key;
+
+            // Mutual exclusivity: clear all KPI selections
+            ClearKpiSelections();
+
+            // Clear all other charts
+            if (activeChart != chartDealsClosed) chartDealsClosed.ClearFilter();
+            if (activeChart != chartPipeline) chartPipeline.ClearFilter();
+            if (activeChart != chartWonVsLost) chartWonVsLost.ClearFilter();
+            if (activeChart != chartTickets) chartTickets.ClearFilter();
+            if (activeChart != chartAgents) chartAgents.ClearFilter();
+            if (activeChart != chartSources) chartSources.ClearFilter();
+
+            ApplyDrillDownFilter();
+        }
+
+        private void ResetAllFilters(bool refreshGrid = true)
+        {
+            _activeFilterCategory = null;
+            _activeFilterKey = null;
+
+            ClearKpiSelections();
+
+            chartDealsClosed.ClearFilter();
+            chartPipeline.ClearFilter();
+            chartWonVsLost.ClearFilter();
+            chartTickets.ClearFilter();
+            chartAgents.ClearFilter();
+            chartSources.ClearFilter();
+
+            if (refreshGrid)
+            {
+                ApplyDrillDownFilter();
+            }
+        }
+
+        private void ClearKpiSelections()
+        {
+            kpiDealsClosed.SetSelected(false);
+            kpiCommission.SetSelected(false);
+            kpiActiveLeads.SetSelected(false);
+            kpiConversionRate.SetSelected(false);
+            kpiOpenTickets.SetSelected(false);
+            kpiAvgDays.SetSelected(false);
+        }
+
+        private void UpdateKpiSelectionStates()
+        {
+            kpiDealsClosed.SetSelected(string.Equals(_activeFilterCategory, "KPI:DealsClosed", StringComparison.OrdinalIgnoreCase));
+            kpiCommission.SetSelected(string.Equals(_activeFilterCategory, "KPI:Commission", StringComparison.OrdinalIgnoreCase));
+            kpiActiveLeads.SetSelected(string.Equals(_activeFilterCategory, "KPI:ActiveLeads", StringComparison.OrdinalIgnoreCase));
+            kpiConversionRate.SetSelected(string.Equals(_activeFilterCategory, "KPI:ConversionRate", StringComparison.OrdinalIgnoreCase));
+            kpiOpenTickets.SetSelected(string.Equals(_activeFilterCategory, "KPI:OpenTickets", StringComparison.OrdinalIgnoreCase));
+            kpiAvgDays.SetSelected(string.Equals(_activeFilterCategory, "KPI:AvgDays", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void ApplyDrillDownFilter()
+        {
+            if (_allDrillDownRows == null) return;
+
+            List<AnalyticsDetailRow> displayList;
+
+            if (string.IsNullOrEmpty(_activeFilterCategory))
+            {
+                displayList = _allDrillDownRows;
+                lblGridSubtitle.Text = $"Showing all {displayList.Count:N0} records. Click any KPI card or chart segment to filter records in-place.";
+                btnResetFilter.Visible = false;
+            }
+            else
+            {
+                btnResetFilter.Visible = true;
+                string cat = _activeFilterCategory;
+                string? k = _activeFilterKey;
+
+                displayList = cat switch
+                {
+                    "KPI:DealsClosed" => _allDrillDownRows.Where(r => r.RecordType == "Deal" && (r.Status.Equals("Won", StringComparison.OrdinalIgnoreCase) || r.Status.Contains("Closed", StringComparison.OrdinalIgnoreCase))).ToList(),
+                    "KPI:Commission" => _allDrillDownRows.Where(r => r.RecordType == "Deal" && r.Status.Equals("Won", StringComparison.OrdinalIgnoreCase)).ToList(),
+                    "KPI:ActiveLeads" => _allDrillDownRows.Where(r => r.RecordType == "Lead" && !r.Status.Equals("Converted", StringComparison.OrdinalIgnoreCase) && !r.Status.Equals("Lost", StringComparison.OrdinalIgnoreCase)).ToList(),
+                    "KPI:ConversionRate" => _allDrillDownRows.Where(r => (r.RecordType == "Lead" && r.Status.Equals("Converted", StringComparison.OrdinalIgnoreCase)) || (r.RecordType == "Deal" && r.Status.Equals("Won", StringComparison.OrdinalIgnoreCase))).ToList(),
+                    "KPI:OpenTickets" => _allDrillDownRows.Where(r => r.RecordType == "Ticket" && !r.Status.Equals("Resolved", StringComparison.OrdinalIgnoreCase) && !r.Status.Equals("Closed", StringComparison.OrdinalIgnoreCase)).ToList(),
+                    "KPI:AvgDays" => _allDrillDownRows.Where(r => r.RecordType == "Deal" && (r.Status.Equals("Won", StringComparison.OrdinalIgnoreCase) || r.Status.Contains("Closed", StringComparison.OrdinalIgnoreCase))).ToList(),
+                    
+                    "Chart:WonLost" => k == "Lost"
+                        ? _allDrillDownRows.Where(r => r.RecordType == "Deal" && r.Status.Equals("Lost", StringComparison.OrdinalIgnoreCase)).ToList()
+                        : _allDrillDownRows.Where(r => r.RecordType == "Deal" && r.Status.Equals("Won", StringComparison.OrdinalIgnoreCase)).ToList(),
+
+                    "Chart:Pipeline" => _allDrillDownRows.Where(r => r.RecordType == "Lead" && r.Status.Equals(k, StringComparison.OrdinalIgnoreCase)).ToList(),
+
+                    "Chart:Tickets" => k == "Overdue"
+                        ? _allDrillDownRows.Where(r => r.RecordType == "Ticket" && (r.Status.Equals("Overdue", StringComparison.OrdinalIgnoreCase) || r.Details.Contains("Overdue", StringComparison.OrdinalIgnoreCase))).ToList()
+                        : _allDrillDownRows.Where(r => r.RecordType == "Ticket" && r.Status.Equals(k, StringComparison.OrdinalIgnoreCase)).ToList(),
+
+                    "Chart:Agents" => _allDrillDownRows.Where(r => r.AssignedTo.Equals(k, StringComparison.OrdinalIgnoreCase)).ToList(),
+
+                    "Chart:Sources" => _allDrillDownRows.Where(r => r.RecordType == "Lead" && r.Details.Contains(k ?? "", StringComparison.OrdinalIgnoreCase)).ToList(),
+
+                    "Chart:DealsOverTime" => _allDrillDownRows.Where(r => r.RecordType == "Deal" && r.Date.ToString("MMM yyyy").Contains(k ?? "")).ToList(),
+
+                    _ => _allDrillDownRows
+                };
+
+                string badgeDesc = cat.StartsWith("KPI:")
+                    ? cat.Replace("KPI:", "KPI ")
+                    : $"{cat.Replace("Chart:", "")} [{k}]";
+
+                lblGridSubtitle.Text = $"Filtered by: {badgeDesc} — {displayList.Count:N0} records found. (Click 'Clear' or the segment again to reset)";
+            }
+
+            gridAnalyticsDetails.DataSource = null;
+            gridAnalyticsDetails.DataSource = displayList;
         }
 
         private void ApplyRoleBasedRendering()
@@ -127,8 +419,8 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             {
                 lblTitle.Text = "My Performance Snapshot";
                 lblSubtitle.Text = "Personal metrics and pipeline status across your assigned records";
-                pnlChartAgents.Visible = false;
-                pnlChartSources.Visible = false;
+                chartAgents.Visible = false;
+                chartSources.Visible = false;
                 btnExport.Visible = false;
                 btnGoToReports.Visible = false;
             }
@@ -136,13 +428,42 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             {
                 lblTitle.Text = "Team Analytics Performance";
                 lblSubtitle.Text = "Live agency-wide business intelligence, deal velocity, and operations";
-                pnlChartAgents.Visible = true;
-                pnlChartSources.Visible = true;
+                chartAgents.Visible = true;
+                chartSources.Visible = true;
                 btnExport.Visible = RbacService.CanExportData;
                 btnGoToReports.Visible = CurrentSession.CanAccess("Reports");
             }
 
+            LayoutHeaderControls();
             AutoLayoutCharts();
+        }
+
+        private void LayoutHeaderControls()
+        {
+            if (pnlHeader == null || pnlHeader.ClientSize.Width <= 0) return;
+
+            int rightPadding = 20;
+            int rightX = pnlHeader.ClientSize.Width - rightPadding;
+            int spacing = 10;
+            int top = 25;
+
+            // Order from right edge: btnExport, cboDateRange, btnGoToReports
+            if (btnExport.Visible)
+            {
+                btnExport.Size = new Size(130, 34);
+                btnExport.Location = new Point(rightX - btnExport.Width, top);
+                rightX = btnExport.Left - spacing;
+            }
+
+            cboDateRange.Size = new Size(140, 32);
+            cboDateRange.Location = new Point(rightX - cboDateRange.Width, top + 1);
+            rightX = cboDateRange.Left - spacing;
+
+            if (btnGoToReports.Visible)
+            {
+                btnGoToReports.Size = new Size(140, 34);
+                btnGoToReports.Location = new Point(rightX - btnGoToReports.Width, top);
+            }
         }
 
         private DateRangeFilter GetSelectedDateRange()
@@ -167,9 +488,12 @@ namespace CRMS_Peguit.winforms.Views.Analytics
 
                 var range = GetSelectedDateRange();
                 AnalyticsSnapshot? snapshot = null;
+                List<AnalyticsDetailRow>? drillDown = null;
+
                 await System.Threading.Tasks.Task.Run(() =>
                 {
                     snapshot = _controller.GetSnapshot(range);
+                    drillDown = _controller.GetDrillDownRows(range);
                 });
 
                 if (IsDisposed) return;
@@ -177,7 +501,11 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                 lblLoading.Visible = false;
                 lblSubtitle.Visible = true;
                 _currentSnapshot = snapshot;
+                _allDrillDownRows = drillDown ?? new();
+
+                ResetAllFilters(refreshGrid: false);
                 UpdateView(_currentSnapshot);
+                ApplyDrillDownFilter();
             }
             catch (Exception ex)
             {
@@ -210,7 +538,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             kpiAvgDays.SetValue($"{snapshot.AverageDaysToClose:F1}d");
             kpiAvgDays.SetSubtitle(snapshot.ActivePropertiesCount > 0 ? $"Active Listings: {snapshot.ActivePropertiesCount}" : "Contract lead time");
 
-            // 2. Chart: Deals Closed Over Time (Trend = Line chart)
+            // 2. Chart: Deals Closed Over Time
             RenderDealsOverTimeChart(snapshot.DealsOverTime);
 
             // 3. Chart: Lead Pipeline Funnel
@@ -223,13 +551,13 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             RenderTicketBreakdownChart(snapshot.TicketBreakdown);
 
             // 6. Chart: Top-Performing Agents (Manager/Admin only)
-            if (pnlChartAgents.Visible && snapshot.TopAgents != null)
+            if (chartAgents.Visible && snapshot.TopAgents != null)
             {
                 RenderTopAgentsChart(snapshot.TopAgents);
             }
 
             // 7. Chart: Lead Source Breakdown (Manager/Admin only)
-            if (pnlChartSources.Visible && snapshot.LeadSourceBreakdown != null)
+            if (chartSources.Visible && snapshot.LeadSourceBreakdown != null)
             {
                 RenderLeadSourcesChart(snapshot.LeadSourceBreakdown);
             }
@@ -241,16 +569,17 @@ namespace CRMS_Peguit.winforms.Views.Analytics
         private void AutoLayoutCharts()
         {
             if (pnlScrollableContent.ClientSize.Width <= 0) return;
+            LayoutHeaderControls();
 
-            // Preserve and temporarily reset scroll offset during calculation to prevent coordinates shifting
+            // Preserve scroll position during layout
             int scrollX = pnlScrollableContent.AutoScrollPosition.X;
             int scrollY = pnlScrollableContent.AutoScrollPosition.Y;
             pnlScrollableContent.AutoScrollPosition = Point.Empty;
 
-            int containerWidth = pnlScrollableContent.ClientSize.Width - 40; // padding
+            int containerWidth = pnlScrollableContent.ClientSize.Width - 40;
             int padding = 16;
 
-            // 1. Layout KPI cards at the top of scrollable host
+            // 1. Layout KPI cards at the top
             pnlKpi.Location = new Point(20, 12);
             pnlKpi.Size = new Size(containerWidth, 114);
 
@@ -258,22 +587,22 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             int maxY = y;
 
             bool showActivity = pnlRecentActivity.Visible;
-            bool showAgents = pnlChartAgents.Visible;
+            bool showAgents = chartAgents.Visible;
 
             if (containerWidth >= 1200 && showActivity)
             {
                 // 3-column layout: 2 chart columns + 1 activity feed column
                 int activityWidth = 380;
                 int chartWidth = (containerWidth - activityWidth - (padding * 2)) / 2;
-                int chartHeight = 320;
+                int chartHeight = 360;
 
                 int x1 = 20;
                 int x2 = x1 + chartWidth + padding;
                 int x3 = x2 + chartWidth + padding;
 
                 // Row 1
-                PositionChart(pnlChartDealsClosed, plotDealsClosed, x1, y, chartWidth, chartHeight);
-                PositionChart(pnlChartPipeline, plotPipeline, x2, y, chartWidth, chartHeight);
+                PositionChart(chartDealsClosed, x1, y, chartWidth, chartHeight);
+                PositionChart(chartPipeline, x2, y, chartWidth, chartHeight);
 
                 pnlRecentActivity.Location = new Point(x3, y);
                 pnlRecentActivity.Size = new Size(activityWidth, (chartHeight * 2) + padding);
@@ -281,8 +610,8 @@ namespace CRMS_Peguit.winforms.Views.Analytics
 
                 // Row 2
                 y += chartHeight + padding;
-                PositionChart(pnlChartWonVsLost, plotWonVsLost, x1, y, chartWidth, chartHeight);
-                PositionChart(pnlChartTickets, plotTickets, x2, y, chartWidth, chartHeight);
+                PositionChart(chartWonVsLost, x1, y, chartWidth, chartHeight);
+                PositionChart(chartTickets, x2, y, chartWidth, chartHeight);
 
                 maxY = Math.Max(pnlRecentActivity.Bottom, y + chartHeight);
 
@@ -290,32 +619,32 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                 if (showAgents)
                 {
                     y += chartHeight + padding;
-                    PositionChart(pnlChartAgents, plotAgents, x1, y, chartWidth, chartHeight);
-                    PositionChart(pnlChartSources, plotSources, x2, y, chartWidth, chartHeight);
+                    PositionChart(chartAgents, x1, y, chartWidth, chartHeight);
+                    PositionChart(chartSources, x2, y, chartWidth, chartHeight);
                     maxY = Math.Max(maxY, y + chartHeight);
                 }
             }
             else if (containerWidth >= 900)
             {
-                // 2-column layout (intermediate breakpoint) — taller charts
+                // 2-column layout
                 int chartWidth = (containerWidth - padding) / 2;
-                int chartHeight = 320;
+                int chartHeight = 360;
 
                 int x1 = 20;
                 int x2 = x1 + chartWidth + padding;
 
-                PositionChart(pnlChartDealsClosed, plotDealsClosed, x1, y, chartWidth, chartHeight);
-                PositionChart(pnlChartPipeline, plotPipeline, x2, y, chartWidth, chartHeight);
+                PositionChart(chartDealsClosed, x1, y, chartWidth, chartHeight);
+                PositionChart(chartPipeline, x2, y, chartWidth, chartHeight);
 
                 y += chartHeight + padding;
-                PositionChart(pnlChartWonVsLost, plotWonVsLost, x1, y, chartWidth, chartHeight);
-                PositionChart(pnlChartTickets, plotTickets, x2, y, chartWidth, chartHeight);
+                PositionChart(chartWonVsLost, x1, y, chartWidth, chartHeight);
+                PositionChart(chartTickets, x2, y, chartWidth, chartHeight);
 
                 if (showAgents)
                 {
                     y += chartHeight + padding;
-                    PositionChart(pnlChartAgents, plotAgents, x1, y, chartWidth, chartHeight);
-                    PositionChart(pnlChartSources, plotSources, x2, y, chartWidth, chartHeight);
+                    PositionChart(chartAgents, x1, y, chartWidth, chartHeight);
+                    PositionChart(chartSources, x2, y, chartWidth, chartHeight);
                 }
 
                 maxY = y + chartHeight;
@@ -324,57 +653,36 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                 {
                     y += chartHeight + padding;
                     pnlRecentActivity.Location = new Point(x1, y);
-                    pnlRecentActivity.Size = new Size(containerWidth, 380);
-                    pnlActivityFeedList.Size = new Size(pnlRecentActivity.Width - 32, pnlRecentActivity.Height - 72);
+                    pnlRecentActivity.Size = new Size(containerWidth, 360);
+                    pnlActivityFeedList.Size = new Size(containerWidth - 32, pnlRecentActivity.Height - 72);
                     maxY = pnlRecentActivity.Bottom;
                 }
             }
             else
             {
-                // 2-column (≥750px) or 1-column (<750px) layout
-                int cols = containerWidth >= 750 ? 2 : 1;
-                int chartWidth = cols == 2 ? (containerWidth - padding) / 2 : containerWidth;
-                int chartHeight = 300;
-
+                // Single column layout
+                int chartWidth = containerWidth;
+                int chartHeight = 340;
                 int x1 = 20;
-                int x2 = cols == 2 ? x1 + chartWidth + padding : x1;
 
-                PositionChart(pnlChartDealsClosed, plotDealsClosed, x1, y, chartWidth, chartHeight);
-                if (cols == 2)
-                {
-                    PositionChart(pnlChartPipeline, plotPipeline, x2, y, chartWidth, chartHeight);
-                }
-                else
-                {
-                    y += chartHeight + padding;
-                    PositionChart(pnlChartPipeline, plotPipeline, x1, y, chartWidth, chartHeight);
-                }
+                PositionChart(chartDealsClosed, x1, y, chartWidth, chartHeight);
 
                 y += chartHeight + padding;
-                PositionChart(pnlChartWonVsLost, plotWonVsLost, x1, y, chartWidth, chartHeight);
-                if (cols == 2)
-                {
-                    PositionChart(pnlChartTickets, plotTickets, x2, y, chartWidth, chartHeight);
-                }
-                else
-                {
-                    y += chartHeight + padding;
-                    PositionChart(pnlChartTickets, plotTickets, x1, y, chartWidth, chartHeight);
-                }
+                PositionChart(chartPipeline, x1, y, chartWidth, chartHeight);
+
+                y += chartHeight + padding;
+                PositionChart(chartWonVsLost, x1, y, chartWidth, chartHeight);
+
+                y += chartHeight + padding;
+                PositionChart(chartTickets, x1, y, chartWidth, chartHeight);
 
                 if (showAgents)
                 {
                     y += chartHeight + padding;
-                    PositionChart(pnlChartAgents, plotAgents, x1, y, chartWidth, chartHeight);
-                    if (cols == 2)
-                    {
-                        PositionChart(pnlChartSources, plotSources, x2, y, chartWidth, chartHeight);
-                    }
-                    else
-                    {
-                        y += chartHeight + padding;
-                        PositionChart(pnlChartSources, plotSources, x1, y, chartWidth, chartHeight);
-                    }
+                    PositionChart(chartAgents, x1, y, chartWidth, chartHeight);
+
+                    y += chartHeight + padding;
+                    PositionChart(chartSources, x1, y, chartWidth, chartHeight);
                 }
 
                 maxY = y + chartHeight;
@@ -383,127 +691,146 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                 {
                     y += chartHeight + padding;
                     pnlRecentActivity.Location = new Point(x1, y);
-                    pnlRecentActivity.Size = new Size(cols == 2 ? containerWidth : chartWidth, 380);
-                    pnlActivityFeedList.Size = new Size(pnlRecentActivity.Width - 32, pnlRecentActivity.Height - 72);
+                    pnlRecentActivity.Size = new Size(chartWidth, 360);
+                    pnlActivityFeedList.Size = new Size(chartWidth - 32, pnlRecentActivity.Height - 72);
                     maxY = pnlRecentActivity.Bottom;
                 }
             }
+
+            // Drill-down grid ledger placed below charts & activities
+            int gridY = maxY + padding;
+            pnlGridCard.Location = new Point(20, gridY);
+            pnlGridCard.Size = new Size(containerWidth, 420);
+            maxY = pnlGridCard.Bottom;
 
             pnlScrollableContent.AutoScrollMinSize = new Size(0, maxY + 24);
             pnlScrollableContent.AutoScrollPosition = new Point(-scrollX, -scrollY);
         }
 
-        private void PositionChart(Panel panel, ScottPlot.WinForms.FormsPlot plot, int x, int y, int w, int h)
+        private void PositionChart(ChartWrapperControl chart, int x, int y, int w, int h)
         {
-            panel.Location = new Point(x, y);
-            panel.Size = new Size(w, h);
-            // plot starts at y=58 to accommodate title (12pt bold) + subtitle label
-            plot.Location = new Point(14, 58);
-            plot.Size = new Size(Math.Max(100, w - 28), Math.Max(100, h - 70));
+            chart.Location = new Point(x, y);
+            chart.Size = new Size(w, h);
         }
 
         private void RenderDealsOverTimeChart(List<MonthlyMetric>? metrics)
         {
+            chartDealsClosed.SetHeader("Deals Closed Over Time", "Click a period to filter records below");
             if (metrics == null || metrics.Count == 0)
             {
-                BiDisplayConstants.ShowPlotEmpty(plotDealsClosed, "No closed deals recorded in range");
+                chartDealsClosed.ClearSegments();
+                BiDisplayConstants.ShowPlotEmpty(chartDealsClosed.PlotControl, "No closed deals recorded in range");
                 return;
             }
 
-            var trendData = metrics.Select(m => (m.Month, (double)m.Count)).ToList();
-            BiDisplayConstants.RenderTrendLinePlot(plotDealsClosed, trendData, BiDisplayConstants.PrimaryAccent, BiDisplayConstants.SecondaryAccent);
+            var items = metrics.Select(m => (label: m.Month, value: (double)m.Count, color: BiDisplayConstants.PrimaryAccent, key: (string?)m.Month)).ToList();
+            chartDealsClosed.RenderBarPlot(items);
         }
 
         private void RenderLeadFunnelChart(LeadFunnelData? funnel)
         {
+            chartPipeline.SetHeader("Lead Pipeline Funnel", "Click a stage to filter records below");
             if (funnel == null)
             {
-                BiDisplayConstants.ShowPlotEmpty(plotPipeline, "No pipeline leads recorded");
+                chartPipeline.ClearSegments();
+                BiDisplayConstants.ShowPlotEmpty(chartPipeline.PlotControl, "No pipeline leads recorded");
                 return;
             }
 
-            var items = new List<(string label, double value, Color color)>
+            var items = new List<(string label, double value, Color color, string? key)>
             {
-                ("New", funnel.New, BiDisplayConstants.StatusNeutral),
-                ("Contacted", funnel.Contacted, BiDisplayConstants.StatusPending),
-                ("Qualified", funnel.Qualified, BiDisplayConstants.PrimaryAccent),
-                ("Converted", funnel.Converted, BiDisplayConstants.StatusWon),
-                ("Lost", funnel.Lost, BiDisplayConstants.StatusLost)
+                ("New", (double)funnel.New, BiDisplayConstants.StatusNeutral, "New"),
+                ("Contacted", (double)funnel.Contacted, BiDisplayConstants.StatusPending, "Contacted"),
+                ("Qualified", (double)funnel.Qualified, BiDisplayConstants.PrimaryAccent, "Qualified"),
+                ("Converted", (double)funnel.Converted, BiDisplayConstants.StatusWon, "Converted"),
+                ("Lost", (double)funnel.Lost, BiDisplayConstants.StatusLost, "Lost")
             };
 
-            BiDisplayConstants.RenderBarPlot(plotPipeline, items);
+            chartPipeline.RenderBarPlot(items);
         }
 
         private void RenderDealsWonVsLostChart(WonLostData? wonLost)
         {
+            chartWonVsLost.SetHeader("Deals Won vs. Lost", "Click Won or Lost to filter records below");
             if (wonLost == null || (wonLost.Won == 0 && wonLost.Lost == 0))
             {
-                BiDisplayConstants.ShowPlotEmpty(plotWonVsLost, "No closed/lost deals in range");
+                chartWonVsLost.ClearSegments();
+                BiDisplayConstants.ShowPlotEmpty(chartWonVsLost.PlotControl, "No closed/lost deals in range");
                 return;
             }
 
-            var slices = new List<(string label, double value, Color color)>
+            var slices = new List<(string label, double value, Color color, string? key)>
             {
-                ("Won", wonLost.Won, BiDisplayConstants.StatusWon),
-                ("Lost", wonLost.Lost, BiDisplayConstants.StatusLost)
+                ("Won", (double)wonLost.Won, BiDisplayConstants.StatusWon, "Won"),
+                ("Lost", (double)wonLost.Lost, BiDisplayConstants.StatusLost, "Lost")
             };
 
-            BiDisplayConstants.RenderDonutPlot(plotWonVsLost, slices);
+            chartWonVsLost.RenderDonutPlot(slices);
         }
 
         private void RenderTicketBreakdownChart(TicketBreakdownData? tickets)
         {
+            chartTickets.SetHeader("Support Ticket Breakdown", "Click a status to filter records below");
             if (tickets == null)
             {
-                BiDisplayConstants.ShowPlotEmpty(plotTickets, "No support tickets recorded");
+                chartTickets.ClearSegments();
+                BiDisplayConstants.ShowPlotEmpty(chartTickets.PlotControl, "No support tickets recorded");
                 return;
             }
 
-            var items = new List<(string label, double value, Color color)>
+            var items = new List<(string label, double value, Color color, string? key)>
             {
-                ("Open", tickets.Open, BiDisplayConstants.StatusPending),
-                ("In Progress", tickets.InProgress, BiDisplayConstants.PrimaryAccent),
-                ("Resolved", tickets.Resolved, BiDisplayConstants.StatusWon),
-                ("Overdue", tickets.Overdue, BiDisplayConstants.StatusLost)
+                ("Open", (double)tickets.Open, BiDisplayConstants.StatusPending, "Open"),
+                ("In Progress", (double)tickets.InProgress, BiDisplayConstants.PrimaryAccent, "In Progress"),
+                ("Resolved", (double)tickets.Resolved, BiDisplayConstants.StatusWon, "Resolved"),
+                ("Overdue", (double)tickets.Overdue, BiDisplayConstants.StatusLost, "Overdue")
             };
 
-            BiDisplayConstants.RenderBarPlot(plotTickets, items);
+            chartTickets.RenderDonutPlot(items);
         }
 
         private void RenderTopAgentsChart(List<AgentPerformance> topAgents)
         {
+            chartAgents.SetHeader("Top-Performing Agents", "Click an agent to filter records below");
             if (topAgents == null || topAgents.Count == 0)
             {
-                BiDisplayConstants.ShowPlotEmpty(plotAgents, "No agent performance data in range");
+                chartAgents.ClearSegments();
+                BiDisplayConstants.ShowPlotEmpty(chartAgents.PlotControl, "No agent performance data in range");
                 return;
             }
 
-            lblChartAgentsTitle.Text = "Top Agents by Sales Volume (₱ Millions)";
             var items = topAgents
-                .Select(a => (a.AgentName, (double)(a.TotalValue / 1_000_000m), BiDisplayConstants.PrimaryAccent))
+                .Select(a => (label: a.AgentName, value: (double)(a.TotalValue / 1_000_000m), color: BiDisplayConstants.PrimaryAccent, key: (string?)a.AgentName))
                 .ToList();
 
-            BiDisplayConstants.RenderBarPlot(plotAgents, items, rotation: -30);
+            chartAgents.RenderBarPlot(items, rotation: -30);
         }
 
         private void RenderLeadSourcesChart(List<SourceMetric> sources)
         {
+            chartSources.SetHeader("Lead Source Breakdown", "Click a source to filter records below");
             if (sources == null || sources.Count == 0)
             {
-                BiDisplayConstants.ShowPlotEmpty(plotSources, "No lead sources recorded in range");
+                chartSources.ClearSegments();
+                BiDisplayConstants.ShowPlotEmpty(chartSources.PlotControl, "No lead sources recorded in range");
                 return;
             }
 
+            Color[] sourcePalette = new[]
+            {
+                Color.FromArgb(37, 103, 156),  // Skyline Blue
+                Color.FromArgb(14, 165, 233),  // Sky
+                Color.FromArgb(99, 102, 241),  // Indigo
+                Color.FromArgb(139, 92, 246),  // Violet
+                Color.FromArgb(20, 184, 166),  // Teal
+                Color.FromArgb(245, 158, 11),  // Amber
+            };
+
             var items = sources
-                .Select(s => (s.Source, (double)s.Count, BiDisplayConstants.SecondaryAccent))
+                .Select((s, idx) => (label: s.Source, value: (double)s.Count, color: sourcePalette[idx % sourcePalette.Length], key: (string?)s.Source))
                 .ToList();
 
-            BiDisplayConstants.RenderBarPlot(plotSources, items, rotation: -30);
-        }
-
-        private void ShowPlotEmpty(ScottPlot.WinForms.FormsPlot plot, string message)
-        {
-            BiDisplayConstants.ShowPlotEmpty(plot, message);
+            chartSources.RenderDonutPlot(items);
         }
 
         private void RenderRecentActivity(List<ActivityFeedItem>? feed)
@@ -517,58 +844,127 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                     Font = new Font("Segoe UI", 9.5f),
                     ForeColor = Theme.TextSecondary,
                     AutoSize = true,
-                    Padding = new Padding(10)
+                    Padding = new Padding(12)
                 };
                 pnlActivityFeedList.Controls.Add(lblEmpty);
                 return;
             }
 
+            int itemWidth = Math.Max(260, pnlActivityFeedList.ClientSize.Width - 12);
+
             foreach (var item in feed)
             {
+                KpiIconType iconType;
+                Color badgeBg;
+                Color badgeBorder;
+                Color iconColor;
+                string eventCategory;
+                string eventDetail;
+
+                string rawDesc = item.Description ?? "";
+                if (item.Icon == "💼" || rawDesc.StartsWith("Deal", StringComparison.OrdinalIgnoreCase))
+                {
+                    iconType = KpiIconType.Briefcase;
+                    badgeBg = Color.FromArgb(239, 246, 255);
+                    badgeBorder = Color.FromArgb(191, 219, 254);
+                    iconColor = Theme.Primary;
+                    eventCategory = "Deal Closed";
+                }
+                else if (item.Icon == "🎟" || rawDesc.StartsWith("Ticket", StringComparison.OrdinalIgnoreCase))
+                {
+                    iconType = KpiIconType.Ticket;
+                    badgeBg = Color.FromArgb(254, 243, 199);
+                    badgeBorder = Color.FromArgb(253, 230, 138);
+                    iconColor = Color.FromArgb(217, 119, 6);
+                    eventCategory = "Ticket Resolved";
+                }
+                else if (item.Icon == "◎" || rawDesc.StartsWith("Lead", StringComparison.OrdinalIgnoreCase))
+                {
+                    iconType = KpiIconType.Target;
+                    badgeBg = Color.FromArgb(236, 253, 245);
+                    badgeBorder = Color.FromArgb(167, 243, 208);
+                    iconColor = Color.FromArgb(5, 150, 105);
+                    eventCategory = "Lead Converted";
+                }
+                else
+                {
+                    iconType = KpiIconType.Clock;
+                    badgeBg = Color.FromArgb(241, 245, 249);
+                    badgeBorder = Color.FromArgb(226, 232, 240);
+                    iconColor = Color.FromArgb(71, 85, 105);
+                    eventCategory = "Activity";
+                }
+
+                int colonIdx = rawDesc.IndexOf(':');
+                if (colonIdx >= 0 && colonIdx < rawDesc.Length - 1)
+                {
+                    eventDetail = rawDesc.Substring(colonIdx + 1).Trim();
+                }
+                else
+                {
+                    eventDetail = rawDesc;
+                }
+
                 var rowPanel = new Panel
                 {
-                    Width = Math.Max(280, pnlActivityFeedList.ClientSize.Width - 10),
-                    Height = 52,
-                    BackColor = Color.Transparent,
-                    Margin = new Padding(0, 0, 0, 0)
+                    Width = itemWidth,
+                    Height = 54,
+                    BackColor = Color.White,
+                    Margin = new Padding(0, 0, 0, 4),
+                    Cursor = Cursors.Default
                 };
 
-                // Subtle top separator line
                 rowPanel.Paint += (s, e) =>
                 {
-                    using var pen = new Pen(Color.FromArgb(241, 245, 249), 1f);
-                    e.Graphics.DrawLine(pen, 0, 0, rowPanel.Width, 0);
+                    e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+                    using (var divPen = new Pen(Color.FromArgb(241, 245, 249), 1f))
+                    {
+                        e.Graphics.DrawLine(divPen, 50, rowPanel.Height - 1, rowPanel.Width - 12, rowPanel.Height - 1);
+                    }
+
+                    var badgeRect = new Rectangle(6, 9, 36, 36);
+                    using (var bBrush = new SolidBrush(badgeBg))
+                    {
+                        e.Graphics.FillEllipse(bBrush, badgeRect);
+                    }
+                    using (var bPen = new Pen(badgeBorder, 1f))
+                    {
+                        e.Graphics.DrawEllipse(bPen, badgeRect);
+                    }
+
+                    var iconRect = new Rectangle(15, 18, 18, 18);
+                    UiIconHelper.DrawIcon(e.Graphics, iconType, iconRect, iconColor);
                 };
 
-                var lblIcon = new Label
-                {
-                    Text = item.Icon,
-                    Font = new Font("Segoe UI Emoji", 14f),
-                    Size = new Size(36, 36),
-                    Location = new Point(8, 8),
-                    TextAlign = ContentAlignment.MiddleCenter
-                };
+                rowPanel.MouseEnter += (_, _) => rowPanel.BackColor = Color.FromArgb(248, 250, 252);
+                rowPanel.MouseLeave += (_, _) => rowPanel.BackColor = Color.White;
 
                 var lblDesc = new Label
                 {
-                    Text = item.Description,
-                    Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                    ForeColor = Theme.TextPrimary,
-                    Location = new Point(48, 7),
-                    Size = new Size(rowPanel.Width - 56, 18),
-                    AutoEllipsis = true
+                    Text = $"{eventCategory} • {eventDetail}",
+                    Font = new Font("Segoe UI Semibold", 8.75f),
+                    ForeColor = Color.FromArgb(15, 23, 42),
+                    Location = new Point(48, 8),
+                    Size = new Size(Math.Max(100, rowPanel.Width - 54), 18),
+                    AutoEllipsis = true,
+                    BackColor = Color.Transparent
                 };
+                lblDesc.MouseEnter += (_, _) => rowPanel.BackColor = Color.FromArgb(248, 250, 252);
+                lblDesc.MouseLeave += (_, _) => rowPanel.BackColor = Color.White;
 
                 var lblTime = new Label
                 {
                     Text = BiDisplayConstants.FormatDateTime(item.Timestamp),
-                    Font = new Font("Segoe UI", 7.5F),
-                    ForeColor = Theme.TextSecondary,
-                    Location = new Point(48, 27),
-                    Size = new Size(rowPanel.Width - 56, 16)
+                    Font = new Font("Segoe UI", 7.75f),
+                    ForeColor = Color.FromArgb(100, 116, 139),
+                    Location = new Point(48, 28),
+                    Size = new Size(Math.Max(100, rowPanel.Width - 54), 16),
+                    BackColor = Color.Transparent
                 };
+                lblTime.MouseEnter += (_, _) => rowPanel.BackColor = Color.FromArgb(248, 250, 252);
+                lblTime.MouseLeave += (_, _) => rowPanel.BackColor = Color.White;
 
-                rowPanel.Controls.Add(lblIcon);
                 rowPanel.Controls.Add(lblDesc);
                 rowPanel.Controls.Add(lblTime);
 
@@ -615,17 +1011,17 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                     sb.AppendLine($"Active Inventory Value (₱),{_currentSnapshot.ActiveInventoryValue:F2}");
                     sb.AppendLine();
 
-                    if (_currentSnapshot.DealsOverTime.Count > 0)
+                    if (_allDrillDownRows.Count > 0)
                     {
-                        sb.AppendLine("Period,Closed Deals,Total Value (₱)");
-                        foreach (var m in _currentSnapshot.DealsOverTime)
+                        sb.AppendLine("Type,Reference,Title,Status,Assigned Agent,Value (₱),Date,Details");
+                        foreach (var row in _allDrillDownRows)
                         {
-                            sb.AppendLine($"\"{m.Month}\",{m.Count},{m.Value:F2}");
+                            sb.AppendLine($"\"{row.RecordType}\",\"{row.Reference}\",\"{row.Title}\",\"{row.Status}\",\"{row.AssignedTo}\",{row.Value:F2},\"{row.Date:yyyy-MM-dd}\",\"{row.Details}\"");
                         }
                     }
 
                     File.WriteAllText(sfd.FileName, sb.ToString());
-                    MessageBox.Show("Analytics summary exported successfully.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show("Analytics summary and drill-down records exported successfully.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 catch (Exception ex)
                 {

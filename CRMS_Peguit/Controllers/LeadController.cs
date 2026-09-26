@@ -7,6 +7,8 @@ using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
+using CRMS_Peguit.winforms.Services.Offline;
 using Microsoft.EntityFrameworkCore;
 
 namespace CRMS_Peguit.winforms.Controllers
@@ -27,6 +29,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public List<Lead> GetAll()
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var cached = LocalDataCache.Instance.GetCachedLeads(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                if (cached.Count > 0) return cached;
+            }
+
             try
             {
                 var query = _db.Leads.AsNoTracking();
@@ -42,10 +50,17 @@ namespace CRMS_Peguit.winforms.Controllers
                             : l.CreatedByUserId == currentUserId);
                 }
 
-                return query
+                var list = query
                     .OrderBy(x => x.Person.LastName)
                     .ThenBy(x => x.Person.FirstName)
                     .ToList();
+
+                if (list.Count > 0)
+                {
+                    _ = Task.Run(() => LocalDataCache.Instance.SaveLeadsMirror(TenantId, list));
+                }
+
+                return list;
             }
             catch (Exception ex)
             {
@@ -62,6 +77,54 @@ namespace CRMS_Peguit.winforms.Controllers
             string? sortColumn = null,
             bool isAscending = true)
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var cached = LocalDataCache.Instance.GetCachedLeads(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                if (cached.Count == 0)
+                {
+                    try
+                    {
+                        var localQuery = _db.Leads.Include(l => l.Person).AsNoTracking().Where(l => !l.IsDeleted);
+                        if (!RbacService.HasFullOversight && RbacService.IsAgent)
+                        {
+                            int currentUserId = CurrentSession.UserId;
+                            localQuery = localQuery.Where(l =>
+                                (l.AssignedAgentId.HasValue && l.AssignedAgentId.Value > 0)
+                                    ? l.AssignedAgentId.Value == currentUserId
+                                    : l.CreatedByUserId == currentUserId);
+                        }
+                        var localList = await localQuery.ToListAsync();
+                        if (localList.Count > 0)
+                        {
+                            cached = localList;
+                            _ = Task.Run(() => LocalDataCache.Instance.SaveLeadsMirror(TenantId, localList));
+                        }
+                    }
+                    catch { }
+                }
+
+                if (cached.Count > 0)
+                {
+                    if (!string.IsNullOrWhiteSpace(stage) && !string.Equals(stage, "All", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cached = cached.Where(l => l.Stage.Equals(stage, StringComparison.OrdinalIgnoreCase)).ToList();
+                    }
+                    if (!string.IsNullOrWhiteSpace(search))
+                    {
+                        string s = search.Trim().ToLowerInvariant();
+                        cached = cached.Where(l => (l.Person != null && (
+                            l.Person.FirstName.ToLowerInvariant().Contains(s) ||
+                            l.Person.LastName.ToLowerInvariant().Contains(s) ||
+                            (l.Person.Email != null && l.Person.Email.ToLowerInvariant().Contains(s)) ||
+                            (l.Person.Phone != null && l.Person.Phone.Contains(s)))) ||
+                            (l.Source != null && l.Source.ToLowerInvariant().Contains(s))).ToList();
+                    }
+                    int total = cached.Count;
+                    var paged = cached.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
+                    return new PagedResult<Lead>(paged, total, pageNumber, pageSize);
+                }
+            }
+
             try
             {
                 using var db = LocalDb.CreateContext(TenantId);
@@ -189,6 +252,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public Lead? GetById(int id)
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                return LocalDataCache.Instance.GetCachedLeads(TenantId, CurrentSession.UserId, RbacService.IsAgent)
+                    .FirstOrDefault(l => l.LeadId == id);
+            }
+
             var item = _db.Leads
                 .AsNoTracking()
                 .SingleOrDefault(x => x.LeadId == id);
@@ -234,6 +303,13 @@ namespace CRMS_Peguit.winforms.Controllers
                 ApplyAssignmentDefaults(lead);
             }
 
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var qItem = SyncService.Instance.EnqueueOfflineCreate("Lead", lead, TenantId, CurrentSession.UserId);
+                lead.LeadId = -qItem.QueueId;
+                return lead;
+            }
+
             _db.Leads.Add(lead);
             _db.SaveChanges();
             LogActivity("Lead Created", lead.LeadId, null, $"Lead '{lead.FullName}' was created.");
@@ -252,6 +328,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public void Update(Lead lead)
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                SyncService.Instance.EnqueueOfflineUpdate("Lead", lead.LeadId, lead, TenantId, CurrentSession.UserId, lead.CreatedAt);
+                return;
+            }
+
             var item = _db.Leads
                 .Include(l => l.Person)
                 .SingleOrDefault(x => x.LeadId == lead.LeadId);
@@ -327,6 +409,25 @@ namespace CRMS_Peguit.winforms.Controllers
             item.IsDeleted = false;
             item.DeletedAt = null;
             _db.SaveChanges();
+            LogActivity("Lead Restored", item.LeadId, null, $"Lead '{item.FullName}' was restored from archive.");
+        }
+
+        public List<Lead> GetArchived()
+        {
+            try
+            {
+                return _db.Leads
+                    .AsNoTracking()
+                    .Include(l => l.Person)
+                    .Where(l => l.IsDeleted)
+                    .OrderByDescending(l => l.DeletedAt)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LeadController.GetArchived] Error: {ex.Message}");
+                return new List<Lead>();
+            }
         }
 
         public Customer ConvertToCustomer(Lead lead)
@@ -611,19 +712,30 @@ namespace CRMS_Peguit.winforms.Controllers
             out string? errorMessage,
             out string? errorField)
         {
+            return ValidateLeadInput(firstName, lastName, email, null, expectedValueText, out parsedExpectedValue, out errorMessage, out errorField);
+        }
+
+        public static bool ValidateLeadInput(
+            string firstName,
+            string lastName,
+            string? email,
+            string? phone,
+            string? expectedValueText,
+            out decimal? parsedExpectedValue,
+            out string? errorMessage,
+            out string? errorField)
+        {
             parsedExpectedValue = null;
             errorField = null;
 
-            if (string.IsNullOrWhiteSpace(firstName))
+            if (!ValidationHelper.IsValidPersonName(firstName, "First name", out errorMessage))
             {
-                errorMessage = "First name is required.";
                 errorField = "FirstName";
                 return false;
             }
 
-            if (string.IsNullOrWhiteSpace(lastName))
+            if (!ValidationHelper.IsValidPersonName(lastName, "Last name", out errorMessage))
             {
-                errorMessage = "Last name is required.";
                 errorField = "LastName";
                 return false;
             }
@@ -632,6 +744,12 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 errorMessage = "Enter a valid email address.";
                 errorField = "Email";
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(phone) && !ValidationHelper.IsValidPhoneNumber(phone, out errorMessage))
+            {
+                errorField = "Phone";
                 return false;
             }
 

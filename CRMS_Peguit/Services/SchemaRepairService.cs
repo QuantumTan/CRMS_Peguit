@@ -25,6 +25,11 @@ namespace CRMS_Peguit.winforms.Models.Services
                 EnsureAssignmentColumns((SqlConnection)connection, "Customers");
                 EnsureAssignmentColumns((SqlConnection)connection, "Properties");
                 EnsureNotificationTables((SqlConnection)connection);
+
+                if (db is CRMS_Peguit.infrastructure.data.RealEstateDbContext reDb)
+                {
+                    LocalDb.EnsureAllSchemas(reDb);
+                }
             }
             finally
             {

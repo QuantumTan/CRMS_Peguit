@@ -466,6 +466,12 @@ namespace CRMS_Peguit.winforms.Views.Deals
                 {
                     _cboAgent.SelectedValue = currentUserId;
                 }
+
+                _cboStage.SelectedItem = "Reservation";
+                _cboStage.Enabled = false; // Initial stage is locked to Reservation on create
+
+                _dtpCloseDate.MinDate = DateTime.Today;
+                _dtpCloseDate.Value = DateTime.Today.AddDays(30);
             }
 
             // R24: Only Manager or Admin may set or change ownership. Regular agents are locked.
@@ -479,7 +485,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
 
         private void BtnSaveClick(object? sender, EventArgs e)
         {
-            if (!DealController.ValidateDealInput(_cboCustomer.SelectedValue, _cboProperty.SelectedValue, _txtValue.Text, out decimal dealVal, out string? error))
+            if (!DealController.ValidateDealInput(_cboCustomer.SelectedValue, _cboProperty.SelectedValue, _txtValue.Text, _dtpCloseDate.Value, out decimal dealVal, out string? error))
             {
                 MessageBox.Show(error ?? "Validation error.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;

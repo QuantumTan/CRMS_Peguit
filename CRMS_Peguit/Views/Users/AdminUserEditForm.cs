@@ -6,6 +6,7 @@ using System.Drawing;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Views.Users
 {
@@ -45,6 +46,12 @@ namespace CRMS_Peguit.winforms.Views.Users
 
             UiRadiusHelper.StyleButton(btnCancel, 8);
 
+            txtFirstName.MaxLength = 50;
+            txtMiddleName.MaxLength = 50;
+            txtLastName.MaxLength = 50;
+            txtSuffix.MaxLength = 20;
+            txtEmail.MaxLength = 100;
+
             btnSave.Click += async (s, e) => await SaveAsync();
             btnCancel.Click += (s, e) => { this.DialogResult = DialogResult.Cancel; this.Close(); };
             this.Load += async (s, e) => await LoadDataAsync();
@@ -67,11 +74,24 @@ namespace CRMS_Peguit.winforms.Views.Users
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(txtFirstName.Text) || 
-                    string.IsNullOrWhiteSpace(txtLastName.Text) || 
-                    string.IsNullOrWhiteSpace(txtEmail.Text))
+                if (!ValidationHelper.IsValidPersonName(txtFirstName.Text, "First name", out string? fnErr))
                 {
-                    MessageBox.Show("First Name, Last Name, and Email are required.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(fnErr, "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    txtFirstName.Focus();
+                    return;
+                }
+
+                if (!ValidationHelper.IsValidPersonName(txtLastName.Text, "Last name", out string? lnErr))
+                {
+                    MessageBox.Show(lnErr, "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    txtLastName.Focus();
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(txtEmail.Text) || !ContactEmailService.IsValidEmail(txtEmail.Text.Trim()))
+                {
+                    MessageBox.Show("Please enter a valid email address.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    txtEmail.Focus();
                     return;
                 }
 
@@ -114,6 +134,7 @@ namespace CRMS_Peguit.winforms.Views.Users
                     await _controller.UpdateAsync(_user);
                 }
 
+                MessageBox.Show("User account saved successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 this.DialogResult = DialogResult.OK;
                 this.Close();
             }

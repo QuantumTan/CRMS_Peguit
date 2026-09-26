@@ -1,4 +1,4 @@
-﻿namespace CRMS_Peguit.winforms.Views.Activities
+namespace CRMS_Peguit.winforms.Views.Activities
 {
     partial class ActivitiesView
     {
@@ -40,10 +40,10 @@
             this.lblSubtitle = new System.Windows.Forms.Label();
             this.btnAdd = new System.Windows.Forms.Button();
             this.pnlKpiContainer = new System.Windows.Forms.TableLayoutPanel();
-            this.kpiTotal = new CRMS_Peguit.winforms.Controls.KpiCard("TOTAL LOGGED", "all", System.Drawing.Color.FromArgb(15, 91, 158));
-            this.kpiCalls = new CRMS_Peguit.winforms.Controls.KpiCard("CALLS", "calls", System.Drawing.Color.FromArgb(14, 165, 233));
-            this.kpiEmails = new CRMS_Peguit.winforms.Controls.KpiCard("EMAILS", "emails", System.Drawing.Color.FromArgb(168, 85, 247));
-            this.kpiMeetings = new CRMS_Peguit.winforms.Controls.KpiCard("MEETINGS", "meetings", System.Drawing.Color.FromArgb(5, 150, 105));
+            this.kpiTotal = new CRMS_Peguit.winforms.Controls.KpiCard("TOTAL LOGGED", "all", CRMS_Peguit.winforms.Models.Services.Theme.Primary);
+            this.kpiCalls = new CRMS_Peguit.winforms.Controls.KpiCard("CALLS", "calls", CRMS_Peguit.winforms.Models.Services.Theme.StatusInfo);
+            this.kpiEmails = new CRMS_Peguit.winforms.Controls.KpiCard("EMAILS", "emails", CRMS_Peguit.winforms.Models.Services.Theme.StatusPending);
+            this.kpiMeetings = new CRMS_Peguit.winforms.Controls.KpiCard("MEETINGS", "meetings", CRMS_Peguit.winforms.Models.Services.Theme.StatusSuccess);
 
             this.txtSearch = new System.Windows.Forms.TextBox();
             this.btnFilterAll = new System.Windows.Forms.Button();
@@ -63,9 +63,9 @@
             // lblTitle
             // 
             this.lblTitle.AutoSize = true;
-            this.lblTitle.Font = new System.Drawing.Font("Segoe UI", 20F, System.Drawing.FontStyle.Bold);
-            this.lblTitle.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
-            this.lblTitle.Location = new System.Drawing.Point(30, 20);
+            this.lblTitle.Font = CRMS_Peguit.winforms.Services.UiStyleConstants.PageTitleFont;
+            this.lblTitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextPrimary;
+            this.lblTitle.Location = new System.Drawing.Point(CRMS_Peguit.winforms.Services.UiStyleConstants.PageMarginLeft, CRMS_Peguit.winforms.Services.UiStyleConstants.PageMarginTop);
             this.lblTitle.Name = "lblTitle";
             this.lblTitle.Size = new System.Drawing.Size(340, 37);
             this.lblTitle.TabIndex = 0;
@@ -74,9 +74,9 @@
             // lblSubtitle
             // 
             this.lblSubtitle.AutoSize = true;
-            this.lblSubtitle.Font = new System.Drawing.Font("Segoe UI", 9.5F);
-            this.lblSubtitle.ForeColor = System.Drawing.Color.FromArgb(100, 116, 139);
-            this.lblSubtitle.Location = new System.Drawing.Point(32, 58);
+            this.lblSubtitle.Font = CRMS_Peguit.winforms.Services.UiStyleConstants.SubtitleFont;
+            this.lblSubtitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextSecondary;
+            this.lblSubtitle.Location = new System.Drawing.Point(CRMS_Peguit.winforms.Services.UiStyleConstants.PageMarginLeft + 2, 58);
             this.lblSubtitle.Name = "lblSubtitle";
             this.lblSubtitle.Size = new System.Drawing.Size(430, 17);
             this.lblSubtitle.TabIndex = 1;
@@ -84,8 +84,7 @@
             // 
             // btnAdd
             // 
-            this.btnAdd.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.btnAdd.BackColor = System.Drawing.Color.FromArgb(15, 91, 158);
+            this.btnAdd.BackColor = CRMS_Peguit.winforms.Models.Services.Theme.Primary;
             this.btnAdd.Cursor = System.Windows.Forms.Cursors.Hand;
             this.btnAdd.FlatAppearance.BorderSize = 0;
             this.btnAdd.FlatStyle = System.Windows.Forms.FlatStyle.Flat;

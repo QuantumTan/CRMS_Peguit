@@ -63,8 +63,6 @@ namespace CRMS_Peguit.winforms.Models.Services
             grid.AlternatingRowsDefaultCellStyle.SelectionBackColor = SelectionBg;
             grid.AlternatingRowsDefaultCellStyle.SelectionForeColor = TextDark;
             grid.AlternatingRowsDefaultCellStyle.Font = new Font("Segoe UI", 9.5f);
-            grid.AlternatingRowsDefaultCellStyle.Padding = new Padding(12, 0, 12, 0);
-            grid.AlternatingRowsDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
 
             // Smooth Row Hover Tracking
             int hoverRow = -1;
@@ -362,7 +360,7 @@ namespace CRMS_Peguit.winforms.Models.Services
         }
 
         /// <summary>
-        /// Right-aligns column cells and column header with proper 14px right margin padding.
+        /// Right-aligns column cells and column header with consistent right margin padding.
         /// </summary>
         public static void AlignNumericColumn(DataGridView grid, string? columnName)
         {
@@ -373,8 +371,8 @@ namespace CRMS_Peguit.winforms.Models.Services
             if (col == null) return;
             col.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
             col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight;
-            col.DefaultCellStyle.Padding = new Padding(8, 0, 14, 0);
-            col.HeaderCell.Style.Padding = new Padding(8, 0, 14, 0);
+            col.DefaultCellStyle.Padding = new Padding(8, 0, 12, 0);
+            col.HeaderCell.Style.Padding = new Padding(8, 0, 12, 0);
         }
 
         /// <summary>
@@ -517,6 +515,102 @@ namespace CRMS_Peguit.winforms.Models.Services
             path.AddArc(bounds.X, bounds.Bottom - d, d, d, 90, 90);
             path.CloseFigure();
             return path;
+        }
+
+        /// <summary>
+        /// Creates a standardized empty-state panel that fits seamlessly inside any module's main grid card.
+        /// Features vector icon or emoji, bold title, helper description, and optional reset button.
+        /// </summary>
+        public static Panel CreateEmptyStatePanel(KpiIconType icon, string title, string description, Action? onReset = null, string resetText = "Clear Filters & Search")
+        {
+            var pnl = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.White,
+                Visible = false
+            };
+
+            var innerPanel = new Panel
+            {
+                Size = new Size(440, onReset != null ? 240 : 180),
+                BackColor = Color.Transparent
+            };
+
+            var pnlIcon = new Panel
+            {
+                Size = new Size(48, 48),
+                Location = new Point((440 - 48) / 2, 10),
+                BackColor = Color.FromArgb(239, 246, 255)
+            };
+            UiRadiusHelper.ApplyRoundedCorners(pnlIcon, 12);
+            pnlIcon.Paint += (s, e) =>
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                var iconRect = new Rectangle(12, 12, 24, 24);
+                if (icon != KpiIconType.None)
+                {
+                    UiIconHelper.DrawIcon(e.Graphics, icon, iconRect, Theme.Primary);
+                }
+                else
+                {
+                    using var font = new Font("Segoe UI", 14f);
+                    TextRenderer.DrawText(e.Graphics, "🔍", font, iconRect, Theme.Primary, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                }
+            };
+
+            var lblTitle = new Label
+            {
+                Text = title,
+                Font = new Font("Segoe UI", 13f, FontStyle.Bold),
+                ForeColor = Theme.TextPrimary,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Size = new Size(440, 28),
+                Location = new Point(0, 68)
+            };
+
+            var lblDesc = new Label
+            {
+                Text = description,
+                Font = new Font("Segoe UI", 9.5f),
+                ForeColor = Theme.TextSecondary,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Size = new Size(420, 44),
+                Location = new Point(10, 98)
+            };
+
+            innerPanel.Controls.Add(pnlIcon);
+            innerPanel.Controls.Add(lblTitle);
+            innerPanel.Controls.Add(lblDesc);
+
+            if (onReset != null)
+            {
+                var btnReset = new Button
+                {
+                    Text = resetText,
+                    Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                    ForeColor = Theme.Primary,
+                    BackColor = Theme.PrimaryLight,
+                    Cursor = Cursors.Hand,
+                    FlatStyle = FlatStyle.Flat,
+                    Size = new Size(190, 36),
+                    Location = new Point((440 - 190) / 2, 154)
+                };
+                btnReset.FlatAppearance.BorderColor = Color.FromArgb(191, 219, 254);
+                UiRadiusHelper.StyleButton(btnReset, 8);
+                btnReset.Click += (_, _) => onReset.Invoke();
+                innerPanel.Controls.Add(btnReset);
+            }
+
+            pnl.Controls.Add(innerPanel);
+            pnl.Resize += (_, _) =>
+            {
+                innerPanel.Location = new Point(
+                    Math.Max(10, (pnl.Width - innerPanel.Width) / 2),
+                    Math.Max(20, (pnl.Height - innerPanel.Height) / 2));
+            };
+
+            return pnl;
         }
     }
 }

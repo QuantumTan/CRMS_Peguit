@@ -5,6 +5,7 @@ using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services.Offline;
 using Microsoft.EntityFrameworkCore;
 
 namespace CRMS_Peguit.winforms.Controllers
@@ -26,6 +27,11 @@ namespace CRMS_Peguit.winforms.Controllers
         /// </summary>
         public List<TaskReminder> GetAll()
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                return LocalDataCache.Instance.GetCachedTaskReminders(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+            }
+
             try
             {
                 int currentUserId = CurrentSession.UserId;
@@ -118,6 +124,13 @@ namespace CRMS_Peguit.winforms.Controllers
             // Automatically set status based on DueDate
             reminder.Status = reminder.DueDate < DateTime.UtcNow ? "Overdue" : "Pending";
 
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var qItem = SyncService.Instance.EnqueueOfflineCreate("TaskReminder", reminder, TenantId, currentUserId);
+                reminder.TaskReminderId = -qItem.QueueId;
+                return reminder;
+            }
+
             _db.TaskReminders.Add(reminder);
             _db.SaveChanges();
 
@@ -129,6 +142,13 @@ namespace CRMS_Peguit.winforms.Controllers
             ValidateRelationshipExclusivity(reminder);
 
             int currentUserId = CurrentSession.UserId;
+
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                SyncService.Instance.EnqueueOfflineUpdate("TaskReminder", reminder.TaskReminderId, reminder, TenantId, currentUserId, reminder.UpdatedAt ?? reminder.CreatedAt);
+                return;
+            }
+
             var item = _db.TaskReminders
                 .SingleOrDefault(r => r.TaskReminderId == reminder.TaskReminderId && r.AssignedToUserId == currentUserId && !r.IsDeleted);
 

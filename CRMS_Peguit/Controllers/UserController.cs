@@ -8,6 +8,7 @@ using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.infrastructure.Security;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Controllers
 {
@@ -82,6 +83,16 @@ namespace CRMS_Peguit.winforms.Controllers
                 throw new InvalidOperationException("Invalid role selected. You can only create Managers and Agents.");
             }
 
+            if (!ValidationHelper.IsValidPersonName(user.FirstName, "First name", out string? fnError))
+            {
+                throw new InvalidOperationException(fnError);
+            }
+
+            if (!ValidationHelper.IsValidPersonName(user.LastName, "Last name", out string? lnError))
+            {
+                throw new InvalidOperationException(lnError);
+            }
+
             if (user.PersonId <= 0 && user.Person == null)
             {
                 user.Person = new Person
@@ -121,6 +132,16 @@ namespace CRMS_Peguit.winforms.Controllers
         public async Task UpdateAsync(User user)
         {
             EnsureAdmin();
+
+            if (!ValidationHelper.IsValidPersonName(user.FirstName, "First name", out string? fnError))
+            {
+                throw new InvalidOperationException(fnError);
+            }
+
+            if (!ValidationHelper.IsValidPersonName(user.LastName, "Last name", out string? lnError))
+            {
+                throw new InvalidOperationException(lnError);
+            }
 
             if (await _db.Users.AnyAsync(u => u.Person.Email == user.Email && u.UserId != user.UserId))
             {
@@ -171,6 +192,26 @@ namespace CRMS_Peguit.winforms.Controllers
 
             user.Status = "active";
             await _db.SaveChangesAsync();
+        }
+
+        public async Task<List<User>> GetDeactivatedAsync()
+        {
+            try
+            {
+                return await _db.Users
+                    .Include(u => u.Person)
+                    .Include(u => u.Role)
+                    .AsNoTracking()
+                    .Where(u => u.Status.ToLower() == "inactive")
+                    .OrderBy(u => u.Person.LastName)
+                    .ThenBy(u => u.Person.FirstName)
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[UserController.GetDeactivatedAsync] Error: {ex.Message}");
+                return new List<User>();
+            }
         }
 
         public async Task ChangePasswordAsync(int id, string newPassword)

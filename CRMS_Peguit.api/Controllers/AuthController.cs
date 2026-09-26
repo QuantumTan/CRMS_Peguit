@@ -40,6 +40,17 @@ namespace CRMS_Peguit.api.Controllers
         }
 
         // ==============================================
+        // CONNECTIVITY PING
+        // ==============================================
+
+        [HttpGet("ping")]
+        [HttpHead("ping")]
+        public IActionResult Ping()
+        {
+            return Ok(new { status = "online", timestamp = DateTime.UtcNow });
+        }
+
+        // ==============================================
         // LOGIN
         // ==============================================
 

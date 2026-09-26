@@ -45,7 +45,11 @@ namespace CRMS_Peguit.infrastructure.Services
                 $"MultipleActiveResultSets=True;";
 
             var options = new DbContextOptionsBuilder<RealEstateDbContext>()
-                .UseSqlServer(connectionString)
+                .UseSqlServer(connectionString, sqlOptions =>
+                    sqlOptions.EnableRetryOnFailure(
+                        maxRetryCount: 5,
+                        maxRetryDelay: TimeSpan.FromSeconds(30),
+                        errorNumbersToAdd: null))
                 .Options;
 
             return new RealEstateDbContext(options, tenantId: companyId);

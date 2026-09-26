@@ -7,6 +7,8 @@ using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
+using CRMS_Peguit.winforms.Services.Offline;
 using Microsoft.EntityFrameworkCore;
 
 namespace CRMS_Peguit.winforms.Controllers
@@ -27,6 +29,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public List<Customer> GetAll()
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var cached = LocalDataCache.Instance.GetCachedCustomers(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                if (cached.Count > 0) return cached;
+            }
+
             try
             {
                 var query = _db.Customers.AsNoTracking();
@@ -42,10 +50,17 @@ namespace CRMS_Peguit.winforms.Controllers
                             : c.CreatedByUserId == currentUserId);
                 }
 
-                return query
+                var list = query
                     .OrderBy(x => x.Person.LastName)
                     .ThenBy(x => x.Person.FirstName)
                     .ToList();
+
+                if (list.Count > 0)
+                {
+                    _ = Task.Run(() => LocalDataCache.Instance.SaveCustomersMirror(TenantId, list));
+                }
+
+                return list;
             }
             catch (Exception ex)
             {
@@ -60,6 +75,50 @@ namespace CRMS_Peguit.winforms.Controllers
             string? search = null,
             string? filterStatus = null)
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var cached = LocalDataCache.Instance.GetCachedCustomers(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                if (cached.Count == 0)
+                {
+                    try
+                    {
+                        var localQuery = _db.Customers.Include(c => c.Person).AsNoTracking().Where(c => !c.IsDeleted);
+                        if (!RbacService.HasFullOversight && RbacService.IsAgent)
+                        {
+                            int currentUserId = CurrentSession.UserId;
+                            localQuery = localQuery.Where(c =>
+                                (c.AssignedAgentId.HasValue && c.AssignedAgentId.Value > 0)
+                                    ? c.AssignedAgentId.Value == currentUserId
+                                    : c.CreatedByUserId == currentUserId);
+                        }
+                        var localList = await localQuery.ToListAsync();
+                        if (localList.Count > 0)
+                        {
+                            cached = localList;
+                            _ = Task.Run(() => LocalDataCache.Instance.SaveCustomersMirror(TenantId, localList));
+                        }
+                    }
+                    catch { }
+                }
+
+                if (cached.Count > 0)
+                {
+                    if (!string.IsNullOrWhiteSpace(search))
+                    {
+                        string s = search.Trim().ToLowerInvariant();
+                        cached = cached.Where(c => (c.Person != null && (
+                            c.Person.FirstName.ToLowerInvariant().Contains(s) ||
+                            c.Person.LastName.ToLowerInvariant().Contains(s) ||
+                            (c.Person.Email != null && c.Person.Email.ToLowerInvariant().Contains(s)) ||
+                            (c.Person.Phone != null && c.Person.Phone.Contains(s)))) ||
+                            c.Type.ToLowerInvariant().Contains(s)).ToList();
+                    }
+                    int total = cached.Count;
+                    var paged = cached.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
+                    return new PagedResult<Customer>(paged, total, pageNumber, pageSize);
+                }
+            }
+
             try
             {
                 using var db = LocalDb.CreateContext(TenantId);
@@ -128,6 +187,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public Customer? GetById(int id)
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                return LocalDataCache.Instance.GetCachedCustomers(TenantId, CurrentSession.UserId, RbacService.IsAgent)
+                    .FirstOrDefault(c => c.CustomerId == id);
+            }
+
             var item = _db.Customers
                 .AsNoTracking()
                 .SingleOrDefault(x => x.CustomerId == id);
@@ -173,6 +238,13 @@ namespace CRMS_Peguit.winforms.Controllers
                 ApplyAssignmentDefaults(customer);
             }
 
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                var qItem = SyncService.Instance.EnqueueOfflineCreate("Customer", customer, TenantId, CurrentSession.UserId);
+                customer.CustomerId = -qItem.QueueId;
+                return customer;
+            }
+
             _db.Customers.Add(customer);
             _db.SaveChanges();
             LogActivity("Customer Created", null, customer.CustomerId, $"Customer '{customer.FullName}' was created.");
@@ -191,6 +263,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public void Update(Customer customer)
         {
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                SyncService.Instance.EnqueueOfflineUpdate("Customer", customer.CustomerId, customer, TenantId, CurrentSession.UserId, customer.CreatedAt);
+                return;
+            }
+
             var item = _db.Customers
                 .Include(c => c.Person)
                 .SingleOrDefault(x => x.CustomerId == customer.CustomerId);
@@ -257,6 +335,25 @@ namespace CRMS_Peguit.winforms.Controllers
             item.IsDeleted = false;
             item.DeletedAt = null;
             _db.SaveChanges();
+            LogActivity("Customer Restored", null, item.CustomerId, $"Customer '{item.FullName}' was restored from archive.");
+        }
+
+        public List<Customer> GetArchived()
+        {
+            try
+            {
+                return _db.Customers
+                    .AsNoTracking()
+                    .Include(c => c.Person)
+                    .Where(c => c.IsDeleted)
+                    .OrderByDescending(c => c.DeletedAt)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CustomerController.GetArchived] Error: {ex.Message}");
+                return new List<Customer>();
+            }
         }
 
         public void Delete(Customer customer) => SoftDelete(customer);
@@ -426,6 +523,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 int total = await query.CountAsync();
                 int active = await query.CountAsync(c => c.Status.ToLower() == "active");
                 int inactive = await query.CountAsync(c => c.Status.ToLower() == "inactive");
+                int followUp = await query.CountAsync(c => c.Status.ToLower() == "prospect" || c.AssignmentStatus.ToLower() == "pending");
                 int thisMonth = await query.CountAsync(c => c.CreatedAt.Year == now.Year && c.CreatedAt.Month == now.Month);
 
                 return new CustomerKpiCounts
@@ -433,6 +531,7 @@ namespace CRMS_Peguit.winforms.Controllers
                     Total = total,
                     Active = active,
                     Inactive = inactive,
+                    FollowUp = followUp,
                     ThisMonth = thisMonth
                 };
             }
@@ -527,21 +626,29 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public static bool ValidateCustomerInput(string firstName, string lastName, string? email, out string? errorMessage)
         {
-            if (string.IsNullOrWhiteSpace(firstName))
+            return ValidateCustomerInput(firstName, lastName, email, null, out errorMessage);
+        }
+
+        public static bool ValidateCustomerInput(string firstName, string lastName, string? email, string? phone, out string? errorMessage)
+        {
+            if (!ValidationHelper.IsValidPersonName(firstName, "First name", out errorMessage))
             {
-                errorMessage = "First name is required.";
                 return false;
             }
 
-            if (string.IsNullOrWhiteSpace(lastName))
+            if (!ValidationHelper.IsValidPersonName(lastName, "Last name", out errorMessage))
             {
-                errorMessage = "Last name is required.";
                 return false;
             }
 
             if (!string.IsNullOrWhiteSpace(email) && !ContactEmailService.IsValidEmail(email.Trim()))
             {
                 errorMessage = "Enter a valid email address.";
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(phone) && !ValidationHelper.IsValidPhoneNumber(phone, out errorMessage))
+            {
                 return false;
             }
 
@@ -590,6 +697,7 @@ namespace CRMS_Peguit.winforms.Controllers
         public int Total { get; set; }
         public int Active { get; set; }
         public int Inactive { get; set; }
+        public int FollowUp { get; set; }
         public int ThisMonth { get; set; }
     }
 }

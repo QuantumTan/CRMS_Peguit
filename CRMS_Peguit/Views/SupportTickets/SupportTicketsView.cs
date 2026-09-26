@@ -9,6 +9,7 @@ using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 using CRMS_Peguit.winforms.Views.Shared;
 
 namespace CRMS_Peguit.winforms.Views.SupportTickets
@@ -59,83 +60,16 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
 
         private void InitEmptyState()
         {
-            _pnlEmptyState = new Panel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = Color.White,
-                Visible = false
-            };
-
-            var innerPanel = new Panel
-            {
-                Size = new Size(420, 230),
-                BackColor = Color.Transparent
-            };
-
-            var pnlIcon = new Panel
-            {
-                Size = new Size(48, 48),
-                Location = new Point((420 - 48) / 2, 10),
-                BackColor = Color.FromArgb(239, 246, 255)
-            };
-            UiRadiusHelper.ApplyRoundedCorners(pnlIcon, 12);
-            pnlIcon.Paint += (s, e) =>
-            {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
-                var iconRect = new Rectangle(12, 12, 24, 24);
-                UiIconHelper.DrawIcon(e.Graphics, KpiIconType.Ticket, iconRect, Color.FromArgb(37, 99, 235));
-            };
-
-            var lblTitle = new Label
-            {
-                Text = "No Support Tickets Found",
-                Font = new Font("Segoe UI", 13f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(15, 23, 42),
-                TextAlign = ContentAlignment.MiddleCenter,
-                Size = new Size(420, 26),
-                Location = new Point(0, 68)
-            };
-
-            var lblDesc = new Label
-            {
-                Text = "No tickets match your search or filter criteria.\nTry clearing your search query or selecting a different status filter.",
-                Font = new Font("Segoe UI", 9.5f),
-                ForeColor = Color.FromArgb(100, 116, 139),
-                TextAlign = ContentAlignment.MiddleCenter,
-                Size = new Size(400, 42),
-                Location = new Point(10, 98)
-            };
-
-            var btnReset = new Button
-            {
-                Text = "Clear Filters & Search",
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(15, 91, 158),
-                BackColor = Color.FromArgb(239, 246, 255),
-                Cursor = Cursors.Hand,
-                FlatStyle = FlatStyle.Flat,
-                Size = new Size(180, 36),
-                Location = new Point((420 - 180) / 2, 154)
-            };
-            btnReset.FlatAppearance.BorderColor = Color.FromArgb(191, 219, 254);
-            UiRadiusHelper.StyleButton(btnReset, 8);
-            btnReset.Click += (_, _) =>
-            {
-                txtSearch.Clear();
-                SetFilter("All");
-            };
-
-            innerPanel.Controls.Add(pnlIcon);
-            innerPanel.Controls.Add(lblTitle);
-            innerPanel.Controls.Add(lblDesc);
-            innerPanel.Controls.Add(btnReset);
-
-            _pnlEmptyState.Controls.Add(innerPanel);
-            _pnlEmptyState.Resize += (_, _) =>
-            {
-                innerPanel.Location = new Point((_pnlEmptyState.Width - innerPanel.Width) / 2, Math.Max(20, (_pnlEmptyState.Height - innerPanel.Height) / 2));
-            };
+            _pnlEmptyState = UiGridHelper.CreateEmptyStatePanel(
+                KpiIconType.Ticket,
+                "No Support Tickets Found",
+                "No tickets match your search or filter criteria.\nTry clearing your search query or selecting a different status filter.",
+                () =>
+                {
+                    txtSearch.Clear();
+                    SetFilter("All");
+                },
+                "Clear Filters & Search");
 
             pnlCard.Controls.Add(_pnlEmptyState);
             _pnlEmptyState.BringToFront();
@@ -159,6 +93,11 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             btnAdd.Click += BtnAddClick;
             txtSearch.TextChanged += (_, _) =>
             {
+                if (!string.IsNullOrWhiteSpace(txtSearch.Text) && !string.Equals(_filterStatus, "All", StringComparison.OrdinalIgnoreCase))
+                {
+                    _filterStatus = "All";
+                    UpdateFilterPillStyles();
+                }
                 _searchDebounceTimer.Stop();
                 _searchDebounceTimer.Start();
             };
@@ -181,6 +120,12 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
                 Controls.Add(_btnExport);
                 _btnExport.BringToFront();
             }
+
+            // Case 1: InPlaceFilter mode on all KPI cards
+            kpiTotal.ClickMode = KpiClickMode.InPlaceFilter;
+            kpiOpen.ClickMode = KpiClickMode.InPlaceFilter;
+            kpiInProgress.ClickMode = KpiClickMode.InPlaceFilter;
+            kpiOverdue.ClickMode = KpiClickMode.InPlaceFilter;
 
             // Wire KPI card click-to-filter interaction
             kpiTotal.Click += (_, _) => SetFilter("All");
@@ -209,7 +154,7 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             };
         }
 
-        private async void SetFilter(string filter)
+        public async void SetFilter(string filter)
         {
             if (string.Equals(_filterStatus, filter, StringComparison.OrdinalIgnoreCase) && !string.Equals(filter, "All", StringComparison.OrdinalIgnoreCase))
             {
@@ -219,6 +164,12 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             {
                 _filterStatus = filter;
             }
+
+            if (!string.Equals(_filterStatus, "All", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(txtSearch.Text))
+            {
+                txtSearch.Clear();
+            }
+
             await RefreshGridAsync(resetPage: true);
         }
 
@@ -671,82 +622,88 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
         {
             if (this.IsDisposed) return;
 
-            int rightPadding = 30;
-            int leftMargin = 30;
+            int rightPadding = UiStyleConstants.PageMarginRight;
+            int leftMargin = UiStyleConstants.PageMarginLeft;
             int totalWidth = ClientSize.Width;
 
-            // 1. Position header action buttons
+            // 1. Position and size KPI container explicitly with generous clearance from subtitle
+            pnlKpiContainer.Left = leftMargin;
+            pnlKpiContainer.Top = Math.Max(90, lblSubtitle.Bottom + 10);
+            pnlKpiContainer.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
+            pnlKpiContainer.Height = UiStyleConstants.KpiRowHeight;
+
+            // 2. Position toolbar row (Search box on left, filter pills in center, action buttons rightmost at identical y)
+            int y = pnlKpiContainer.Bottom + 16;
             int rightEdge = totalWidth - rightPadding;
+
             if (btnAdd.Visible)
             {
+                btnAdd.Top = y;
+                btnAdd.Height = UiStyleConstants.ToolbarRowHeight;
                 btnAdd.Left = rightEdge - btnAdd.Width;
-                btnAdd.Top = 22;
                 rightEdge = btnAdd.Left - 10;
             }
             if (_btnExport != null && _btnExport.Visible)
             {
+                _btnExport.Top = y;
+                _btnExport.Height = UiStyleConstants.ToolbarRowHeight;
                 _btnExport.Left = rightEdge - _btnExport.Width;
-                _btnExport.Top = 22;
+                rightEdge = _btnExport.Left - 10;
             }
 
-            // 2. Position and size KPI container explicitly with generous clearance from subtitle
-            pnlKpiContainer.Left = leftMargin;
-            pnlKpiContainer.Top = Math.Max(90, lblSubtitle.Bottom + 10);
-            pnlKpiContainer.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
-            pnlKpiContainer.Height = 104;
-
-            // 3. Position search & filter pills ALWAYS below the KPI container
-            int y = pnlKpiContainer.Bottom + 16;
-
             var pills = new[] { btnFilterOverdue, btnFilterResolved, btnFilterInProgress, btnFilterOpen, btnFilterAll };
-            int filterRight = totalWidth - rightPadding;
+            int filterRight = rightEdge;
             int totalFilterWidth = 0;
             foreach (var p in pills) totalFilterWidth += p.Width + 6;
 
-            int availableForSearch = totalWidth - leftMargin - rightPadding - totalFilterWidth - 20;
+            int availableForSearch = filterRight - leftMargin - totalFilterWidth - 16;
 
-            int cardTop;
             if (availableForSearch >= 180)
             {
                 // Single row
                 foreach (var p in pills)
                 {
-                    p.Top = y + 2;
+                    p.Top = y;
+                    p.Height = UiStyleConstants.ToolbarRowHeight;
                     p.Left = filterRight - p.Width;
                     filterRight = p.Left - 6;
                 }
 
                 txtSearch.Top = y;
                 txtSearch.Left = leftMargin;
-                txtSearch.Width = Math.Min(380, availableForSearch);
+                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
+                txtSearch.Width = Math.Min(UiStyleConstants.SearchBoxWidth, availableForSearch);
 
-                cardTop = y + 42;
+                int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
+                pnlCard.Top = cardTop;
+                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - UiStyleConstants.PageMarginBottom);
             }
             else
             {
-                // Two rows
+                // Two rows: search on row 1, filter pills wrapped to row 2
                 txtSearch.Top = y;
                 txtSearch.Left = leftMargin;
-                txtSearch.Width = Math.Max(180, totalWidth - leftMargin - rightPadding);
+                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
+                txtSearch.Width = Math.Max(180, rightEdge - leftMargin);
 
+                int pillY = y + UiStyleConstants.ToolbarRowHeight + 10;
                 int filterX = leftMargin;
-                int pillY = y + 36;
                 var forwardPills = new[] { btnFilterAll, btnFilterOpen, btnFilterInProgress, btnFilterResolved, btnFilterOverdue };
                 foreach (var p in forwardPills)
                 {
                     p.Top = pillY;
+                    p.Height = UiStyleConstants.ToolbarRowHeight;
                     p.Left = filterX;
                     filterX += p.Width + 6;
                 }
 
-                cardTop = pillY + 40;
+                int cardTop = pillY + UiStyleConstants.ToolbarRowHeight + 14;
+                pnlCard.Top = cardTop;
+                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 20);
             }
 
-            // 4. Position DataGridView card
-            pnlCard.Top = cardTop;
             pnlCard.Left = leftMargin;
             pnlCard.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
-            pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 24);
         }
     }
 }

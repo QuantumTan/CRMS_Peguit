@@ -56,11 +56,27 @@ namespace CRMS_Peguit.winforms.Services
         }
 
         /// <summary>
-        /// Formats integer or count with thousands separators: e.g. "1,250".
+        /// Formats standard date: e.g. "Oct 15, 2026".
         /// </summary>
-        public static string FormatNumber(long number)
+        public static string FormatDate(DateTime? date, string fallback = "—")
         {
-            return number.ToString("N0");
+            return date.HasValue ? date.Value.ToLocalTime().ToString("MMM dd, yyyy") : fallback;
+        }
+
+        /// <summary>
+        /// Formats date and time: e.g. "Oct 15, 2026 02:30 PM".
+        /// </summary>
+        public static string FormatDateTime(DateTime? dateTime, string fallback = "—")
+        {
+            return dateTime.HasValue ? dateTime.Value.ToLocalTime().ToString("MMM dd, yyyy hh:mm tt") : fallback;
+        }
+
+        /// <summary>
+        /// Formats short ISO date: e.g. "2026-10-15".
+        /// </summary>
+        public static string FormatShortDate(DateTime? date, string fallback = "—")
+        {
+            return date.HasValue ? date.Value.ToLocalTime().ToString("yyyy-MM-dd") : fallback;
         }
     }
 }

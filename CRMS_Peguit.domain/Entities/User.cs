@@ -85,9 +85,11 @@ namespace CRMS_Peguit.domain.entities
         public string PasswordHash { get; set; } = string.Empty;
         public int RoleId { get; set; }
         public string Status { get; set; } = string.Empty;
-        public DateTime CreatedAt { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public int? BranchId { get; set; }
 
         public virtual Person Person { get; set; } = null!;
         public virtual Role Role { get; set; } = null!;
+        public virtual Branch? Branch { get; set; }
     }
 }

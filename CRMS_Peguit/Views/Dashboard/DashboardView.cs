@@ -84,8 +84,12 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             pnlRightList.Resize += (_, _) => ResizeListItems(pnlRightList);
 
             BiDisplayConstants.ConfigureStandardPlot(plotGlanceable);
+            plotGlanceable.Cursor = Cursors.Hand;
+            plotGlanceable.Click += (_, _) => RequestNavigation(_chartNavigationTarget);
 
+            lblChartFooter.Cursor = Cursors.Hand;
             lblChartFooter.Click += (_, _) => RequestNavigation(_chartNavigationTarget);
+            pnlChartCard.Cursor = Cursors.Hand;
             pnlChartCard.Click += (_, _) => RequestNavigation(_chartNavigationTarget);
         }
 
@@ -196,60 +200,76 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             pnlQuickActions.Controls.Add(btnLogActivity);
 
             // 4 KPI Cards
-            ConfigureKpiCard(kpi1, "MY ACTIVE LEADS", snapshot.ActiveLeadsCount, "Pipeline leads", BiDisplayConstants.PrimaryAccent, KpiIconType.Target, () => RequestNavigation("Leads"));
-            ConfigureKpiCard(kpi2, "MY OPEN DEALS", snapshot.OpenDealsCount, "Active pipeline", BiDisplayConstants.HighlightAccent, KpiIconType.Briefcase, () => RequestNavigation("Deals"));
-            ConfigureKpiCard(kpi3, "FOLLOW-UPS TODAY", snapshot.FollowUpsDueTodayCount, "Due & overdue", BiDisplayConstants.StatusPending, KpiIconType.Clock, () => RequestNavigation("FollowUps"));
-            ConfigureKpiCard(kpi4, "MY OPEN TICKETS", snapshot.OpenSupportTicketsCount, "Awaiting triage", BiDisplayConstants.SkyAccent, KpiIconType.Ticket, () => RequestNavigation("SupportTickets"));
-
-            // Glanceable Sparkline (last 30 days)
-            RenderAgentSparkline(snapshot.SparklineDealsClosed);
-
-            // Left Card: "Today's Follow-Ups" (max 5, clickable to open)
-            pnlLeftCard.Visible = true;
-            lblLeftTitle.Text = "Today's Follow-Ups";
-            lblLeftSubtitle.Text = snapshot.FollowUpsToday.Count > 0 ? $"{snapshot.FollowUpsToday.Count} due today" : "Due today";
-            pnlLeftList.Controls.Clear();
-
-            if (snapshot.FollowUpsToday.Count == 0)
+            ConfigureKpiCard(kpi1, "MY ACTIVE LEADS", snapshot.ActiveLeadsCount, "Pipeline leads", BiDisplayConstants.PrimaryAccent, KpiIconType.Target, () => RequestNavigation("Leads:All"));
+            ConfigureKpiCard(kpi2, "MY OPEN DEALS", snapshot.OpenDealsCount, "Active pipeline", BiDisplayConstants.HighlightAccent, KpiIconType.Briefcase, () => RequestNavigation("Deals:Offer"));
+            if (CurrentSession.CanAccessActions)
             {
-                lblLeftEmpty.Text = "✓  No follow-ups due today. You're all caught up!";
-                lblLeftEmpty.Visible = true;
+                ConfigureKpiCard(kpi3, "FOLLOW-UPS TODAY", snapshot.FollowUpsDueTodayCount, "Due & overdue", BiDisplayConstants.StatusPending, KpiIconType.Clock, () => RequestNavigation("FollowUps:Today"));
             }
             else
             {
-                lblLeftEmpty.Visible = false;
-                int y = 0;
-                foreach (var item in snapshot.FollowUpsToday)
-                {
-                    string sub = string.IsNullOrWhiteSpace(item.RelatedName) ? $"Priority: {item.Priority}" : $"{item.RelatedName} · {item.Priority}";
+                ConfigureKpiCard(kpi3, "PROPERTIES", snapshot.ActivePropertiesCount, "Active inventory", BiDisplayConstants.HighlightAccent, KpiIconType.Building, () => RequestNavigation("Properties"));
+            }
 
-                    var row = CreateItemRow(
-                        iconText: GetActivityIcon(item.Type),
-                        title: item.Title,
-                        subtitle: sub,
-                        statusText: item.Status,
-                        timeAgo: item.DueTimeText,
-                        onClick: () =>
-                        {
-                            using var fuCtrl = new FollowUpController();
-                            var reminder = fuCtrl.GetById(item.TaskReminderId);
-                            if (reminder != null)
+            ConfigureKpiCard(kpi4, "MY OPEN TICKETS", snapshot.OpenSupportTicketsCount, "Awaiting triage", BiDisplayConstants.SkyAccent, KpiIconType.Ticket, () => RequestNavigation("SupportTickets:Open"));
+
+            // Glanceable Sparkline (last 30 days)
+            _chartNavigationTarget = "Analytics:Deals";
+            RenderAgentSparkline(snapshot.SparklineDealsClosed);
+
+            // Left Card: "Today's Follow-Ups" (gated to Tenant B and Tenant C with Actions access)
+            if (CurrentSession.CanAccessActions)
+            {
+                pnlLeftCard.Visible = true;
+                lblLeftTitle.Text = "Today's Follow-Ups";
+                lblLeftSubtitle.Text = snapshot.FollowUpsToday.Count > 0 ? $"{snapshot.FollowUpsToday.Count} due today" : "Due today";
+                pnlLeftList.Controls.Clear();
+
+                if (snapshot.FollowUpsToday.Count == 0)
+                {
+                    lblLeftEmpty.Text = "✓  No follow-ups due today. You're all caught up!";
+                    lblLeftEmpty.Visible = true;
+                }
+                else
+                {
+                    lblLeftEmpty.Visible = false;
+                    int y = 0;
+                    foreach (var item in snapshot.FollowUpsToday)
+                    {
+                        string sub = string.IsNullOrWhiteSpace(item.RelatedName) ? $"Priority: {item.Priority}" : $"{item.RelatedName} · {item.Priority}";
+
+                        var row = CreateItemRow(
+                            iconText: GetActivityIcon(item.Type),
+                            title: item.Title,
+                            subtitle: sub,
+                            statusText: item.Status,
+                            timeAgo: item.DueTimeText,
+                            onClick: () =>
                             {
-                                using var dlg = new FollowUpInputForm(fuCtrl, reminder);
-                                if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Result != null)
+                                using var fuCtrl = new FollowUpController();
+                                var reminder = fuCtrl.GetById(item.TaskReminderId);
+                                if (reminder != null)
                                 {
-                                    fuCtrl.Update(dlg.Result);
-                                    LoadData();
+                                    using var dlg = new FollowUpInputForm(fuCtrl, reminder);
+                                    if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Result != null)
+                                    {
+                                        fuCtrl.Update(dlg.Result);
+                                        LoadData();
+                                    }
                                 }
                             }
-                        }
-                    );
+                        );
 
-                    row.Location = new Point(0, y);
-                    row.Width = Math.Max(200, pnlLeftList.ClientSize.Width - 4);
-                    pnlLeftList.Controls.Add(row);
-                    y += row.Height + 8;
+                        row.Location = new Point(0, y);
+                        row.Width = Math.Max(200, pnlLeftList.ClientSize.Width - 4);
+                        pnlLeftList.Controls.Add(row);
+                        y += row.Height + 8;
+                    }
                 }
+            }
+            else
+            {
+                pnlLeftCard.Visible = false;
             }
 
             // Middle Card: "My Recent Activity" (last 5, AvatarLabel, StatusText, relative time)
@@ -307,12 +327,13 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             pnlQuickActions.Controls.Add(btnTeamDashboard);
 
             // 4 KPI Cards
-            ConfigureKpiCard(kpi1, "TEAM DEALS CLOSED", snapshot.TeamDealsThisMonthCount, "Current month", BiDisplayConstants.StatusWon, KpiIconType.Briefcase, () => RequestNavigation("Analytics"));
-            ConfigureKpiCard(kpi2, "TEAM OPEN TICKETS", snapshot.TeamOpenTicketsCount, "Across all agents", BiDisplayConstants.StatusLost, KpiIconType.Ticket, () => RequestNavigation("SupportTickets"));
+            ConfigureKpiCard(kpi1, "TEAM DEALS CLOSED", snapshot.TeamDealsThisMonthCount, "Current month", BiDisplayConstants.StatusWon, KpiIconType.Briefcase, () => RequestNavigation("Deals:Closed"));
+            ConfigureKpiCard(kpi2, "TEAM OPEN TICKETS", snapshot.TeamOpenTicketsCount, "Across all agents", BiDisplayConstants.StatusLost, KpiIconType.Ticket, () => RequestNavigation("SupportTickets:Open"));
             ConfigureKpiCard(kpi3, "PENDING ASSIGNMENTS", snapshot.PendingAssignmentsCount, "Awaiting manager action", BiDisplayConstants.StatusPending, KpiIconType.Users, () => RequestNavigation("Approvals"));
-            ConfigureKpiCard(kpi4, "LEAD CONVERSION", $"{snapshot.TeamConversionRate:F1}%", "Team conversion rate", BiDisplayConstants.PrimaryAccent, KpiIconType.Target, () => RequestNavigation("Analytics"));
+            ConfigureKpiCard(kpi4, "LEAD CONVERSION", $"{snapshot.TeamConversionRate:F1}%", "Team conversion rate", BiDisplayConstants.PrimaryAccent, KpiIconType.Target, () => RequestNavigation("Leads:Converted"));
 
             // Glanceable Donut Chart (Won vs Lost)
+            _chartNavigationTarget = "Analytics:Won";
             RenderManagerDonut(snapshot.DealsWonThisMonthCount, snapshot.DealsLostThisMonthCount);
 
             // Left Card: "Pending Assignments" (max 5, with "Assign" button and AvatarLabel)
@@ -430,8 +451,8 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
 
             // 4 KPI Cards: Real, clear titles with one-line subtext for context
             ConfigureKpiCard(kpi1, "Total Active Users", snapshot.TotalActiveUsersCount, snapshot.ActiveUsersSubtext, BiDisplayConstants.PrimaryAccent, KpiIconType.Users, () => RequestNavigation("SalesStaff"));
-            ConfigureKpiCard(kpi2, "Open Support Tickets", snapshot.OpenTicketsCount, snapshot.OpenTicketsSubtext, BiDisplayConstants.StatusLost, KpiIconType.Ticket, () => RequestNavigation("SupportTickets"), null, string.IsNullOrWhiteSpace(snapshot.OpenTicketsSubtext) ? null : BiDisplayConstants.StatusLost);
-            ConfigureKpiCard(kpi3, "Deals Closed This Month", snapshot.DealsClosedThisMonthCount, snapshot.DealsClosedSubtext, BiDisplayConstants.HighlightAccent, KpiIconType.Currency, () => RequestNavigation("Reports:Commission"));
+            ConfigureKpiCard(kpi2, "Open Support Tickets", snapshot.OpenTicketsCount, snapshot.OpenTicketsSubtext, BiDisplayConstants.StatusLost, KpiIconType.Ticket, () => RequestNavigation("SupportTickets:Open"), null, string.IsNullOrWhiteSpace(snapshot.OpenTicketsSubtext) ? null : BiDisplayConstants.StatusLost);
+            ConfigureKpiCard(kpi3, "Deals Closed This Month", snapshot.DealsClosedThisMonthCount, snapshot.DealsClosedSubtext, BiDisplayConstants.HighlightAccent, KpiIconType.Currency, () => RequestNavigation("Deals:Closed"));
             ConfigureKpiCard(kpi4, "Subscription Status", snapshot.SubscriptionStatus, snapshot.SubscriptionExpiryText, BiDisplayConstants.StatusWon, KpiIconType.Building, () => RequestNavigation("Reports"), StatusColorHelper.GetTextColor(snapshot.SubscriptionStatus));
 
             // Multi-section layout container for Admin
@@ -625,9 +646,11 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             };
             _plotAdminTicketBreakdown = new ScottPlot.WinForms.FormsPlot
             {
-                Location = new Point(12, 54)
+                Location = new Point(12, 54),
+                Cursor = Cursors.Hand
             };
             BiDisplayConstants.ConfigureStandardPlot(_plotAdminTicketBreakdown);
+            _plotAdminTicketBreakdown.Click += (_, _) => RequestNavigation("SupportTickets:Open");
 
             _lblAdminTicketBreakdownFooter = new Label
             {
@@ -637,8 +660,9 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
-            _lblAdminTicketBreakdownFooter.Click += (_, _) => RequestNavigation("SupportTickets");
-            _cardTicketBreakdown.Click += (_, _) => RequestNavigation("SupportTickets");
+            _lblAdminTicketBreakdownFooter.Click += (_, _) => RequestNavigation("SupportTickets:Open");
+            _cardTicketBreakdown.Click += (_, _) => RequestNavigation("SupportTickets:Open");
+            _cardTicketBreakdown.Cursor = Cursors.Hand;
 
             _cardTicketBreakdown.Controls.Add(lblTicketTitle);
             _cardTicketBreakdown.Controls.Add(lblTicketSub);
@@ -646,7 +670,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             _cardTicketBreakdown.Controls.Add(_lblAdminTicketBreakdownFooter);
 
             // 3. Commission Trend Card
-            _cardCommissionTrend = new Panel { BackColor = Color.White };
+            _cardCommissionTrend = new Panel { BackColor = Color.White, Cursor = Cursors.Hand };
             UiRadiusHelper.StyleCard(_cardCommissionTrend, 12);
 
             var lblCommTitle = new Label
@@ -667,9 +691,11 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             };
             _plotAdminCommissionTrend = new ScottPlot.WinForms.FormsPlot
             {
-                Location = new Point(12, 54)
+                Location = new Point(12, 54),
+                Cursor = Cursors.Hand
             };
             BiDisplayConstants.ConfigureStandardPlot(_plotAdminCommissionTrend);
+            _plotAdminCommissionTrend.Click += (_, _) => RequestNavigation("Reports:Commission");
 
             _lblAdminCommissionFooter = new Label
             {
@@ -1365,6 +1391,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
 
             card.SetSubtitle(subtitle, subtitleColor);
             card.SetIcon(icon, accentColor);
+            card.ClickMode = KpiClickMode.Navigate;
             card.Cursor = Cursors.Hand;
             card.SetAction(onClick);
         }

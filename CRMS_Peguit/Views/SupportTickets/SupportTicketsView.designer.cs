@@ -38,10 +38,10 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             this.lblSubtitle = new System.Windows.Forms.Label();
             this.btnAdd = new System.Windows.Forms.Button();
             this.pnlKpiContainer = new System.Windows.Forms.TableLayoutPanel();
-            this.kpiTotal = new CRMS_Peguit.winforms.Controls.KpiCard("TOTAL TICKETS", "total", System.Drawing.Color.FromArgb(15, 91, 158));
-            this.kpiOpen = new CRMS_Peguit.winforms.Controls.KpiCard("OPEN TICKETS", "open", System.Drawing.Color.FromArgb(14, 165, 233));
-            this.kpiInProgress = new CRMS_Peguit.winforms.Controls.KpiCard("IN PROGRESS", "in_progress", System.Drawing.Color.FromArgb(245, 158, 11));
-            this.kpiOverdue = new CRMS_Peguit.winforms.Controls.KpiCard("OVERDUE (SLA)", "overdue", System.Drawing.Color.FromArgb(239, 68, 68));
+            this.kpiTotal = new CRMS_Peguit.winforms.Controls.KpiCard("TOTAL TICKETS", "total", CRMS_Peguit.winforms.Models.Services.Theme.Primary);
+            this.kpiOpen = new CRMS_Peguit.winforms.Controls.KpiCard("OPEN TICKETS", "open", CRMS_Peguit.winforms.Models.Services.Theme.StatusInfo);
+            this.kpiInProgress = new CRMS_Peguit.winforms.Controls.KpiCard("IN PROGRESS", "in_progress", CRMS_Peguit.winforms.Models.Services.Theme.StatusPending);
+            this.kpiOverdue = new CRMS_Peguit.winforms.Controls.KpiCard("OVERDUE (SLA)", "overdue", CRMS_Peguit.winforms.Models.Services.Theme.StatusAlert);
             this.txtSearch = new System.Windows.Forms.TextBox();
             this.btnFilterAll = new System.Windows.Forms.Button();
             this.btnFilterOpen = new System.Windows.Forms.Button();
@@ -58,9 +58,9 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             // lblTitle
             // 
             this.lblTitle.AutoSize = true;
-            this.lblTitle.Font = new System.Drawing.Font("Segoe UI", 20F, System.Drawing.FontStyle.Bold);
-            this.lblTitle.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
-            this.lblTitle.Location = new System.Drawing.Point(30, 20);
+            this.lblTitle.Font = CRMS_Peguit.winforms.Services.UiStyleConstants.PageTitleFont;
+            this.lblTitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextPrimary;
+            this.lblTitle.Location = new System.Drawing.Point(CRMS_Peguit.winforms.Services.UiStyleConstants.PageMarginLeft, CRMS_Peguit.winforms.Services.UiStyleConstants.PageMarginTop);
             this.lblTitle.Name = "lblTitle";
             this.lblTitle.Size = new System.Drawing.Size(215, 37);
             this.lblTitle.TabIndex = 0;
@@ -69,9 +69,9 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             // lblSubtitle
             // 
             this.lblSubtitle.AutoSize = true;
-            this.lblSubtitle.Font = new System.Drawing.Font("Segoe UI", 9.5F);
-            this.lblSubtitle.ForeColor = System.Drawing.Color.FromArgb(100, 116, 139);
-            this.lblSubtitle.Location = new System.Drawing.Point(32, 58);
+            this.lblSubtitle.Font = CRMS_Peguit.winforms.Services.UiStyleConstants.SubtitleFont;
+            this.lblSubtitle.ForeColor = CRMS_Peguit.winforms.Models.Services.Theme.TextSecondary;
+            this.lblSubtitle.Location = new System.Drawing.Point(CRMS_Peguit.winforms.Services.UiStyleConstants.PageMarginLeft + 2, 58);
             this.lblSubtitle.Name = "lblSubtitle";
             this.lblSubtitle.Size = new System.Drawing.Size(220, 17);
             this.lblSubtitle.TabIndex = 1;
@@ -79,7 +79,7 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             // 
             // btnAdd
             // 
-            this.btnAdd.BackColor = System.Drawing.Color.FromArgb(15, 91, 158);
+            this.btnAdd.BackColor = CRMS_Peguit.winforms.Models.Services.Theme.Primary;
             this.btnAdd.Cursor = System.Windows.Forms.Cursors.Hand;
             this.btnAdd.FlatAppearance.BorderSize = 0;
             this.btnAdd.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
