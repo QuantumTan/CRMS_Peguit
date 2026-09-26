@@ -13,23 +13,43 @@ namespace CRMS_Peguit.winforms.Models.Services
     public static class DbConfiguration
     {
         private const string DefaultLocalDbConnection =
-            "Server=(localdb)\\mssqllocaldb;Database=CRMS_Local;Trusted_Connection=True;TrustServerCertificate=True;Connect Timeout=30;MultipleActiveResultSets=True;";
+            "Server=(localdb)\\mssqllocaldb;Database=CRMS_Local;Trusted_Connection=True;TrustServerCertificate=True;Connect Timeout=5;MultipleActiveResultSets=True;";
 
         public static string GetLocalConnectionString()
         {
+            string conn;
             var env = Environment.GetEnvironmentVariable("CRMS_CONNECTION");
             if (!string.IsNullOrWhiteSpace(env))
             {
-                return env.Trim();
+                conn = env.Trim();
             }
-
-            var fileSettings = LoadSettingsFromFile();
-            if (!string.IsNullOrWhiteSpace(fileSettings?.LocalConnection))
+            else
             {
-                return fileSettings.LocalConnection.Trim();
+                var fileSettings = LoadSettingsFromFile();
+                if (!string.IsNullOrWhiteSpace(fileSettings?.LocalConnection))
+                {
+                    conn = fileSettings.LocalConnection.Trim();
+                }
+                else
+                {
+                    conn = DefaultLocalDbConnection;
+                }
             }
 
-            return DefaultLocalDbConnection;
+            // Optimize LocalDB timeout: prevent 30s UI freeze on connection hiccups
+            try
+            {
+                var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(conn);
+                if (builder.ConnectTimeout > 5)
+                {
+                    builder.ConnectTimeout = 5;
+                }
+                return builder.ConnectionString;
+            }
+            catch
+            {
+                return conn;
+            }
         }
 
         public static string GetMasterConnectionString()

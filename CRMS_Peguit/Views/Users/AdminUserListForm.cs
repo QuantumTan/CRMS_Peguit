@@ -4,7 +4,9 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Drawing;
 using CRMS_Peguit.domain.entities;
+using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
+using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
 
@@ -14,19 +16,31 @@ namespace CRMS_Peguit.winforms.Views.Users
     {
         private readonly UserController _controller;
         private Panel _pnlEmptyState = null!;
+        private PaginationControl _pagination = null!;
 
         public AdminUserListForm(string initialRoleFilter = "All Roles")
         {
             InitializeComponent();
             _controller = new UserController();
 
+            InitPagination();
             InitEmptyState();
             UiRadiusHelper.StyleCard(pnlCard, 12);
             BindEvents(initialRoleFilter);
             LayoutControls();
             
-            this.Load += async (s, e) => await RefreshGridAsync();
+            this.Load += async (s, e) => await RefreshGridAsync(resetPage: true);
             this.Resize += (s, e) => LayoutControls();
+        }
+
+        private void InitPagination()
+        {
+            _pagination = new PaginationControl();
+            _pagination.SetItemLabel("users");
+            _pagination.PageChanged += async (_, _) => await RefreshGridAsync(resetPage: false);
+            _pagination.PageSizeChanged += async (_, _) => await RefreshGridAsync(resetPage: true);
+            pnlCard.Controls.Add(_pagination);
+            _pagination.BringToFront();
         }
 
         private void InitEmptyState()
@@ -133,7 +147,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             pnlCard.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
         }
 
-        private async Task RefreshGridAsync()
+        private async Task RefreshGridAsync(bool resetPage = false)
         {
             if (this.IsDisposed) return;
 
@@ -166,13 +180,32 @@ namespace CRMS_Peguit.winforms.Views.Users
                     }
                 }
 
+                int filteredTotal = users.Count;
+                int page = resetPage ? 1 : (_pagination?.CurrentPage ?? 1);
+                int pageSize = _pagination?.PageSize ?? 25;
+
+                _pagination?.UpdatePagination(filteredTotal, page, pageSize);
+
+                if (filteredTotal == 0)
+                {
+                    grid.DataSource = null;
+                    _pnlEmptyState.Visible = true;
+                    return;
+                }
+
+                _pnlEmptyState.Visible = false;
+
+                int effectivePage = _pagination?.CurrentPage ?? 1;
+                var pageUsers = users.Skip((effectivePage - 1) * pageSize).Take(pageSize).ToList();
+
                 grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
-                grid.DataSource = users.Select(u => new
+                grid.DataSource = pageUsers.Select(u => new
                 {
                     u.UserId,
                     Name = u.FullName,
                     Email = u.Email,
                     Role = rolesDict.ContainsKey(u.RoleId) ? rolesDict[u.RoleId] : "Unknown",
+                    Branch = u.Branch?.BranchName ?? "All Branches",
                     Status = u.Status
                 }).ToList();
 
@@ -197,6 +230,13 @@ namespace CRMS_Peguit.winforms.Views.Users
                     roleCol.HeaderText = "ROLE";
                     roleCol.FillWeight = 100;
                     roleCol.MinimumWidth = 100;
+                }
+                if (grid.Columns["Branch"] is DataGridViewColumn branchCol)
+                {
+                    branchCol.HeaderText = "BRANCH";
+                    branchCol.FillWeight = 120;
+                    branchCol.MinimumWidth = 110;
+                    branchCol.Visible = CurrentSession.CanAccessBranching;
                 }
                 if (grid.Columns["Status"] is DataGridViewColumn statusCol)
                 {

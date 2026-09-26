@@ -30,14 +30,10 @@ namespace CRMS_Peguit.winforms.Controllers
         // =========================================================================
         public List<SupportTicket> GetAll()
         {
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                return LocalDataCache.Instance.GetCachedSupportTickets(TenantId, CurrentSession.UserId, RbacService.IsAgent);
-            }
-
             try
             {
-                var query = _db.SupportTickets
+                using var db = LocalDb.CreateContext(TenantId);
+                var query = db.SupportTickets
                     .Include(t => t.Customer).ThenInclude(c => c.Person)
                     .Include(t => t.RaisedByUser).ThenInclude(u => u.Person)
                     .Include(t => t.AssignedToUser).ThenInclude(u => u!.Person)
@@ -55,6 +51,15 @@ namespace CRMS_Peguit.winforms.Controllers
                         (t.AssignedToUserId.HasValue && t.AssignedToUserId.Value > 0)
                             ? t.AssignedToUserId.Value == currentUserId
                             : t.RaisedByUserId == currentUserId);
+                }
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    int bId = CurrentSession.ActiveBranchId.Value;
+                    query = query.Where(t =>
+                        (t.AssignedToUser != null && t.AssignedToUser.BranchId == bId) ||
+                        (t.RaisedByUser != null && t.RaisedByUser.BranchId == bId) ||
+                        (t.Customer != null && t.Customer.AssignedAgent != null && t.Customer.AssignedAgent.BranchId == bId));
                 }
 
                 return query
@@ -79,6 +84,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 using var db = LocalDb.CreateContext(TenantId);
                 var query = db.SupportTickets
                     .Include(t => t.Customer).ThenInclude(c => c.Person)
+                    .Include(t => t.Customer).ThenInclude(c => c.AssignedAgent)
                     .Include(t => t.RaisedByUser).ThenInclude(u => u.Person)
                     .Include(t => t.AssignedToUser).ThenInclude(u => u!.Person)
                     .AsNoTracking()
@@ -91,6 +97,15 @@ namespace CRMS_Peguit.winforms.Controllers
                         (t.AssignedToUserId.HasValue && t.AssignedToUserId.Value > 0)
                             ? t.AssignedToUserId.Value == currentUserId
                             : t.RaisedByUserId == currentUserId);
+                }
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    int bId = CurrentSession.ActiveBranchId.Value;
+                    query = query.Where(t =>
+                        (t.AssignedToUser != null && t.AssignedToUser.BranchId == bId) ||
+                        (t.RaisedByUser != null && t.RaisedByUser.BranchId == bId) ||
+                        (t.Customer != null && t.Customer.AssignedAgent != null && t.Customer.AssignedAgent.BranchId == bId));
                 }
 
                 if (!string.IsNullOrWhiteSpace(filterStatus) && !string.Equals(filterStatus, "All", StringComparison.OrdinalIgnoreCase))
@@ -229,14 +244,6 @@ namespace CRMS_Peguit.winforms.Controllers
             // SLA calculation:
             ticket.DueDate = CalculateSlaDueDate(ticket.Priority, ticket.CreatedAt);
 
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                var qItem = SyncService.Instance.EnqueueOfflineCreate("SupportTicket", ticket, TenantId, CurrentSession.UserId);
-                ticket.TicketId = -qItem.QueueId;
-                ticket.TicketNumber = $"TCK-OFFLINE-{qItem.QueueId:D4}";
-                return ticket;
-            }
-
             // Temporary ticket number; will refine with TicketId after identity generation if needed
             ticket.TicketNumber = "TCK-TEMP";
 
@@ -246,6 +253,11 @@ namespace CRMS_Peguit.winforms.Controllers
             // Set formatted permanent human-readable reference: TCK-00042
             ticket.TicketNumber = $"TCK-{ticket.TicketId:D5}";
             _db.SaveChanges();
+
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                SyncService.Instance.EnqueueOfflineCreate("SupportTicket", ticket, TenantId, CurrentSession.UserId);
+            }
 
             // Add creation audit entry in comment thread
             string authorName = CurrentSession.CurrentUser?.FullName ?? $"User #{ticket.RaisedByUserId}";
@@ -627,7 +639,8 @@ namespace CRMS_Peguit.winforms.Controllers
             if (_cachedAgentDict != null) return _cachedAgentDict;
             try
             {
-                _cachedAgentDict = _db.Users
+                using var db = LocalDb.CreateContext(TenantId);
+                _cachedAgentDict = db.Users
                     .AsNoTracking()
                     .Include(u => u.Person)
                     .ToDictionary(u => u.UserId, u => u.FullName);

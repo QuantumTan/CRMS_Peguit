@@ -45,6 +45,7 @@ namespace CRMS_Peguit.winforms.Views.Archives
         private string _filterType = "All";
         private List<ArchivedItemDto> _allItems = new();
         private bool _isLoading = false;
+        private PaginationControl _pagination = null!;
 
         public ArchivesView()
         {
@@ -53,12 +54,23 @@ namespace CRMS_Peguit.winforms.Views.Archives
             _userController = new UserController();
 
             InitializeComponent();
+            InitPagination();
             ApplyStyling();
             BindEvents();
             UpdateFilterPillStyles();
 
             this.Load += async (_, _) => await RefreshDataAsync();
             this.Resize += (_, _) => LayoutToolbar();
+        }
+
+        private void InitPagination()
+        {
+            _pagination = new PaginationControl();
+            _pagination.SetItemLabel("archived items");
+            _pagination.PageChanged += (_, _) => ApplyFilterAndDisplay(resetPage: false);
+            _pagination.PageSizeChanged += (_, _) => ApplyFilterAndDisplay(resetPage: true);
+            pnlCard.Controls.Add(_pagination);
+            _pagination.BringToFront();
         }
 
         private void InitializeComponent()
@@ -387,7 +399,7 @@ namespace CRMS_Peguit.winforms.Views.Archives
             }
         }
 
-        private void ApplyFilterAndDisplay()
+        private void ApplyFilterAndDisplay(bool resetPage = false)
         {
             var query = _allItems.AsEnumerable();
 
@@ -407,9 +419,29 @@ namespace CRMS_Peguit.winforms.Views.Archives
             }
 
             var items = query.ToList();
+            int total = items.Count;
+            int page = resetPage ? 1 : (_pagination?.CurrentPage ?? 1);
+            int pageSize = _pagination?.PageSize ?? 25;
+
+            _pagination?.UpdatePagination(total, page, pageSize);
 
             grid.Rows.Clear();
-            foreach (var item in items)
+
+            if (total == 0)
+            {
+                grid.Visible = false;
+                _pnlEmptyState.Visible = true;
+                lblSubtitle.Text = $"{_allItems.Count:N0} total archived items · 0 displayed";
+                return;
+            }
+
+            _pnlEmptyState.Visible = false;
+            grid.Visible = true;
+
+            int effectivePage = _pagination?.CurrentPage ?? 1;
+            var pageItems = items.Skip((effectivePage - 1) * pageSize).Take(pageSize).ToList();
+
+            foreach (var item in pageItems)
             {
                 int rowIndex = grid.Rows.Add(
                     item.Id,
@@ -422,10 +454,7 @@ namespace CRMS_Peguit.winforms.Views.Archives
                 grid.Rows[rowIndex].Tag = item;
             }
 
-            bool hasData = items.Count > 0;
-            grid.Visible = hasData;
-            _pnlEmptyState.Visible = !hasData;
-            lblSubtitle.Text = $"{_allItems.Count:N0} total archived items · {items.Count:N0} displayed";
+            lblSubtitle.Text = $"{_allItems.Count:N0} total archived items · {items.Count:N0} filtered";
         }
 
         private async Task RestoreItemAsync(ArchivedItemDto item)

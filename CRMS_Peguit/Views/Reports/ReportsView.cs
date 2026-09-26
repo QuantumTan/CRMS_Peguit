@@ -18,7 +18,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
     {
         private enum ViewDisplayMode { Both, ChartsOnly, TableOnly }
 
-        private readonly ReportsController _controller;
+        private readonly ReportsController? _controller;
         private object? _currentData;
         private object? _unfilteredData;
         private ReportHeader? _currentHeader;
@@ -30,9 +30,8 @@ namespace CRMS_Peguit.winforms.Views.Reports
         public ReportsView()
         {
             InitializeComponent();
-            _controller = new ReportsController();
 
-            if (!RbacService.HasFullOversight)
+            if (RbacService.IsSuperAdmin || !RbacService.HasFullOversight)
             {
                 pnlTop.Visible = false;
                 pnlFilters.Visible = false;
@@ -43,6 +42,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 return;
             }
 
+            _controller = new ReportsController();
             SetupUI();
             LoadDropdowns();
             WireEvents();
@@ -131,13 +131,46 @@ namespace CRMS_Peguit.winforms.Views.Reports
             });
             cboDateRange.SelectedIndex = 2; // Default to "This Year" for rich graphical view
 
-            var agents = _controller.GetAgentList();
             cboAgentFilter.Items.Add(new AgentPickerItem(0, "All Agents", ""));
-            foreach (var a in agents)
-                cboAgentFilter.Items.Add(a);
             cboAgentFilter.SelectedIndex = 0;
+            _ = LoadAgentsAsync();
 
             UpdateSecondaryFilter();
+        }
+
+        private async Task LoadAgentsAsync()
+        {
+            if (_controller == null) return;
+            try
+            {
+                var agents = await Task.Run(() => _controller.GetAgentList());
+                if (IsDisposed) return;
+
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() =>
+                    {
+                        if (IsDisposed) return;
+                        foreach (var a in agents)
+                        {
+                            if (!cboAgentFilter.Items.Cast<object>().Any(item => (item as AgentPickerItem)?.UserId == a.UserId))
+                                cboAgentFilter.Items.Add(a);
+                        }
+                    }));
+                }
+                else
+                {
+                    foreach (var a in agents)
+                    {
+                        if (!cboAgentFilter.Items.Cast<object>().Any(item => (item as AgentPickerItem)?.UserId == a.UserId))
+                            cboAgentFilter.Items.Add(a);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ReportsView] LoadAgentsAsync error: {ex.Message}");
+            }
         }
 
         public void SelectReport(string reportNameOrKeyword, string? dateRange = null)
@@ -352,6 +385,8 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
         private async void BtnRunReport_Click(object? sender, EventArgs e)
         {
+            if (_controller == null) return;
+
             lblLoading.Visible = true;
             btnRunReport.Enabled = false;
             btnExportCsv.Enabled = false;
@@ -990,7 +1025,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
         private void ExportDynamic(string filePath, bool isCsv)
         {
-            if (_currentData == null || _currentHeader == null) return;
+            if (_controller == null || _currentData == null || _currentHeader == null) return;
             var rpt = cboReportType.SelectedItem?.ToString() ?? "";
 
             if (rpt.Contains("Sales"))

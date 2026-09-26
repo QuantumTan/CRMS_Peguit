@@ -26,11 +26,17 @@ namespace CRMS_Peguit.winforms.Models.Roles
                 "Properties",
                 "Deals",
                 "Campaigns",
+                "Activities",
+                "Approvals",
+                "TasksReminders",
+                "FollowUps",
                 "Reports",
                 "Analytics",
                 "SupportTickets",
                 "Managers",
-                "SalesStaff"
+                "SalesStaff",
+                "Branching",
+                "Branches"
             };
         }
 

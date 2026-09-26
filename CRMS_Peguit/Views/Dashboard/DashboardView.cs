@@ -434,140 +434,179 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             lblTitle.Text = snapshot.Greeting;
             lblSubtitle.Text = snapshot.DateText;
 
-            // Quick Actions: "Manage Users", "View Reports"
+            // Quick Actions: "Manage Users", "View Reports" / "View Deals"
             pnlQuickActions.Controls.Clear();
             var btnManageUsers = CreateQuickActionButton("👥 Manage Users", BiDisplayConstants.PrimaryAccent, Color.White, (_, _) =>
             {
                 RequestNavigation("SalesStaff");
             });
-
-            var btnReports = CreateQuickActionButton("📊 View Reports", Color.White, Theme.TextPrimary, (_, _) =>
-            {
-                RequestNavigation("Reports");
-            }, hasBorder: true);
-
             pnlQuickActions.Controls.Add(btnManageUsers);
-            pnlQuickActions.Controls.Add(btnReports);
+
+            if (CurrentSession.CanAccessBusinessIntelligence)
+            {
+                var btnReports = CreateQuickActionButton("📊 View Reports", Color.White, Theme.TextPrimary, (_, _) =>
+                {
+                    RequestNavigation("Reports");
+                }, hasBorder: true);
+                pnlQuickActions.Controls.Add(btnReports);
+            }
+            else
+            {
+                var btnDeals = CreateQuickActionButton("💼 View Deals", Color.White, Theme.TextPrimary, (_, _) =>
+                {
+                    RequestNavigation("Deals");
+                }, hasBorder: true);
+                pnlQuickActions.Controls.Add(btnDeals);
+            }
 
             // 4 KPI Cards: Real, clear titles with one-line subtext for context
             ConfigureKpiCard(kpi1, "Total Active Users", snapshot.TotalActiveUsersCount, snapshot.ActiveUsersSubtext, BiDisplayConstants.PrimaryAccent, KpiIconType.Users, () => RequestNavigation("SalesStaff"));
             ConfigureKpiCard(kpi2, "Open Support Tickets", snapshot.OpenTicketsCount, snapshot.OpenTicketsSubtext, BiDisplayConstants.StatusLost, KpiIconType.Ticket, () => RequestNavigation("SupportTickets:Open"), null, string.IsNullOrWhiteSpace(snapshot.OpenTicketsSubtext) ? null : BiDisplayConstants.StatusLost);
             ConfigureKpiCard(kpi3, "Deals Closed This Month", snapshot.DealsClosedThisMonthCount, snapshot.DealsClosedSubtext, BiDisplayConstants.HighlightAccent, KpiIconType.Currency, () => RequestNavigation("Deals:Closed"));
-            ConfigureKpiCard(kpi4, "Subscription Status", snapshot.SubscriptionStatus, snapshot.SubscriptionExpiryText, BiDisplayConstants.StatusWon, KpiIconType.Building, () => RequestNavigation("Reports"), StatusColorHelper.GetTextColor(snapshot.SubscriptionStatus));
+            
+            if (CurrentSession.CanAccessBusinessIntelligence)
+            {
+                ConfigureKpiCard(kpi4, "Subscription Status", snapshot.SubscriptionStatus, snapshot.SubscriptionExpiryText, BiDisplayConstants.StatusWon, KpiIconType.Building, () => RequestNavigation("Reports"), StatusColorHelper.GetTextColor(snapshot.SubscriptionStatus));
+            }
+            else
+            {
+                ConfigureKpiCard(kpi4, "Subscription Tier", "Tenant A (Standard)", "Transactions & Data Collection", BiDisplayConstants.StatusWon, KpiIconType.Building, () => RequestNavigation("Deals"));
+            }
 
             // Multi-section layout container for Admin
             BuildOrGetAdminContainer();
 
-            // 1. Team Roster Snapshot
-            if (_pnlTeamRosterList != null)
+            _pnlAdminContainer?.SuspendLayout();
+            _pnlTeamRosterList?.SuspendLayout();
+            _pnlTicketsAttentionList?.SuspendLayout();
+            _pnlRecentActivityList?.SuspendLayout();
+
+            try
             {
-                _pnlTeamRosterList.Controls.Clear();
-                if (_cardTeamRoster?.Controls["lblRosterSub"] is Label lblSub)
+                // 1. Team Roster Snapshot
+                if (_pnlTeamRosterList != null)
                 {
-                    lblSub.Text = $"{snapshot.TeamRoster.Count} members listed · Oversight only";
+                    _pnlTeamRosterList.Controls.Clear();
+                    if (_cardTeamRoster?.Controls["lblRosterSub"] is Label lblSub)
+                    {
+                        lblSub.Text = $"{snapshot.TeamRoster.Count} members listed · Oversight only";
+                    }
+
+                    if (snapshot.TeamRoster.Count == 0)
+                    {
+                        var lblEmpty = new Label
+                        {
+                            Text = "👥  No team members found.",
+                            Font = new Font("Segoe UI", 9.5f),
+                            ForeColor = Theme.TextSecondary,
+                            TextAlign = ContentAlignment.MiddleCenter,
+                            Dock = DockStyle.Fill
+                        };
+                        _pnlTeamRosterList.Controls.Add(lblEmpty);
+                    }
+                    else
+                    {
+                        int y = 0;
+                        foreach (var item in snapshot.TeamRoster)
+                        {
+                            var row = CreateTeamRosterRow(item, () => RequestNavigation("SalesStaff"));
+                            row.Location = new Point(0, y);
+                            row.Width = Math.Max(200, _pnlTeamRosterList.ClientSize.Width - 4);
+                            _pnlTeamRosterList.Controls.Add(row);
+                            y += row.Height + 8;
+                        }
+                    }
                 }
 
-                if (snapshot.TeamRoster.Count == 0)
+                // 4. Tickets Needing Attention
+                if (_pnlTicketsAttentionList != null)
                 {
-                    var lblEmpty = new Label
+                    _pnlTicketsAttentionList.Controls.Clear();
+                    if (_cardTicketsAttention?.Controls["lblAttnSub"] is Label lblSub)
                     {
-                        Text = "👥  No team members found.",
-                        Font = new Font("Segoe UI", 9.5f),
-                        ForeColor = Theme.TextSecondary,
-                        TextAlign = ContentAlignment.MiddleCenter,
-                        Dock = DockStyle.Fill
-                    };
-                    _pnlTeamRosterList.Controls.Add(lblEmpty);
+                        lblSub.Text = $"{snapshot.TicketsNeedingAttention.Count} oldest open support tickets";
+                    }
+
+                    if (snapshot.TicketsNeedingAttention.Count == 0)
+                    {
+                        var lblEmpty = new Label
+                        {
+                            Text = "✓  No open tickets needing attention. Support queue clear!",
+                            Font = new Font("Segoe UI", 9.5f),
+                            ForeColor = Theme.TextSecondary,
+                            TextAlign = ContentAlignment.MiddleCenter,
+                            Dock = DockStyle.Fill
+                        };
+                        _pnlTicketsAttentionList.Controls.Add(lblEmpty);
+                    }
+                    else
+                    {
+                        int y = 0;
+                        foreach (var item in snapshot.TicketsNeedingAttention)
+                        {
+                            var row = CreateTicketAttentionRow(item, () => RequestNavigation("SupportTickets"));
+                            row.Location = new Point(0, y);
+                            row.Width = Math.Max(200, _pnlTicketsAttentionList.ClientSize.Width - 4);
+                            _pnlTicketsAttentionList.Controls.Add(row);
+                            y += row.Height + 8;
+                        }
+                    }
                 }
-                else
+
+                // 5. Recent System Activity (Real entries only; fully omitted if no data exists)
+                bool hasRealData = snapshot.RecentSystemActivities.Count > 0;
+                if (_cardRecentActivity != null)
                 {
-                    int y = 0;
-                    foreach (var item in snapshot.TeamRoster)
+                    _cardRecentActivity.Visible = hasRealData;
+                    if (hasRealData && _pnlRecentActivityList != null)
                     {
-                        var row = CreateTeamRosterRow(item, () => RequestNavigation("SalesStaff"));
-                        row.Location = new Point(0, y);
-                        row.Width = Math.Max(200, _pnlTeamRosterList.ClientSize.Width - 4);
-                        _pnlTeamRosterList.Controls.Add(row);
-                        y += row.Height + 8;
+                        _pnlRecentActivityList.Controls.Clear();
+                        int y = 0;
+                        foreach (var log in snapshot.RecentSystemActivities)
+                        {
+                            var row = CreateItemRow(
+                                iconText: log.UseAvatar ? null : log.Icon,
+                                title: log.Title,
+                                subtitle: log.Details,
+                                statusText: log.Status,
+                                timeAgo: log.TimeAgo,
+                                onClick: null,
+                                useAvatar: log.UseAvatar,
+                                avatarName: log.AvatarName
+                            );
+
+                            row.Location = new Point(0, y);
+                            row.Width = Math.Max(200, _pnlRecentActivityList.ClientSize.Width - 4);
+                            _pnlRecentActivityList.Controls.Add(row);
+                            y += row.Height + 8;
+                        }
                     }
                 }
             }
-
-            // 2. Ticket Breakdown Donut Chart
-            RenderAdminTicketDonut(snapshot.OpenTicketsBreakdown, snapshot.InProgressTicketsBreakdown, snapshot.ResolvedTicketsBreakdown);
-
-            // 3. Commission Trend Bar Chart
-            RenderAdminCommissionTrend(snapshot.CommissionTrendLast6Months);
-
-            // 4. Tickets Needing Attention
-            if (_pnlTicketsAttentionList != null)
+            finally
             {
-                _pnlTicketsAttentionList.Controls.Clear();
-                if (_cardTicketsAttention?.Controls["lblAttnSub"] is Label lblSub)
-                {
-                    lblSub.Text = $"{snapshot.TicketsNeedingAttention.Count} oldest open support tickets";
-                }
-
-                if (snapshot.TicketsNeedingAttention.Count == 0)
-                {
-                    var lblEmpty = new Label
-                    {
-                        Text = "✓  No open tickets needing attention. Support queue clear!",
-                        Font = new Font("Segoe UI", 9.5f),
-                        ForeColor = Theme.TextSecondary,
-                        TextAlign = ContentAlignment.MiddleCenter,
-                        Dock = DockStyle.Fill
-                    };
-                    _pnlTicketsAttentionList.Controls.Add(lblEmpty);
-                }
-                else
-                {
-                    int y = 0;
-                    foreach (var item in snapshot.TicketsNeedingAttention)
-                    {
-                        var row = CreateTicketAttentionRow(item, () => RequestNavigation("SupportTickets"));
-                        row.Location = new Point(0, y);
-                        row.Width = Math.Max(200, _pnlTicketsAttentionList.ClientSize.Width - 4);
-                        _pnlTicketsAttentionList.Controls.Add(row);
-                        y += row.Height + 8;
-                    }
-                }
-            }
-
-            // 5. Recent System Activity (Real entries only; fully omitted if no data exists)
-            bool hasRealData = snapshot.RecentSystemActivities.Count > 0;
-            if (_cardRecentActivity != null)
-            {
-                _cardRecentActivity.Visible = hasRealData;
-                if (hasRealData && _pnlRecentActivityList != null)
-                {
-                    _pnlRecentActivityList.Controls.Clear();
-                    int y = 0;
-                    foreach (var log in snapshot.RecentSystemActivities)
-                    {
-                        var row = CreateItemRow(
-                            iconText: log.UseAvatar ? null : log.Icon,
-                            title: log.Title,
-                            subtitle: log.Details,
-                            statusText: log.Status,
-                            timeAgo: log.TimeAgo,
-                            onClick: null,
-                            useAvatar: log.UseAvatar,
-                            avatarName: log.AvatarName
-                        );
-
-                        row.Location = new Point(0, y);
-                        row.Width = Math.Max(200, _pnlRecentActivityList.ClientSize.Width - 4);
-                        _pnlRecentActivityList.Controls.Add(row);
-                        y += row.Height + 8;
-                    }
-                }
+                _pnlTeamRosterList?.ResumeLayout(false);
+                _pnlTicketsAttentionList?.ResumeLayout(false);
+                _pnlRecentActivityList?.ResumeLayout(false);
+                _pnlAdminContainer?.ResumeLayout(false);
             }
 
             if (_pnlAdminContainer != null)
             {
                 LayoutAdminControls();
             }
+
+            // Defer chart rendering slightly to ensure cards & layout paint immediately without freezing UI thread
+            BeginInvoke(() =>
+            {
+                if (IsDisposed) return;
+
+                // 2. Ticket Breakdown Donut Chart
+                RenderAdminTicketDonut(snapshot.OpenTicketsBreakdown, snapshot.InProgressTicketsBreakdown, snapshot.ResolvedTicketsBreakdown);
+
+                // 3. Commission Trend Bar Chart
+                RenderAdminCommissionTrend(snapshot.CommissionTrendLast6Months);
+            });
         }
 
         private Panel BuildOrGetAdminContainer()

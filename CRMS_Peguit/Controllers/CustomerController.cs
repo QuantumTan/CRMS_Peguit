@@ -29,15 +29,10 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public List<Customer> GetAll()
         {
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                var cached = LocalDataCache.Instance.GetCachedCustomers(TenantId, CurrentSession.UserId, RbacService.IsAgent);
-                if (cached.Count > 0) return cached;
-            }
-
             try
             {
-                var query = _db.Customers.AsNoTracking();
+                using var db = LocalDb.CreateContext(TenantId);
+                var query = db.Customers.AsNoTracking();
 
                 // R23 & R25 (revised): Visibility scoped to creator while Pending, assignee once assigned.
                 // Manager/Admin retain full oversight (R26).
@@ -48,6 +43,13 @@ namespace CRMS_Peguit.winforms.Controllers
                         (c.AssignedAgentId.HasValue && c.AssignedAgentId.Value > 0)
                             ? c.AssignedAgentId.Value == currentUserId
                             : c.CreatedByUserId == currentUserId);
+                }
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    int activeBranch = CurrentSession.ActiveBranchId.Value;
+                    query = query.Where(c => (c.AssignedAgent != null && c.AssignedAgent.BranchId == activeBranch) ||
+                                             (c.CreatedByUser != null && c.CreatedByUser.BranchId == activeBranch));
                 }
 
                 var list = query
@@ -75,55 +77,13 @@ namespace CRMS_Peguit.winforms.Controllers
             string? search = null,
             string? filterStatus = null)
         {
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                var cached = LocalDataCache.Instance.GetCachedCustomers(TenantId, CurrentSession.UserId, RbacService.IsAgent);
-                if (cached.Count == 0)
-                {
-                    try
-                    {
-                        var localQuery = _db.Customers.Include(c => c.Person).AsNoTracking().Where(c => !c.IsDeleted);
-                        if (!RbacService.HasFullOversight && RbacService.IsAgent)
-                        {
-                            int currentUserId = CurrentSession.UserId;
-                            localQuery = localQuery.Where(c =>
-                                (c.AssignedAgentId.HasValue && c.AssignedAgentId.Value > 0)
-                                    ? c.AssignedAgentId.Value == currentUserId
-                                    : c.CreatedByUserId == currentUserId);
-                        }
-                        var localList = await localQuery.ToListAsync();
-                        if (localList.Count > 0)
-                        {
-                            cached = localList;
-                            _ = Task.Run(() => LocalDataCache.Instance.SaveCustomersMirror(TenantId, localList));
-                        }
-                    }
-                    catch { }
-                }
-
-                if (cached.Count > 0)
-                {
-                    if (!string.IsNullOrWhiteSpace(search))
-                    {
-                        string s = search.Trim().ToLowerInvariant();
-                        cached = cached.Where(c => (c.Person != null && (
-                            c.Person.FirstName.ToLowerInvariant().Contains(s) ||
-                            c.Person.LastName.ToLowerInvariant().Contains(s) ||
-                            (c.Person.Email != null && c.Person.Email.ToLowerInvariant().Contains(s)) ||
-                            (c.Person.Phone != null && c.Person.Phone.Contains(s)))) ||
-                            c.Type.ToLowerInvariant().Contains(s)).ToList();
-                    }
-                    int total = cached.Count;
-                    var paged = cached.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
-                    return new PagedResult<Customer>(paged, total, pageNumber, pageSize);
-                }
-            }
-
             try
             {
                 using var db = LocalDb.CreateContext(TenantId);
                 var query = db.Customers
                     .Include(c => c.Person)
+                    .Include(c => c.AssignedAgent)
+                    .Include(c => c.CreatedByUser)
                     .AsNoTracking()
                     .Where(c => !c.IsDeleted);
 
@@ -134,6 +94,13 @@ namespace CRMS_Peguit.winforms.Controllers
                         (c.AssignedAgentId.HasValue && c.AssignedAgentId.Value > 0)
                             ? c.AssignedAgentId.Value == currentUserId
                             : c.CreatedByUserId == currentUserId);
+                }
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    int activeBranch = CurrentSession.ActiveBranchId.Value;
+                    query = query.Where(c => (c.AssignedAgent != null && c.AssignedAgent.BranchId == activeBranch) ||
+                                             (c.CreatedByUser != null && c.CreatedByUser.BranchId == activeBranch));
                 }
 
                 if (!string.IsNullOrWhiteSpace(filterStatus) && !string.Equals(filterStatus, "All", StringComparison.OrdinalIgnoreCase))
@@ -176,33 +143,58 @@ namespace CRMS_Peguit.winforms.Controllers
                     .Take(validPageSize)
                     .ToListAsync();
 
+                // Keep local SQLite mirror updated in background
+                if (items.Count > 0)
+                {
+                    _ = Task.Run(() => LocalDataCache.Instance.SaveCustomersMirror(TenantId, items));
+                }
+
                 return new PagedResult<Customer>(items, totalCount, validPage, validPageSize);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[CustomerController.GetPagedAsync] Error: {ex.Message}");
-                return new PagedResult<Customer>(new List<Customer>(), 0, pageNumber, pageSize);
+                System.Diagnostics.Debug.WriteLine($"[CustomerController.GetPagedAsync] LocalDb exception, falling back to cache: {ex.Message}");
+                var cached = LocalDataCache.Instance.GetCachedCustomers(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    string s = search.Trim().ToLowerInvariant();
+                    cached = cached.Where(c => (c.Person != null && (
+                        c.Person.FirstName.ToLowerInvariant().Contains(s) ||
+                        c.Person.LastName.ToLowerInvariant().Contains(s) ||
+                        (c.Person.Email != null && c.Person.Email.ToLowerInvariant().Contains(s)) ||
+                        (c.Person.Phone != null && c.Person.Phone.Contains(s)))) ||
+                        c.Type.ToLowerInvariant().Contains(s)).ToList();
+                }
+
+                int total = cached.Count;
+                var paged = cached.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
+                return new PagedResult<Customer>(paged, total, pageNumber, pageSize);
             }
         }
 
         public Customer? GetById(int id)
         {
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            try
             {
+                var item = _db.Customers
+                    .Include(c => c.Person)
+                    .AsNoTracking()
+                    .SingleOrDefault(x => x.CustomerId == id);
+
+                if (item is null) return null;
+
+                if (!RbacService.CanAgentViewRecord(item.AssignedAgentId, item.CreatedByUserId))
+                    return null;
+
+                return item;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CustomerController.GetById] LocalDb query failed, falling back to cache: {ex.Message}");
                 return LocalDataCache.Instance.GetCachedCustomers(TenantId, CurrentSession.UserId, RbacService.IsAgent)
                     .FirstOrDefault(c => c.CustomerId == id);
             }
-
-            var item = _db.Customers
-                .AsNoTracking()
-                .SingleOrDefault(x => x.CustomerId == id);
-
-            if (item is null) return null;
-
-            if (!RbacService.CanAgentViewRecord(item.AssignedAgentId, item.CreatedByUserId))
-                return null;
-
-            return item;
         }
 
         public Customer Add(Customer customer)
@@ -238,15 +230,9 @@ namespace CRMS_Peguit.winforms.Controllers
                 ApplyAssignmentDefaults(customer);
             }
 
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                var qItem = SyncService.Instance.EnqueueOfflineCreate("Customer", customer, TenantId, CurrentSession.UserId);
-                customer.CustomerId = -qItem.QueueId;
-                return customer;
-            }
-
             _db.Customers.Add(customer);
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveCustomersMirror(TenantId, new[] { customer }); } catch { }
             LogActivity("Customer Created", null, customer.CustomerId, $"Customer '{customer.FullName}' was created.");
 
             if (customer.AssignedAgentId == null || customer.AssignedAgentId <= 0 || customer.AssignmentStatus == "pending_review")
@@ -258,6 +244,11 @@ namespace CRMS_Peguit.winforms.Controllers
                 _notifCtrl.CreateNotification(TenantId, customer.AssignedAgentId.Value, NotificationType.CustomerAssigned, "Customer Assigned to You", $"You have been assigned Customer '{customer.FullName}'.", "Customer", customer.CustomerId);
             }
 
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                SyncService.Instance.EnqueueOfflineCreate("Customer", customer, TenantId, CurrentSession.UserId);
+            }
+
             return customer;
         }
 
@@ -266,7 +257,6 @@ namespace CRMS_Peguit.winforms.Controllers
             if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
             {
                 SyncService.Instance.EnqueueOfflineUpdate("Customer", customer.CustomerId, customer, TenantId, CurrentSession.UserId, customer.CreatedAt);
-                return;
             }
 
             var item = _db.Customers
@@ -309,6 +299,7 @@ namespace CRMS_Peguit.winforms.Controllers
             }
 
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveCustomersMirror(TenantId, new[] { item }); } catch { }
 
             LogActivity("Customer Updated", null, item.CustomerId, $"Customer '{item.FullName}' was updated.");
         }
@@ -322,6 +313,7 @@ namespace CRMS_Peguit.winforms.Controllers
             item.IsDeleted = true;
             item.DeletedAt = DateTime.UtcNow;
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveCustomersMirror(TenantId, new[] { item }); } catch { }
             LogActivity("Customer Archived", null, item.CustomerId, $"Customer '{item.FullName}' was archived.");
         }
 
@@ -335,6 +327,7 @@ namespace CRMS_Peguit.winforms.Controllers
             item.IsDeleted = false;
             item.DeletedAt = null;
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveCustomersMirror(TenantId, new[] { item }); } catch { }
             LogActivity("Customer Restored", null, item.CustomerId, $"Customer '{item.FullName}' was restored from archive.");
         }
 
@@ -477,7 +470,8 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public List<Customer> GetPendingReview()
         {
-            return _db.Customers
+            using var db = LocalDb.CreateContext(TenantId);
+            return db.Customers
                 .AsNoTracking()
                 .Where(c => c.AssignmentStatus == "pending_review" || c.AssignedAgentId == null)
                 .OrderByDescending(c => c.CreatedAt)

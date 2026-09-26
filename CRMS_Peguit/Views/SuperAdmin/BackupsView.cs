@@ -31,6 +31,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         private List<BackupLogDto> _backups = new();
 
         private DataGridView _grid = null!;
+        private PaginationControl _pagination = null!;
         private Button _btnRunBackup = null!;
         private Button _btnRestore = null!;
         private Button _btnSeedAllTenants = null!;
@@ -315,8 +316,19 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 lblEmptyDesc.Location = new Point(cx - (lblEmptyDesc.Width / 2), cy + 20);
             };
 
+            // Pagination Control
+            _pagination = new PaginationControl
+            {
+                Dock = DockStyle.Bottom
+            };
+            _pagination.PageChanged += (_, _) => RenderGrid(resetPage: false);
+            _pagination.PageSizeChanged += (_, _) => RenderGrid(resetPage: true);
+
             pnlCard.Controls.Add(_grid);
             pnlCard.Controls.Add(_pnlEmptyState);
+            pnlCard.Controls.Add(_pagination);
+            _pagination.BringToFront();
+
             pnlWrapper.Controls.Add(pnlCard);
 
             // Add in reverse docking order: Fill -> Warn -> Toolbar -> Header
@@ -331,7 +343,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             try
             {
                 _backups = await _controller.GetBackupHistoryAsync();
-                RenderGrid();
+                RenderGrid(resetPage: true);
             }
             catch (Exception ex)
             {
@@ -340,25 +352,37 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             }
         }
 
-        private void RenderGrid()
+        private void RenderGrid(bool resetPage = false)
         {
-            var list = _backups.Select(b => new
+            if (resetPage)
             {
-                b.BackupId,
-                BackupDateFormatted = b.BackupDate.ToLocalTime().ToString("MMM dd, yyyy  h:mm tt"),
-                b.Status,
-                b.FileLocation,
-                b.PerformedByName
-            }).ToList();
+                _pagination.ResetPage();
+            }
+
+            int totalRecords = _backups.Count;
+            var list = _backups
+                .Skip((_pagination.CurrentPage - 1) * _pagination.PageSize)
+                .Take(_pagination.PageSize)
+                .Select(b => new
+                {
+                    b.BackupId,
+                    BackupDateFormatted = b.BackupDate.ToLocalTime().ToString("MMM dd, yyyy  h:mm tt"),
+                    b.Status,
+                    b.FileLocation,
+                    b.PerformedByName
+                }).ToList();
 
             _grid.DataSource = list;
 
-            bool hasData = list.Count > 0;
+            bool hasData = totalRecords > 0;
             _grid.Visible = hasData;
+            _pagination.Visible = hasData;
             _pnlEmptyState.Visible = !hasData;
 
+            _pagination.UpdatePagination(totalRecords, _pagination.CurrentPage, _pagination.PageSize);
+
             _lblLastStatus.Text = hasData
-                ? $"{_backups.Count} backup snapshot{(_backups.Count != 1 ? "s" : "")} recorded  ·  Latest: {_backups.First().BackupDate.ToLocalTime():MMM dd, yyyy  h:mm tt}"
+                ? $"{totalRecords} backup snapshot{(totalRecords != 1 ? "s" : "")} recorded  ·  Latest: {_backups.First().BackupDate.ToLocalTime():MMM dd, yyyy  h:mm tt}"
                 : "No platform snapshots recorded yet";
         }
 

@@ -269,11 +269,11 @@ namespace CRMS_Peguit.winforms.Views.Deals
                 _currentPageDeals = pagedResult.Items;
 
                 if (_customers.Count == 0)
-                    _customers = _controller.GetCustomerNames();
+                    _customers = await System.Threading.Tasks.Task.Run(() => _controller.GetCustomerNames());
                 if (_properties.Count == 0)
-                    _properties = _controller.GetPropertyAddresses();
+                    _properties = await System.Threading.Tasks.Task.Run(() => _controller.GetPropertyAddresses());
                 if (_agents.Count == 0)
-                    _agents = _controller.GetAgentNames();
+                    _agents = await System.Threading.Tasks.Task.Run(() => _controller.GetAgentNames());
 
                 _pagination.UpdatePagination(pagedResult.TotalCount, pagedResult.PageNumber, pagedResult.PageSize);
                 BindCurrentPage();

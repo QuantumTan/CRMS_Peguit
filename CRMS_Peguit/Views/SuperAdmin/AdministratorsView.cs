@@ -41,6 +41,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
         // ── Grid ─────────────────────────────────────────────────────────────
         private DataGridView _grid = null!;
+        private PaginationControl _pagination = null!;
 
         public AdministratorsView()
         {
@@ -214,10 +215,18 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 Location = new Point(pnlCardHeader.Width - 284, 16)
             };
-            _txtSearch.TextChanged += (_, _) => ApplyFilter();
+            _txtSearch.TextChanged += (_, _) => ApplyFilter(resetPage: true);
             pnlCardHeader.SizeChanged += (_, _) =>
                 _txtSearch.Location = new Point(pnlCardHeader.Width - 284, 16);
             pnlCardHeader.Controls.Add(_txtSearch);
+
+            // Pagination Control
+            _pagination = new PaginationControl
+            {
+                Dock = DockStyle.Bottom
+            };
+            _pagination.PageChanged += (_, _) => ApplyFilter(resetPage: false);
+            _pagination.PageSizeChanged += (_, _) => ApplyFilter(resetPage: true);
 
             // DataGridView
             _grid = new DataGridView
@@ -307,7 +316,9 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _grid.CellClick += Grid_CellClick;
 
             pnlTableCard.Controls.Add(_grid);
+            pnlTableCard.Controls.Add(_pagination);
             pnlTableCard.Controls.Add(pnlCardHeader);
+            _pagination.BringToFront();
 
             pnlGridWrapper.Controls.Add(pnlTableCard);
 
@@ -327,7 +338,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             {
                 _allAdmins = await _controller.GetAdministratorsAsync();
                 UpdateKpiMetrics();
-                ApplyFilter();
+                ApplyFilter(resetPage: true);
             }
             catch (Exception ex)
             {
@@ -358,11 +369,16 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _kpiMfaEnabled.SetSelected(filterKey == "mfa_on");
             _kpiWithoutMfa.SetSelected(filterKey == "mfa_off");
 
-            ApplyFilter();
+            ApplyFilter(resetPage: true);
         }
 
-        private void ApplyFilter()
+        private void ApplyFilter(bool resetPage = false)
         {
+            if (resetPage)
+            {
+                _pagination.ResetPage();
+            }
+
             var query = _allAdmins.AsEnumerable();
 
             // 1. KPI Filter
@@ -390,22 +406,29 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                     a.RoleName.Contains(search, StringComparison.OrdinalIgnoreCase));
             }
 
-            var list = query.Select((a, idx) => new
-            {
-                a.UserId,
-                a.TenantId,
-                a.FullName,
-                a.Email,
-                RoleName = a.RoleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) ? "Super Admin" : a.RoleName,
-                a.CompanyName,
-                Status = a.Status,
-                MfaStatus = (a.RoleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) || a.UserId % 2 == 1) ? "Enabled" : "Disabled",
-                LastLogin = idx == 0 ? "Sep 23, 2026 · 9:14 AM" : (idx == 1 ? "Sep 22, 2026 · 4:30 PM" : (idx == 2 ? "Sep 21, 2026 · 11:00 AM" : "Aug 5, 2026 · 2:15 PM")),
-                JoinedDate = idx == 0 ? "Jan 1, 2025" : (idx == 1 ? "Mar 15, 2025" : (idx == 2 ? "Jun 10, 2025" : "Jul 20, 2025")),
-                Actions = "View  Deactivate"
-            }).ToList();
+            var fullList = query.ToList();
+            int totalRecords = fullList.Count;
 
-            _grid.DataSource = list;
+            var paged = fullList
+                .Skip((_pagination.CurrentPage - 1) * _pagination.PageSize)
+                .Take(_pagination.PageSize)
+                .Select((a, idx) => new
+                {
+                    a.UserId,
+                    a.TenantId,
+                    a.FullName,
+                    a.Email,
+                    RoleName = a.RoleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) ? "Super Admin" : a.RoleName,
+                    a.CompanyName,
+                    Status = a.Status,
+                    MfaStatus = (a.RoleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) || a.UserId % 2 == 1) ? "Enabled" : "Disabled",
+                    LastLogin = idx == 0 ? "Sep 23, 2026 · 9:14 AM" : (idx == 1 ? "Sep 22, 2026 · 4:30 PM" : (idx == 2 ? "Sep 21, 2026 · 11:00 AM" : "Aug 5, 2026 · 2:15 PM")),
+                    JoinedDate = idx == 0 ? "Jan 1, 2025" : (idx == 1 ? "Mar 15, 2025" : (idx == 2 ? "Jun 10, 2025" : "Jul 20, 2025")),
+                    Actions = "View  Deactivate"
+                }).ToList();
+
+            _grid.DataSource = paged;
+            _pagination.UpdatePagination(totalRecords, _pagination.CurrentPage, _pagination.PageSize);
         }
 
         // ──────────────────────────────────────────────────────────────────────

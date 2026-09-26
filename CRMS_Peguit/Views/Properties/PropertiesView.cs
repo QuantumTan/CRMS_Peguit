@@ -185,11 +185,11 @@ namespace CRMS_Peguit.winforms.Views.Properties
 
                 if (_owners.Count == 0)
                 {
-                    _owners = _controller.GetOwnerCustomers().ToDictionary(x => x.CustomerId, x => x.FullName);
+                    _owners = await System.Threading.Tasks.Task.Run(() => _controller.GetOwnerCustomers().ToDictionary(x => x.CustomerId, x => x.FullName));
                 }
                 if (_agents.Count == 0)
                 {
-                    _agents = _controller.GetAgents().ToDictionary(x => x.UserId, x => x.FullName);
+                    _agents = await System.Threading.Tasks.Task.Run(() => _controller.GetAgents().ToDictionary(x => x.UserId, x => x.FullName));
                 }
 
                 _pagination.UpdatePagination(pagedResult.TotalCount, pagedResult.PageNumber, pagedResult.PageSize);

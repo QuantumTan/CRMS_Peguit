@@ -54,6 +54,11 @@ namespace CRMS_Peguit.winforms
                 SetActiveNavButton(btnAdminPanel);
                 BtnAdminPanelClick(btnAdminPanel, EventArgs.Empty);
             }
+            else if (CurrentSession.TenantTier == TenantTier.TenantA)
+            {
+                SetActiveNavButton(btnDeals);
+                BtnDealsClick(btnDeals, EventArgs.Empty);
+            }
             else
             {
                 SetActiveNavButton(btnDashboard);
@@ -75,11 +80,23 @@ namespace CRMS_Peguit.winforms
             pnlLogoHeader.Cursor = Cursors.Hand;
             picLogo.Cursor = Cursors.Hand;
             lblLogo.Cursor = Cursors.Hand;
-            EventHandler navDashboard = (s, e) => { SetActiveNavButton(btnDashboard); BtnDashboardClick(s, e); };
+            EventHandler navDashboard = (s, e) =>
+            {
+                if (CurrentSession.TenantTier == TenantTier.TenantA)
+                {
+                    SetActiveNavButton(btnDeals);
+                    BtnDealsClick(s, e);
+                }
+                else
+                {
+                    SetActiveNavButton(btnDashboard);
+                    BtnDashboardClick(s, e);
+                }
+            };
             picLogo.Click += navDashboard;
             lblLogo.Click += navDashboard;
             pnlLogoHeader.Click += navDashboard;
-            mainToolTip.SetToolTip(pnlLogoHeader, "NEXA CRM SYSTEM — Go to Dashboard");
+            mainToolTip.SetToolTip(pnlLogoHeader, CurrentSession.TenantTier == TenantTier.TenantA ? "NEXA CRM SYSTEM — Go to Deals" : "NEXA CRM SYSTEM — Go to Dashboard");
         }
 
         private void InitNavButtons()
@@ -92,6 +109,7 @@ namespace CRMS_Peguit.winforms
             _navButtonInfo[btnBranching] = ("🏢", "Branches");
             _navButtonInfo[btnDeals] = ("💼", "Deals");
             _navButtonInfo[btnCampaigns] = ("📣", "Campaigns");
+            _navButtonInfo[btnClientRetention] = ("💌", "Client Retention");
             _navButtonInfo[btnActivities] = ("📈", "Activities");
             _navButtonInfo[btnFollowUps] = ("⏱", "Follow-Ups");
             _navButtonInfo[btnSupportTickets] = ("🎟", "Support Tickets");
@@ -179,6 +197,7 @@ namespace CRMS_Peguit.winforms
             btnProperties.Click += (s, e) => { SetActiveNavButton(btnProperties); BtnPropertiesClick(s, e); };
             btnDeals.Click += (s, e) => { SetActiveNavButton(btnDeals); BtnDealsClick(s, e); };
             btnCampaigns.Click += (s, e) => { SetActiveNavButton(btnCampaigns); BtnCampaignsClick(s, e); };
+            btnClientRetention.Click += (s, e) => { SetActiveNavButton(btnClientRetention); BtnClientRetentionClick(s, e); };
             btnActivities.Click += (s, e) => { SetActiveNavButton(btnActivities); BtnActivitiesClick(s, e); };
             btnFollowUps.Click += (s, e) => { SetActiveNavButton(btnFollowUps); BtnFollowUpsClick(s, e); };
             btnAnalytics.Click += (s, e) => { SetActiveNavButton(btnAnalytics); BtnAnalyticsClick(s, e); };
@@ -187,6 +206,13 @@ namespace CRMS_Peguit.winforms
             btnSupportTickets.Click += (s, e) => { SetActiveNavButton(btnSupportTickets); BtnSupportTicketsClick(s, e); };
             btnAdminPanel.Click += (s, e) => { SetActiveNavButton(btnAdminPanel); BtnAdminPanelClick(s, e); };
             btnBranching.Click += (s, e) => { SetActiveNavButton(btnBranching); BtnBranchingClick(s, e); };
+            lblTenantTierBadge.Click += (s, e) =>
+            {
+                if (CurrentSession.CanAccessBranching)
+                {
+                    ShowBranchSwitcherMenu();
+                }
+            };
 
             // ── Global Search: debounced TextChanged → floating results dropdown ──
             _searchDebounce = new System.Windows.Forms.Timer { Interval = 300 };
@@ -339,14 +365,15 @@ namespace CRMS_Peguit.winforms
         // GLOBAL SEARCH — floating results dropdown
         // =====================================================
 
-        private void ShowGlobalSearchResults()
+        private async void ShowGlobalSearchResults()
         {
             string query = txtGlobalSearch.Text.Trim();
             if (string.IsNullOrWhiteSpace(query)) return;
 
             DismissSearchDropDown();
 
-            var results = GlobalSearchService.Search(query, maxPerModule: 5);
+            var results = await Task.Run(() => GlobalSearchService.Search(query, maxPerModule: 5));
+            if (IsDisposed || string.IsNullOrWhiteSpace(txtGlobalSearch.Text)) return;
 
             _searchDropDown = new ToolStripDropDown
             {
@@ -612,7 +639,7 @@ namespace CRMS_Peguit.winforms
             else if (CurrentSession.TenantTier == TenantTier.TenantC)
             {
                 string branchStr = string.IsNullOrWhiteSpace(CurrentSession.ActiveBranchName) ? "All Branches" : CurrentSession.ActiveBranchName;
-                lblTenantTierBadge.Text = $"🏢 Tenant C (Enterprise) • {branchStr}";
+                lblTenantTierBadge.Text = $"🏢 Tenant C (Enterprise) • {branchStr} ▾";
                 lblTenantTierBadge.BackColor = Color.FromArgb(236, 253, 245);
                 lblTenantTierBadge.ForeColor = Color.FromArgb(4, 120, 87);
             }
@@ -628,6 +655,8 @@ namespace CRMS_Peguit.winforms
                 lblTenantTierBadge.BackColor = Color.FromArgb(241, 245, 249);
                 lblTenantTierBadge.ForeColor = Color.FromArgb(71, 85, 105);
             }
+            lblTenantTierBadge.Cursor = CurrentSession.CanAccessBranching ? Cursors.Hand : Cursors.Default;
+            mainToolTip.SetToolTip(lblTenantTierBadge, CurrentSession.CanAccessBranching ? "Click to switch active branch context" : null);
             lblTenantTierBadge.Visible = true;
 
             // ── Master & Multi-Tenant Navigation Gating ──
@@ -649,10 +678,12 @@ namespace CRMS_Peguit.winforms
 
             // Actions: Gated to Tenant B and Tenant C
             btnCampaigns.Visible = CurrentSession.CanAccess("Campaigns") && CurrentSession.CanAccessActions;
-            btnActivities.Visible = CurrentSession.CanAccess("Activities");
+            btnClientRetention.Visible = CurrentSession.CanAccess("Campaigns") && CurrentSession.CanAccessActions;
+            btnActivities.Visible = CurrentSession.CanAccess("Activities") && CurrentSession.CanAccessActions;
             btnFollowUps.Visible = CurrentSession.CanAccess("TasksReminders") && RbacService.IsAgent && CurrentSession.CanAccessActions;
 
             // Business Intelligence: Gated to Tenant B and Tenant C
+            btnDashboard.Visible = CurrentSession.CanAccessBusinessIntelligence;
             btnAnalytics.Visible = (CurrentSession.CanAccess("Analytics") || CurrentSession.CanAccess("Reports")) && CurrentSession.CanAccessBusinessIntelligence;
             if (RbacService.IsAgent)
             {
@@ -784,6 +815,14 @@ namespace CRMS_Peguit.winforms
                     SetActiveNavButton(btnCampaigns);
                     BtnCampaignsClick(btnCampaigns, EventArgs.Empty);
                     break;
+                case "clientretention":
+                case "retention":
+                case "emailautomation":
+                case "automatedemail":
+                    if (!CurrentSession.CanAccess("Campaigns")) return;
+                    SetActiveNavButton(btnClientRetention);
+                    BtnClientRetentionClick(btnClientRetention, EventArgs.Empty);
+                    break;
                 case "approvals":
                     if (!CurrentSession.CanAccess("Approvals") && !RbacService.CanApproveAssignments) return;
                     SetActiveNavButton(btnApprovals);
@@ -910,8 +949,20 @@ namespace CRMS_Peguit.winforms
             ShowViewCached("Campaigns", () => new CampaignsView());
         }
 
+        private void BtnClientRetentionClick(object? sender, EventArgs e)
+        {
+            if (!CurrentSession.CanAccess("Campaigns")) return;
+            ShowViewCached("ClientRetention", () => new ClientRetentionView());
+        }
+
         private void BtnDashboardClick(object? sender, EventArgs e)
         {
+            if (!CurrentSession.CanAccessBusinessIntelligence)
+            {
+                SetActiveNavButton(btnDeals);
+                BtnDealsClick(btnDeals, EventArgs.Empty);
+                return;
+            }
             ShowViewCached("Dashboard", () =>
             {
                 var dashboard = new DashboardView();
@@ -1025,9 +1076,78 @@ namespace CRMS_Peguit.winforms
                 branchView.ActiveBranchChanged += (bId, bName) =>
                 {
                     ApplyRolePermissions();
+                    InvalidateCachedViews();
                 };
                 return branchView;
             });
+        }
+
+        private void InvalidateCachedViews()
+        {
+            var keysToRemove = _viewCache.Keys.Where(k => !k.Equals("BranchesView", StringComparison.OrdinalIgnoreCase)).ToList();
+            foreach (var key in keysToRemove)
+            {
+                if (_viewCache.TryGetValue(key, out var view))
+                {
+                    mainPanel.Controls.Remove(view);
+                    view.Dispose();
+                    _viewCache.Remove(key);
+                }
+            }
+        }
+
+        private void ReloadCurrentActiveView()
+        {
+            if (_activeNavButton != null)
+            {
+                _activeNavButton.PerformClick();
+            }
+        }
+
+        private async void ShowBranchSwitcherMenu()
+        {
+            var menu = new ContextMenuStrip();
+            var itemAll = menu.Items.Add("🌐 All Branches (Company-wide)", null, (s, e) =>
+            {
+                CurrentSession.SetActiveBranch(null, null);
+                ApplyRolePermissions();
+                InvalidateCachedViews();
+                ReloadCurrentActiveView();
+            });
+            if (!CurrentSession.ActiveBranchId.HasValue)
+            {
+                itemAll.Font = new Font(itemAll.Font, FontStyle.Bold);
+            }
+
+            try
+            {
+                var branchController = new CRMS_Peguit.winforms.Controllers.BranchController();
+                var branches = await branchController.GetAllBranchesAsync();
+                if (branches.Count > 0)
+                {
+                    menu.Items.Add(new ToolStripSeparator());
+                    foreach (var b in branches)
+                    {
+                        var branchItem = menu.Items.Add($"🏢 {b.BranchName} ({b.BranchCode})", null, (s, e) =>
+                        {
+                            CurrentSession.SetActiveBranch(b.BranchId, b.BranchName);
+                            ApplyRolePermissions();
+                            InvalidateCachedViews();
+                            ReloadCurrentActiveView();
+                        });
+                        if (CurrentSession.ActiveBranchId == b.BranchId)
+                        {
+                            branchItem.Font = new Font(branchItem.Font, FontStyle.Bold);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Fallback if branch controller fails
+            }
+
+            menu.Show(lblTenantTierBadge, new Point(0, lblTenantTierBadge.Height));
         }
 
         // =====================================================
@@ -1080,17 +1200,18 @@ namespace CRMS_Peguit.winforms
             // Start background connectivity monitor (pings every 30s)
             SyncService.Instance.Start(30);
 
-            // Scoped read-cache refresh when starting online
-            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            // Ensure tenant data is populated in local database and synced with cloud
+            _ = Task.Run(async () =>
             {
-                _ = Task.Run(async () =>
+                try
                 {
-                    await SyncService.Instance.RefreshUserCacheAsync(
-                        CurrentSession.TenantId,
-                        CurrentSession.UserId,
-                        CurrentSession.CurrentUser?.Role.ToString() ?? "Agent");
-                });
-            }
+                    await SyncService.Instance.EnsureTenantDataPopulatedAsync(CurrentSession.TenantId);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MainForm.InitSyncUi] Data population notice: {ex.Message}");
+                }
+            });
 
             // Top Header Sync Indicator Button
             _btnSyncIndicator = new Button

@@ -24,6 +24,7 @@ namespace CRMS_Peguit.winforms.Views.Management
         private string _filterType = "All";
         private List<PendingApprovalItem> _allItems = new();
         private Label _lblEmptyState = null!;
+        private PaginationControl _pagination = null!;
 
         public ApprovalsView()
         {
@@ -31,14 +32,25 @@ namespace CRMS_Peguit.winforms.Views.Management
 
             _approvalController = new ApprovalController();
 
+            InitPagination();
             InitEmptyState();
             ApplyStyling();
             BindEvents();
             UpdateFilterPillStyles();
-            RefreshGrid();
+            _ = RefreshGridAsync();
 
             this.Load += (_, _) => LayoutToolbar();
             this.Resize += (_, _) => LayoutToolbar();
+        }
+
+        private void InitPagination()
+        {
+            _pagination = new PaginationControl();
+            _pagination.SetItemLabel("approvals");
+            _pagination.PageChanged += (_, _) => FilterAndDisplay(resetPage: false);
+            _pagination.PageSizeChanged += (_, _) => FilterAndDisplay(resetPage: true);
+            pnlCard.Controls.Add(_pagination);
+            _pagination.BringToFront();
         }
 
         private void InitEmptyState()
@@ -127,7 +139,38 @@ namespace CRMS_Peguit.winforms.Views.Management
 
         public void RefreshGrid()
         {
-            _allItems = _approvalController.GetPendingApprovals();
+            _ = RefreshGridAsync();
+        }
+
+        public async System.Threading.Tasks.Task RefreshGridAsync()
+        {
+            try
+            {
+                var items = await System.Threading.Tasks.Task.Run(() => _approvalController.GetPendingApprovals());
+                if (IsDisposed) return;
+
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() =>
+                    {
+                        if (IsDisposed) return;
+                        ApplyLoadedItems(items);
+                    }));
+                }
+                else
+                {
+                    ApplyLoadedItems(items);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ApprovalsView] RefreshGridAsync error: {ex.Message}");
+            }
+        }
+
+        private void ApplyLoadedItems(List<PendingApprovalItem> items)
+        {
+            _allItems = items;
 
             // Update subtitle badge
             int total = _allItems.Count;
@@ -139,7 +182,7 @@ namespace CRMS_Peguit.winforms.Views.Management
             ApplyFilterAndDisplay();
         }
 
-        private void ApplyFilterAndDisplay()
+        private void ApplyFilterAndDisplay(bool resetPage = false)
         {
             grid.Columns.Clear();
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
@@ -169,7 +212,26 @@ namespace CRMS_Peguit.winforms.Views.Management
                     x.Type.Contains(search, StringComparison.OrdinalIgnoreCase));
             }
 
-            var displayList = query.Select(x => new
+            var allFiltered = query.ToList();
+            int total = allFiltered.Count;
+            int page = resetPage ? 1 : (_pagination?.CurrentPage ?? 1);
+            int pageSize = _pagination?.PageSize ?? 25;
+
+            _pagination?.UpdatePagination(total, page, pageSize);
+
+            if (total == 0)
+            {
+                grid.DataSource = null;
+                _lblEmptyState.Visible = true;
+                return;
+            }
+
+            _lblEmptyState.Visible = false;
+
+            int effectivePage = _pagination?.CurrentPage ?? 1;
+            var pageItems = allFiltered.Skip((effectivePage - 1) * pageSize).Take(pageSize).ToList();
+
+            var displayList = pageItems.Select(x => new
             {
                 x.Id,
                 x.Type,
@@ -226,8 +288,9 @@ namespace CRMS_Peguit.winforms.Views.Management
 
             grid.Columns.Add(new ActionsColumn());
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-            _lblEmptyState.Visible = (grid.Rows.Count == 0);
         }
+
+        private void FilterAndDisplay(bool resetPage = false) => ApplyFilterAndDisplay(resetPage);
 
         private void Grid_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
         {

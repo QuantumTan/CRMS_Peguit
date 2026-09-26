@@ -32,8 +32,8 @@ namespace CRMS_Peguit.winforms.Models.Services
 
             var options = new DbContextOptionsBuilder<MasterCrmsDbContext>()
                 .UseSqlServer(masterConn, sql => sql.EnableRetryOnFailure(
-                    maxRetryCount: 5,
-                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    maxRetryCount: 3,
+                    maxRetryDelay: TimeSpan.FromSeconds(5),
                     errorNumbersToAdd: null))
                 .Options;
 
@@ -61,7 +61,7 @@ namespace CRMS_Peguit.winforms.Models.Services
                 var masterConn = MasterConnectionString;
                 LocalDbHelper.EnsureLocalDbRunning(masterConn);
                 var options = new DbContextOptionsBuilder<MasterCrmsDbContext>()
-                    .UseSqlServer(masterConn, sql => sql.EnableRetryOnFailure(3, TimeSpan.FromSeconds(5), null))
+                    .UseSqlServer(masterConn, sql => sql.EnableRetryOnFailure(2, TimeSpan.FromSeconds(2), null))
                     .Options;
                 using var context = new MasterCrmsDbContext(options);
                 return await context.Database.CanConnectAsync(cancellationToken);
@@ -80,8 +80,8 @@ namespace CRMS_Peguit.winforms.Models.Services
 
             var options = new DbContextOptionsBuilder<RealEstateDbContext>()
                 .UseSqlServer(tenantConn, sql => sql.EnableRetryOnFailure(
-                    maxRetryCount: 5,
-                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    maxRetryCount: 3,
+                    maxRetryDelay: TimeSpan.FromSeconds(5),
                     errorNumbersToAdd: null))
                 .Options;
 
@@ -254,6 +254,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             EnsureCampaignSchema(context);
             EnsureActivitySchema(context);
             EnsureAutomatedEmailSchema(context);
+            EnsureEmailTemplateSchema(context);
             EnsureBranchSchema(context);
         }
 
@@ -265,14 +266,15 @@ namespace CRMS_Peguit.winforms.Models.Services
 
                 EnsureAllSchemas(context);
 
-                if (!context.Users.Any())
+                bool needsSeeding = !context.Users.Any() || !context.Customers.Any() || !context.Properties.Any();
+                if (needsSeeding)
                 {
                     DbSeeder.SeedTestUsersAsync(context, tenantId).GetAwaiter().GetResult();
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Graceful fallback for schema updates
+                System.Diagnostics.Debug.WriteLine($"[LocalDb] EnsureTenantDatabaseInitialized notice: {ex.Message}");
             }
         }
 
@@ -574,6 +576,8 @@ namespace CRMS_Peguit.winforms.Models.Services
                             ALTER TABLE AutomatedEmailSettings ADD CallToActionText NVARCHAR(200) NOT NULL CONSTRAINT DF_AES_CtaText DEFAULT 'Schedule a Complimentary Equity Consultation';
                         IF COL_LENGTH('AutomatedEmailSettings', 'CallToActionUrl') IS NULL
                             ALTER TABLE AutomatedEmailSettings ADD CallToActionUrl NVARCHAR(500) NOT NULL CONSTRAINT DF_AES_CtaUrl DEFAULT 'https://nexacrm.local/cma-request';
+                        IF COL_LENGTH('AutomatedEmailSettings', 'ActiveTemplateId') IS NULL
+                            ALTER TABLE AutomatedEmailSettings ADD ActiveTemplateId INT NULL;
                     END
 
                     IF OBJECT_ID('MarketUpdateLogs', 'U') IS NULL
@@ -657,6 +661,149 @@ namespace CRMS_Peguit.winforms.Models.Services
             catch
             {
                 // Silent fallback if server offline or already created
+            }
+        }
+
+        private static void EnsureEmailTemplateSchema(RealEstateDbContext context)
+        {
+            try
+            {
+                context.Database.ExecuteSqlRaw(@"
+                    IF OBJECT_ID('EmailTemplates', 'U') IS NULL
+                    BEGIN
+                        CREATE TABLE [dbo].[EmailTemplates] (
+                            [TemplateId] INT IDENTITY(1,1) NOT NULL,
+                            [TenantId] INT NOT NULL DEFAULT 1,
+                            [Name] NVARCHAR(150) NOT NULL,
+                            [Category] NVARCHAR(50) NOT NULL DEFAULT 'Equity Retention',
+                            [TargetAudience] NVARCHAR(50) NOT NULL DEFAULT 'All',
+                            [EmailFormat] NVARCHAR(20) NOT NULL DEFAULT 'Html',
+                            [Subject] NVARCHAR(300) NOT NULL,
+                            [Body] NVARCHAR(MAX) NOT NULL,
+                            [CallToActionText] NVARCHAR(200) NULL,
+                            [CallToActionUrl] NVARCHAR(500) NULL,
+                            [IsSystem] BIT NOT NULL DEFAULT 0,
+                            [IsActive] BIT NOT NULL DEFAULT 1,
+                            [CreatedByRole] NVARCHAR(50) NOT NULL DEFAULT 'System',
+                            [CreatedByUserId] INT NULL,
+                            [IsDeleted] BIT NOT NULL DEFAULT 0,
+                            [DeletedAt] DATETIME2 NULL,
+                            [DeletedByUserId] INT NULL,
+                            [CreatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                            [UpdatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                            CONSTRAINT [PK_EmailTemplates] PRIMARY KEY CLUSTERED ([TemplateId] ASC)
+                        );
+
+                        CREATE INDEX [IX_EmailTemplates_TenantId] ON [dbo].[EmailTemplates] ([TenantId]);
+                        CREATE INDEX [IX_EmailTemplates_IsDeleted] ON [dbo].[EmailTemplates] ([IsDeleted]);
+                        CREATE INDEX [IX_EmailTemplates_IsActive] ON [dbo].[EmailTemplates] ([IsActive]);
+                    END
+                ");
+
+                // Seed system templates if none exist
+                if (!context.EmailTemplates.Any(t => t.IsSystem && !t.IsDeleted))
+                {
+                    var systemTemplates = new[]
+                    {
+                        new EmailTemplate
+                        {
+                            TenantId = 1,
+                            Name = "Annual Homeowner Equity & Valuation Report",
+                            Category = "Equity Retention",
+                            TargetAudience = "Buyers",
+                            EmailFormat = "Html",
+                            Subject = "Homeowner Equity Update: Your property at {PropertyAddress} has appreciated!",
+                            CallToActionText = "Explore Home Equity & Wealth Strategy",
+                            CallToActionUrl = "https://nexacrm.local/cma-request",
+                            Body = "Dear {FirstName},\n\nCongratulations on your continuing journey as a homeowner with NEXA Real Estate Advisory!\n\nIt has been {YearsOwned} year(s) since you acquired your property, and we wanted to share an exciting update regarding your investment performance:\n\n• Property Address: {PropertyAddress} ({PropertyType})\n• Acquisition Price: {OriginalPrice}\n• Estimated Current Value: {EstimatedValue}\n• Net Equity Accumulated: +{EquityGain} (+{EquityPercent}% gain since purchase!)\n\nYour home continues to be one of your most dependable wealth-building assets. Many homeowners use this accumulated equity to fund home improvements, eliminate mortgage insurance, or leverage into a secondary income-generating rental property.\n\nIf you would like a detailed breakdown of your equity options or have questions on the current neighborhood market, feel free to reply directly to this email or reach out anytime.\n\nBest regards,\n{AgentName}\nYour Dedicated Real Estate Advisor",
+                            IsSystem = true,
+                            IsActive = true,
+                            CreatedByRole = "System"
+                        },
+                        new EmailTemplate
+                        {
+                            TenantId = 1,
+                            Name = "High Buyer Demand & Market Timing Valuation",
+                            Category = "Listing CMA",
+                            TargetAudience = "Sellers",
+                            EmailFormat = "Html",
+                            Subject = "High Buyer Demand in Your Area: What your property at {PropertyAddress} is worth today",
+                            CallToActionText = "Request Comprehensive CMA & Net Sheet",
+                            CallToActionUrl = "https://nexacrm.local/cma-request",
+                            Body = "Dear {CustomerName},\n\nMarket conditions in your neighborhood are creating prime opportunities for property owners!\n\nInventory levels remain tight, and qualified buyers are actively looking for properties in your area. Based on recent comparable sales, here is what your asset could command in today's active market:\n\n• Property: {PropertyAddress} ({PropertyType})\n• Historical Benchmark Price: {OriginalPrice}\n• Estimated Current Market Value: {EstimatedValue} (+{AppreciationRate}% annual benchmark)\n• Potential Capital Gain: +{EquityGain} (+{EquityPercent}% upside)\n\nIf you have been considering selling, upgrading to a larger home, or reallocating your capital into higher-yielding investments, now may be an optimal time to capitalize on peak market valuation.\n\nWe would be delighted to prepare a comprehensive Comparative Market Analysis (CMA) and estimate your net proceeds at no cost or obligation.\n\nWarm regards,\n{AgentName}\nSenior Real Estate Listing Specialist\nNEXA Real Estate Advisory",
+                            IsSystem = true,
+                            IsActive = true,
+                            CreatedByRole = "System"
+                        },
+                        new EmailTemplate
+                        {
+                            TenantId = 1,
+                            Name = "General Client Care & Asset Valuation",
+                            Category = "Equity Retention",
+                            TargetAudience = "All",
+                            EmailFormat = "Html",
+                            Subject = "Market Valuation & Equity Report for {PropertyAddress}",
+                            CallToActionText = "Schedule a Complimentary Equity Consultation",
+                            CallToActionUrl = "https://nexacrm.local/cma-request",
+                            Body = "Dear {CustomerName},\n\nWe hope you are doing well!\n\nAs part of our continuous client care service at NEXA Real Estate Advisory, we actively track local transactions and neighborhood appreciation trends.\n\nBased on recent market activity in your area, here is an updated valuation and equity summary for your property:\n\n• Property: {PropertyAddress} ({PropertyType})\n• Acquisition Price: {OriginalPrice}\n• Holding Period: {YearsOwned} year(s)\n• Estimated Current Market Value: {EstimatedValue} (+{AppreciationRate}% est. annual growth)\n• Estimated Equity Growth: +{EquityGain} (+{EquityPercent}% total)\n\nWhether you are thinking about making home improvements, exploring refinancing options, or simply keeping tabs on your net worth, we are here to support your real estate goals.\n\nWarm regards,\n{AgentName}\nNEXA Real Estate Advisory Team",
+                            IsSystem = true,
+                            IsActive = true,
+                            CreatedByRole = "System"
+                        },
+                        new EmailTemplate
+                        {
+                            TenantId = 1,
+                            Name = "Home Purchase Anniversary & Milestone Celebration",
+                            Category = "Client Milestone",
+                            TargetAudience = "Buyers",
+                            EmailFormat = "Html",
+                            Subject = "Happy Home Anniversary! Celebrating {YearsOwned} Year(s) at {PropertyAddress}",
+                            CallToActionText = "Schedule Annual Home Check-up",
+                            CallToActionUrl = "https://nexacrm.local/anniversary",
+                            Body = "Dear {FirstName},\n\nHappy Home Anniversary! It has been {YearsOwned} year(s) since you closed on {PropertyAddress}.\n\nTime flies, and we hope your home has brought you wonderful memories and steady investment growth. As a valued client of NEXA Real Estate Advisory, we are always here to help you review local market trends, property tax assessments, or trusted contractor recommendations.\n\nThank you for trusting us with your real estate journey!\n\nWarmest regards,\n{AgentName}\nNEXA Real Estate Advisory",
+                            IsSystem = true,
+                            IsActive = true,
+                            CreatedByRole = "System"
+                        },
+                        new EmailTemplate
+                        {
+                            TenantId = 1,
+                            Name = "Exclusive New Listing & Investment Alert",
+                            Category = "New Listing",
+                            TargetAudience = "All",
+                            EmailFormat = "Html",
+                            Subject = "Exclusive Real Estate Alert: New Prime Property Opportunity",
+                            CallToActionText = "View Property Dossier & Photos",
+                            CallToActionUrl = "https://nexacrm.local/featured-properties",
+                            Body = "Dear {CustomerName},\n\nWe are excited to share an exclusive new property listing that has just become available in our portfolio!\n\nWhether you are seeking a new family residence or exploring prime high-yield investment properties to expand your portfolio, this asset offers outstanding location advantages and strong capital appreciation potential.\n\nReply directly to this email or click the link below to review full architectural floor plans, pricing sheets, and private viewing schedules.\n\nBest regards,\n{AgentName}\nNEXA Real Estate Advisory",
+                            IsSystem = true,
+                            IsActive = true,
+                            CreatedByRole = "System"
+                        },
+                        new EmailTemplate
+                        {
+                            TenantId = 1,
+                            Name = "VIP Property Showing & Phase Launch Invitation",
+                            Category = "Showing VIP",
+                            TargetAudience = "Buyers",
+                            EmailFormat = "Html",
+                            Subject = "VIP Invitation: Private Property Showing & Advance Preview",
+                            CallToActionText = "Reserve Your Private Showing",
+                            CallToActionUrl = "https://nexacrm.local/vip-showing",
+                            Body = "Dear {FirstName},\n\nYou are cordially invited to an exclusive VIP advance showing for premier properties in our collection.\n\nAs a priority client, you receive first-look access before the property is marketed to the general public. Our team will be on site to provide comprehensive property tours, investment yield analysis, and personalized advisory.\n\nPlease reserve your viewing slot today or contact me directly to confirm your preferred schedule.\n\nSincerely,\n{AgentName}\nNEXA Real Estate Advisory",
+                            IsSystem = true,
+                            IsActive = true,
+                            CreatedByRole = "System"
+                        }
+                    };
+
+                    context.EmailTemplates.AddRange(systemTemplates);
+                    context.SaveChanges();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LocalDb] EnsureEmailTemplateSchema notice: {ex.Message}");
             }
         }
     }

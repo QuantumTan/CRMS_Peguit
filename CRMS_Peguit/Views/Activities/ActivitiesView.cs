@@ -23,6 +23,7 @@ namespace CRMS_Peguit.winforms.Views.Activities
         private string _filterCategory = "All"; // "All", "Calls", "Emails", "Meetings", "System Events"
         private List<TimelineItemDto> _items = new();
         private Panel _pnlEmptyState = null!;
+        private PaginationControl _pagination = null!;
 
         public ActivitiesView()
         {
@@ -30,14 +31,25 @@ namespace CRMS_Peguit.winforms.Views.Activities
             _controller = new ActivityController();
 
             InitGridColumns();
+            InitPagination();
             InitEmptyState();
             ApplyStyling();
             BindEvents();
             UpdateFilterPillStyles();
-            RefreshData();
+            _ = RefreshDataAsync(resetPage: true);
 
             this.Load += (_, _) => LayoutToolbar();
             this.Resize += (_, _) => LayoutToolbar();
+        }
+
+        private void InitPagination()
+        {
+            _pagination = new PaginationControl();
+            _pagination.SetItemLabel("activities");
+            _pagination.PageChanged += async (_, _) => await RefreshDataAsync(resetPage: false);
+            _pagination.PageSizeChanged += async (_, _) => await RefreshDataAsync(resetPage: true);
+            pnlCard.Controls.Add(_pagination);
+            _pagination.BringToFront();
         }
 
         private void InitGridColumns()
@@ -308,41 +320,68 @@ namespace CRMS_Peguit.winforms.Views.Activities
             kpiMeetings.SetSelected(string.Equals(_filterCategory, "Meetings", StringComparison.OrdinalIgnoreCase));
         }
 
+        private bool _isLoadingData = false;
+
+        public async Task RefreshDataAsync(bool resetPage = false)
+        {
+            if (_isLoadingData) return;
+            _isLoadingData = true;
+
+            try
+            {
+                int? queryAgentId = (RbacService.IsManager || RbacService.HasFullOversight) ? null : CurrentSession.UserId;
+                string filterCat = _filterCategory;
+                string searchTxt = txtSearch.Text;
+                int page = resetPage ? 1 : (_pagination?.CurrentPage ?? 1);
+                int pageSize = _pagination?.PageSize ?? 25;
+
+                CRMS_Peguit.domain.Common.PagedResult<TimelineItemDto> pagedResult = null!;
+                (int total, int calls, int emails, int meetings) stats = default;
+
+                await Task.Run(() =>
+                {
+                    pagedResult = _controller.GetPagedForAgent(queryAgentId, filterCat, searchTxt, page, pageSize);
+                    stats = _controller.GetActivityStatsForAgent(queryAgentId);
+                });
+
+                if (IsDisposed) return;
+
+                _items = pagedResult.Items;
+                kpiTotal.SetValue(stats.total.ToString("N0"));
+                kpiCalls.SetValue(stats.calls.ToString("N0"));
+                kpiEmails.SetValue(stats.emails.ToString("N0"));
+                kpiMeetings.SetValue(stats.meetings.ToString("N0"));
+
+                _pagination?.UpdatePagination(pagedResult.TotalCount, pagedResult.PageNumber, pagedResult.PageSize);
+
+                grid.Rows.Clear();
+                foreach (var item in _items)
+                {
+                    int rowIndex = grid.Rows.Add(
+                        item.Id,
+                        item.Type,
+                        item.ClientName,
+                        item.Title,
+                        item.Notes ?? string.Empty,
+                        item.Timestamp.ToLocalTime().ToString("MMM d, yyyy h:mm tt"),
+                        item.ActorName
+                    );
+                    grid.Rows[rowIndex].Tag = item;
+                }
+
+                bool hasData = pagedResult.TotalCount > 0;
+                _pnlEmptyState.Visible = !hasData;
+                grid.Visible = hasData;
+            }
+            finally
+            {
+                _isLoadingData = false;
+            }
+        }
+
         public void RefreshData()
         {
-            // For Managers and Admins, show all team activities.
-            // For Agents, show their own logged activities.
-            int? queryAgentId = (RbacService.IsManager || RbacService.HasFullOversight) ? null : CurrentSession.UserId;
-
-            // Load items
-            _items = _controller.GetAllForAgent(queryAgentId, _filterCategory, txtSearch.Text);
-
-            // Update KPI cards
-            var (total, calls, emails, meetings) = _controller.GetActivityStatsForAgent(queryAgentId);
-            kpiTotal.SetValue(total.ToString("N0"));
-            kpiCalls.SetValue(calls.ToString("N0"));
-            kpiEmails.SetValue(emails.ToString("N0"));
-            kpiMeetings.SetValue(meetings.ToString("N0"));
-
-            // Populate Grid
-            grid.Rows.Clear();
-            foreach (var item in _items)
-            {
-                int rowIndex = grid.Rows.Add(
-                    item.Id,
-                    item.Type,
-                    item.ClientName,
-                    item.Title,
-                    item.Notes ?? string.Empty,
-                    item.Timestamp.ToLocalTime().ToString("MMM d, yyyy h:mm tt"),
-                    item.ActorName
-                );
-                grid.Rows[rowIndex].Tag = item;
-            }
-
-            bool hasData = _items.Count > 0;
-            _pnlEmptyState.Visible = !hasData;
-            grid.Visible = hasData;
+            _ = RefreshDataAsync(resetPage: true);
         }
 
         private void BtnAddClick()

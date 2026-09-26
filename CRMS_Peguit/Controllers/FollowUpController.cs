@@ -21,30 +21,32 @@ namespace CRMS_Peguit.winforms.Controllers
         }
 
         /// <summary>
-        /// Retrieves all active (non-deleted) follow-ups for the currently authenticated Agent.
-        /// Manager/Admin cannot access this module, so results are strictly scoped to CurrentSession.UserId.
+        /// Retrieves active (non-deleted) follow-ups.
+        /// Frontline agents see only their own assigned follow-ups.
+        /// Managers and Admins have full oversight to view all follow-ups across the tenant.
         /// Also automatically checks and updates overdue status for pending follow-ups whose due date has passed.
         /// </summary>
         public List<TaskReminder> GetAll()
         {
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                return LocalDataCache.Instance.GetCachedTaskReminders(TenantId, CurrentSession.UserId, RbacService.IsAgent);
-            }
-
             try
             {
+                using var db = LocalDb.CreateContext(TenantId);
                 int currentUserId = CurrentSession.UserId;
                 if (currentUserId <= 0) return new List<TaskReminder>();
 
                 // First, find any pending reminders whose due date has passed and update to Overdue
                 var now = DateTime.UtcNow;
-                var pendingOverdue = _db.TaskReminders
-                    .Where(r => r.AssignedToUserId == currentUserId
-                                && !r.IsDeleted
+                var pendingOverdueQuery = db.TaskReminders
+                    .Where(r => !r.IsDeleted
                                 && r.Status == "Pending"
-                                && r.DueDate < now)
-                    .ToList();
+                                && r.DueDate < now);
+
+                if (!RbacService.HasFullOversight)
+                {
+                    pendingOverdueQuery = pendingOverdueQuery.Where(r => r.AssignedToUserId == currentUserId);
+                }
+
+                var pendingOverdue = pendingOverdueQuery.ToList();
 
                 if (pendingOverdue.Count > 0)
                 {
@@ -53,25 +55,90 @@ namespace CRMS_Peguit.winforms.Controllers
                         item.Status = "Overdue";
                         item.UpdatedAt = now;
                     }
-                    _db.SaveChanges();
+                    db.SaveChanges();
                 }
 
-                // Query all non-deleted follow-ups for this agent with related entities included
-                return _db.TaskReminders
+                // Query non-deleted follow-ups with related entities included
+                var query = db.TaskReminders
                     .AsNoTracking()
                     .Include(r => r.RelatedCustomer)
                         .ThenInclude(c => c!.Person)
                     .Include(r => r.RelatedLead)
                         .ThenInclude(l => l!.Person)
-                    .Where(r => r.AssignedToUserId == currentUserId && !r.IsDeleted)
+                    .Where(r => !r.IsDeleted);
+
+                if (!RbacService.HasFullOversight)
+                {
+                    query = query.Where(r => r.AssignedToUserId == currentUserId);
+                }
+
+                var list = query
                     .OrderBy(r => r.DueDate)
                     .ToList();
+
+                if (list.Count > 0)
+                {
+                    _ = Task.Run(() => LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, list));
+                }
+
+                return list;
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[FollowUpController.GetAll] Error: {ex.Message}");
-                return new List<TaskReminder>();
+                return LocalDataCache.Instance.GetCachedTaskReminders(TenantId, CurrentSession.UserId, RbacService.IsAgent);
             }
+        }
+
+        public CRMS_Peguit.domain.Common.PagedResult<TaskReminder> GetPaged(string status = "All", string? search = null, string priority = "All", int pageNumber = 1, int pageSize = 25)
+        {
+            var list = GetAll();
+
+            if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
+            {
+                var todayLocal = DateTime.Today;
+                var tomorrowLocal = todayLocal.AddDays(1);
+                var now = DateTime.UtcNow;
+
+                if (status.Equals("Overdue", StringComparison.OrdinalIgnoreCase))
+                {
+                    list = list.Where(r => r.Status != "Completed" && (r.Status == "Overdue" || r.DueDate < now)).ToList();
+                }
+                else if (status.Equals("Today", StringComparison.OrdinalIgnoreCase))
+                {
+                    list = list.Where(r => r.Status != "Completed" && r.DueDate.ToLocalTime().Date == todayLocal).ToList();
+                }
+                else if (status.Equals("Upcoming", StringComparison.OrdinalIgnoreCase))
+                {
+                    list = list.Where(r => r.Status != "Completed" && r.DueDate.ToLocalTime().Date >= tomorrowLocal).ToList();
+                }
+                else if (status.Equals("Completed", StringComparison.OrdinalIgnoreCase))
+                {
+                    list = list.Where(r => r.Status == "Completed").ToList();
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(priority) && !priority.Equals("All", StringComparison.OrdinalIgnoreCase))
+            {
+                list = list.Where(r => string.Equals(r.Priority, priority, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                string q = search.Trim();
+                list = list.Where(r =>
+                    r.Title.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    (r.Notes != null && r.Notes.Contains(q, StringComparison.OrdinalIgnoreCase)) ||
+                    (r.RelatedCustomer != null && r.RelatedCustomer.FullName.Contains(q, StringComparison.OrdinalIgnoreCase)) ||
+                    (r.RelatedLead != null && r.RelatedLead.FullName.Contains(q, StringComparison.OrdinalIgnoreCase))
+                ).ToList();
+            }
+
+            int total = list.Count;
+            int page = Math.Max(1, pageNumber);
+            int size = Math.Max(1, pageSize);
+            var pagedItems = list.Skip((page - 1) * size).Take(size).ToList();
+            return new CRMS_Peguit.domain.Common.PagedResult<TaskReminder>(pagedItems, total, page, size);
         }
 
         public TaskReminder? GetById(int id)
@@ -81,18 +148,26 @@ namespace CRMS_Peguit.winforms.Controllers
                 int currentUserId = CurrentSession.UserId;
                 if (currentUserId <= 0) return null;
 
-                return _db.TaskReminders
+                var query = _db.TaskReminders
                     .AsNoTracking()
                     .Include(r => r.RelatedCustomer)
                         .ThenInclude(c => c!.Person)
                     .Include(r => r.RelatedLead)
                         .ThenInclude(l => l!.Person)
-                    .SingleOrDefault(r => r.TaskReminderId == id && r.AssignedToUserId == currentUserId && !r.IsDeleted);
+                    .Where(r => r.TaskReminderId == id && !r.IsDeleted);
+
+                if (!RbacService.HasFullOversight)
+                {
+                    query = query.Where(r => r.AssignedToUserId == currentUserId);
+                }
+
+                return query.SingleOrDefault();
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[FollowUpController.GetById] Error: {ex.Message}");
-                return null;
+                return LocalDataCache.Instance.GetCachedTaskReminders(TenantId, CurrentSession.UserId, RbacService.IsAgent)
+                    .FirstOrDefault(r => r.TaskReminderId == id);
             }
         }
 
@@ -124,15 +199,14 @@ namespace CRMS_Peguit.winforms.Controllers
             // Automatically set status based on DueDate
             reminder.Status = reminder.DueDate < DateTime.UtcNow ? "Overdue" : "Pending";
 
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                var qItem = SyncService.Instance.EnqueueOfflineCreate("TaskReminder", reminder, TenantId, currentUserId);
-                reminder.TaskReminderId = -qItem.QueueId;
-                return reminder;
-            }
-
             _db.TaskReminders.Add(reminder);
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, new[] { reminder }); } catch { }
+
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                SyncService.Instance.EnqueueOfflineCreate("TaskReminder", reminder, TenantId, currentUserId);
+            }
 
             return reminder;
         }
@@ -146,11 +220,10 @@ namespace CRMS_Peguit.winforms.Controllers
             if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
             {
                 SyncService.Instance.EnqueueOfflineUpdate("TaskReminder", reminder.TaskReminderId, reminder, TenantId, currentUserId, reminder.UpdatedAt ?? reminder.CreatedAt);
-                return;
             }
 
             var item = _db.TaskReminders
-                .SingleOrDefault(r => r.TaskReminderId == reminder.TaskReminderId && r.AssignedToUserId == currentUserId && !r.IsDeleted);
+                .SingleOrDefault(r => r.TaskReminderId == reminder.TaskReminderId && (RbacService.HasFullOversight || r.AssignedToUserId == currentUserId) && !r.IsDeleted);
 
             if (item is null)
             {
@@ -173,6 +246,7 @@ namespace CRMS_Peguit.winforms.Controllers
             }
 
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, new[] { item }); } catch { }
         }
 
         /// <summary>
@@ -182,7 +256,7 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             int currentUserId = CurrentSession.UserId;
             var item = _db.TaskReminders
-                .SingleOrDefault(r => r.TaskReminderId == id && r.AssignedToUserId == currentUserId && !r.IsDeleted);
+                .SingleOrDefault(r => r.TaskReminderId == id && (RbacService.HasFullOversight || r.AssignedToUserId == currentUserId) && !r.IsDeleted);
 
             if (item is null) return;
 
@@ -217,6 +291,7 @@ namespace CRMS_Peguit.winforms.Controllers
             }
 
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, new[] { item }); } catch { }
         }
 
         /// <summary>
@@ -227,12 +302,13 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             int currentUserId = CurrentSession.UserId;
             var item = _db.TaskReminders
-                .SingleOrDefault(r => r.TaskReminderId == id && r.AssignedToUserId == currentUserId && !r.IsDeleted);
+                .SingleOrDefault(r => r.TaskReminderId == id && (RbacService.HasFullOversight || r.AssignedToUserId == currentUserId) && !r.IsDeleted);
 
             if (item is null) return;
 
             item.Snooze(interval);
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, new[] { item }); } catch { }
         }
 
         /// <summary>
@@ -242,12 +318,13 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             int currentUserId = CurrentSession.UserId;
             var item = _db.TaskReminders
-                .SingleOrDefault(r => r.TaskReminderId == id && r.AssignedToUserId == currentUserId && !r.IsDeleted);
+                .SingleOrDefault(r => r.TaskReminderId == id && (RbacService.HasFullOversight || r.AssignedToUserId == currentUserId) && !r.IsDeleted);
 
             if (item is null) return;
 
             item.Reschedule(newDueDate);
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, new[] { item }); } catch { }
         }
 
         /// <summary>
@@ -257,27 +334,36 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             int currentUserId = CurrentSession.UserId;
             var item = _db.TaskReminders
-                .SingleOrDefault(r => r.TaskReminderId == id && r.AssignedToUserId == currentUserId && !r.IsDeleted);
+                .SingleOrDefault(r => r.TaskReminderId == id && (RbacService.HasFullOversight || r.AssignedToUserId == currentUserId) && !r.IsDeleted);
 
             if (item is null) return;
 
             item.IsDeleted = true;
             item.DeletedAt = DateTime.UtcNow;
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, new[] { item }); } catch { }
         }
 
         /// <summary>
         /// Returns customers assigned to the currently authenticated Agent.
+        /// Managers and Admins see all tenant customers.
         /// </summary>
         public List<Customer> GetAssignedCustomers()
         {
             int currentUserId = CurrentSession.UserId;
             if (currentUserId <= 0) return new List<Customer>();
 
-            return _db.Customers
+            var query = _db.Customers
                 .AsNoTracking()
                 .Include(c => c.Person)
-                .Where(c => c.AssignedAgentId == currentUserId && !c.IsDeleted)
+                .Where(c => !c.IsDeleted);
+
+            if (!RbacService.HasFullOversight)
+            {
+                query = query.Where(c => c.AssignedAgentId == currentUserId);
+            }
+
+            return query
                 .OrderBy(c => c.Person.LastName)
                 .ThenBy(c => c.Person.FirstName)
                 .ToList();
@@ -285,23 +371,31 @@ namespace CRMS_Peguit.winforms.Controllers
 
         /// <summary>
         /// Returns leads assigned to the currently authenticated Agent.
+        /// Managers and Admins see all tenant leads.
         /// </summary>
         public List<Lead> GetAssignedLeads()
         {
             int currentUserId = CurrentSession.UserId;
             if (currentUserId <= 0) return new List<Lead>();
 
-            return _db.Leads
+            var query = _db.Leads
                 .AsNoTracking()
                 .Include(l => l.Person)
-                .Where(l => l.AssignedAgentId == currentUserId && !l.IsDeleted && l.Stage != "lost")
+                .Where(l => !l.IsDeleted && l.Stage != "lost");
+
+            if (!RbacService.HasFullOversight)
+            {
+                query = query.Where(l => l.AssignedAgentId == currentUserId);
+            }
+
+            return query
                 .OrderBy(l => l.Person.LastName)
                 .ThenBy(l => l.Person.FirstName)
                 .ToList();
         }
 
         /// <summary>
-        /// Calculates KPI counts for Overdue, Due Today, Upcoming, and Completed for the logged-in Agent.
+        /// Calculates KPI counts for Overdue, Due Today, Upcoming, and Completed for the logged-in Agent or Tenant.
         /// </summary>
         public FollowUpKpiCounts GetKpiCounts()
         {
@@ -312,10 +406,16 @@ namespace CRMS_Peguit.winforms.Controllers
             var todayLocal = DateTime.Today;
             var tomorrowLocal = todayLocal.AddDays(1);
 
-            var items = _db.TaskReminders
+            var query = _db.TaskReminders
                 .AsNoTracking()
-                .Where(r => r.AssignedToUserId == currentUserId && !r.IsDeleted)
-                .ToList();
+                .Where(r => !r.IsDeleted);
+
+            if (!RbacService.HasFullOversight)
+            {
+                query = query.Where(r => r.AssignedToUserId == currentUserId);
+            }
+
+            var items = query.ToList();
 
             int completed = items.Count(r => r.Status == "Completed");
             int overdue = items.Count(r => r.Status != "Completed" && (r.Status == "Overdue" || r.DueDate < now));

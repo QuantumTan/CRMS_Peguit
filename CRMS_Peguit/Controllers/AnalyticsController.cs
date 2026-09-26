@@ -26,29 +26,40 @@ namespace CRMS_Peguit.winforms.Controllers
             _db.Dispose();
         }
 
-        private IQueryable<Deal> GetDealsQuery()
+        private IQueryable<Deal> GetDealsQuery(RealEstateDbContext? db = null)
         {
-            var query = _db.Deals.AsNoTracking();
+            var context = db ?? _db;
+            var query = context.Deals.AsNoTracking();
             if (RbacService.IsAgent && !RbacService.HasFullOversight)
             {
                 query = query.Where(d => d.AgentId == CurrentSession.UserId);
             }
-            return query;
-        }
-
-        private IQueryable<Lead> GetLeadsQuery()
-        {
-            var query = _db.Leads.AsNoTracking();
-            if (RbacService.IsAgent && !RbacService.HasFullOversight)
+            if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
             {
-                query = query.Where(l => l.AssignedAgentId == CurrentSession.UserId);
+                query = query.Where(d => d.BranchId == CurrentSession.ActiveBranchId.Value);
             }
             return query;
         }
 
-        private IQueryable<SupportTicket> GetTicketsQuery()
+        private IQueryable<Lead> GetLeadsQuery(RealEstateDbContext? db = null)
         {
-            var query = _db.SupportTickets.AsNoTracking();
+            var context = db ?? _db;
+            var query = context.Leads.AsNoTracking();
+            if (RbacService.IsAgent && !RbacService.HasFullOversight)
+            {
+                query = query.Where(l => l.AssignedAgentId == CurrentSession.UserId);
+            }
+            if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+            {
+                query = query.Where(l => l.BranchId == CurrentSession.ActiveBranchId.Value);
+            }
+            return query;
+        }
+
+        private IQueryable<SupportTicket> GetTicketsQuery(RealEstateDbContext? db = null)
+        {
+            var context = db ?? _db;
+            var query = context.SupportTickets.AsNoTracking();
             if (RbacService.IsAgent && !RbacService.HasFullOversight)
             {
                 query = query.Where(t => t.AssignedToUserId == CurrentSession.UserId);
@@ -60,9 +71,10 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             try
             {
-                var dealsQuery = GetDealsQuery();
-                var leadsQuery = GetLeadsQuery();
-                var ticketsQuery = GetTicketsQuery();
+                using var db = LocalDb.CreateContext(TenantId);
+                var dealsQuery = GetDealsQuery(db);
+                var leadsQuery = GetLeadsQuery(db);
+                var ticketsQuery = GetTicketsQuery(db);
 
                 var startDate = range.StartDate;
                 var endDate = range.EndDate;
@@ -96,7 +108,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 var averageDaysToClose = closedDealsWithDates.Any() ? closedDealsWithDates.Average(d => ((d.ContractSignedDate ?? d.CreatedAt) - d.CreatedAt).TotalDays) : 0;
 
                 // Active property inventory
-                var propQuery = _db.Properties.AsNoTracking();
+                var propQuery = db.Properties.AsNoTracking();
                 if (RbacService.IsAgent && !RbacService.HasFullOversight)
                 {
                     propQuery = propQuery.Where(p => p.ListedByAgentId == CurrentSession.UserId);
@@ -413,11 +425,12 @@ namespace CRMS_Peguit.winforms.Controllers
             var list = new List<AnalyticsDetailRow>();
             try
             {
+                using var db = LocalDb.CreateContext(TenantId);
                 var startDate = range.StartDate;
                 var endDate = range.EndDate;
 
                 // 1. Deals
-                var deals = GetDealsQuery()
+                var deals = GetDealsQuery(db)
                     .Include(d => d.Agent)
                     .Include(d => d.Customer).ThenInclude(c => c!.Person)
                     .Include(d => d.Property)
@@ -446,7 +459,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 }
 
                 // 2. Leads
-                var leads = GetLeadsQuery()
+                var leads = GetLeadsQuery(db)
                     .Include(l => l.AssignedAgent)
                     .Include(l => l.Person)
                     .Where(l => l.CreatedAt >= startDate && l.CreatedAt <= endDate)
@@ -468,7 +481,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 }
 
                 // 3. Support Tickets
-                var tickets = GetTicketsQuery()
+                var tickets = GetTicketsQuery(db)
                     .Include(t => t.AssignedToUser)
                     .Include(t => t.Customer).ThenInclude(c => c.Person)
                     .Where(t => t.CreatedAt >= startDate && t.CreatedAt <= endDate)
