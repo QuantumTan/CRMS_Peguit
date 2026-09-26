@@ -29,15 +29,10 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public List<Lead> GetAll()
         {
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                var cached = LocalDataCache.Instance.GetCachedLeads(TenantId, CurrentSession.UserId, RbacService.IsAgent);
-                if (cached.Count > 0) return cached;
-            }
-
             try
             {
-                var query = _db.Leads.AsNoTracking();
+                using var db = LocalDb.CreateContext(TenantId);
+                var query = db.Leads.AsNoTracking();
 
                 // R23 & R25 (revised): Visibility scoped to creator while Pending, assignee once assigned.
                 // Manager/Admin retain full oversight (R26).
@@ -48,6 +43,11 @@ namespace CRMS_Peguit.winforms.Controllers
                         (l.AssignedAgentId.HasValue && l.AssignedAgentId.Value > 0)
                             ? l.AssignedAgentId.Value == currentUserId
                             : l.CreatedByUserId == currentUserId);
+                }
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(l => l.BranchId == CurrentSession.ActiveBranchId.Value);
                 }
 
                 var list = query
@@ -77,54 +77,6 @@ namespace CRMS_Peguit.winforms.Controllers
             string? sortColumn = null,
             bool isAscending = true)
         {
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                var cached = LocalDataCache.Instance.GetCachedLeads(TenantId, CurrentSession.UserId, RbacService.IsAgent);
-                if (cached.Count == 0)
-                {
-                    try
-                    {
-                        var localQuery = _db.Leads.Include(l => l.Person).AsNoTracking().Where(l => !l.IsDeleted);
-                        if (!RbacService.HasFullOversight && RbacService.IsAgent)
-                        {
-                            int currentUserId = CurrentSession.UserId;
-                            localQuery = localQuery.Where(l =>
-                                (l.AssignedAgentId.HasValue && l.AssignedAgentId.Value > 0)
-                                    ? l.AssignedAgentId.Value == currentUserId
-                                    : l.CreatedByUserId == currentUserId);
-                        }
-                        var localList = await localQuery.ToListAsync();
-                        if (localList.Count > 0)
-                        {
-                            cached = localList;
-                            _ = Task.Run(() => LocalDataCache.Instance.SaveLeadsMirror(TenantId, localList));
-                        }
-                    }
-                    catch { }
-                }
-
-                if (cached.Count > 0)
-                {
-                    if (!string.IsNullOrWhiteSpace(stage) && !string.Equals(stage, "All", StringComparison.OrdinalIgnoreCase))
-                    {
-                        cached = cached.Where(l => l.Stage.Equals(stage, StringComparison.OrdinalIgnoreCase)).ToList();
-                    }
-                    if (!string.IsNullOrWhiteSpace(search))
-                    {
-                        string s = search.Trim().ToLowerInvariant();
-                        cached = cached.Where(l => (l.Person != null && (
-                            l.Person.FirstName.ToLowerInvariant().Contains(s) ||
-                            l.Person.LastName.ToLowerInvariant().Contains(s) ||
-                            (l.Person.Email != null && l.Person.Email.ToLowerInvariant().Contains(s)) ||
-                            (l.Person.Phone != null && l.Person.Phone.Contains(s)))) ||
-                            (l.Source != null && l.Source.ToLowerInvariant().Contains(s))).ToList();
-                    }
-                    int total = cached.Count;
-                    var paged = cached.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
-                    return new PagedResult<Lead>(paged, total, pageNumber, pageSize);
-                }
-            }
-
             try
             {
                 using var db = LocalDb.CreateContext(TenantId);
@@ -140,6 +92,11 @@ namespace CRMS_Peguit.winforms.Controllers
                         (l.AssignedAgentId.HasValue && l.AssignedAgentId.Value > 0)
                             ? l.AssignedAgentId.Value == currentUserId
                             : l.CreatedByUserId == currentUserId);
+                }
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(l => l.BranchId == CurrentSession.ActiveBranchId.Value);
                 }
 
                 if (!string.IsNullOrWhiteSpace(stage) && !string.Equals(stage, "All", StringComparison.OrdinalIgnoreCase))
@@ -198,12 +155,38 @@ namespace CRMS_Peguit.winforms.Controllers
                     .Take(validPageSize)
                     .ToListAsync();
 
+                if (items.Count > 0)
+                {
+                    _ = Task.Run(() => LocalDataCache.Instance.SaveLeadsMirror(TenantId, items));
+                }
+
                 return new PagedResult<Lead>(items, totalCount, validPage, validPageSize);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[LeadController.GetPagedAsync] Error: {ex.Message}");
-                return new PagedResult<Lead>(new List<Lead>(), 0, pageNumber, pageSize);
+                System.Diagnostics.Debug.WriteLine($"[LeadController.GetPagedAsync] LocalDb failed, falling back to cache: {ex.Message}");
+                var cached = LocalDataCache.Instance.GetCachedLeads(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    cached = cached.Where(l => l.BranchId == CurrentSession.ActiveBranchId.Value).ToList();
+                }
+                if (!string.IsNullOrWhiteSpace(stage) && !string.Equals(stage, "All", StringComparison.OrdinalIgnoreCase))
+                {
+                    cached = cached.Where(l => l.Stage.Equals(stage, StringComparison.OrdinalIgnoreCase)).ToList();
+                }
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    string s = search.Trim().ToLowerInvariant();
+                    cached = cached.Where(l => (l.Person != null && (
+                        l.Person.FirstName.ToLowerInvariant().Contains(s) ||
+                        l.Person.LastName.ToLowerInvariant().Contains(s) ||
+                        (l.Person.Email != null && l.Person.Email.ToLowerInvariant().Contains(s)) ||
+                        (l.Person.Phone != null && l.Person.Phone.Contains(s)))) ||
+                        (l.Source != null && l.Source.ToLowerInvariant().Contains(s))).ToList();
+                }
+                int total = cached.Count;
+                var paged = cached.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
+                return new PagedResult<Lead>(paged, total, pageNumber, pageSize);
             }
         }
 
@@ -221,6 +204,11 @@ namespace CRMS_Peguit.winforms.Controllers
                         (l.AssignedAgentId.HasValue && l.AssignedAgentId.Value > 0)
                             ? l.AssignedAgentId.Value == currentUserId
                             : l.CreatedByUserId == currentUserId);
+                }
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(l => l.BranchId == CurrentSession.ActiveBranchId.Value);
                 }
 
                 var groups = await query
@@ -252,22 +240,26 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public Lead? GetById(int id)
         {
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            try
             {
+                var item = _db.Leads
+                    .Include(l => l.Person)
+                    .AsNoTracking()
+                    .SingleOrDefault(x => x.LeadId == id);
+
+                if (item is null) return null;
+
+                if (!RbacService.CanAgentViewRecord(item.AssignedAgentId, item.CreatedByUserId))
+                    return null;
+
+                return item;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LeadController.GetById] LocalDb failed, falling back to cache: {ex.Message}");
                 return LocalDataCache.Instance.GetCachedLeads(TenantId, CurrentSession.UserId, RbacService.IsAgent)
                     .FirstOrDefault(l => l.LeadId == id);
             }
-
-            var item = _db.Leads
-                .AsNoTracking()
-                .SingleOrDefault(x => x.LeadId == id);
-
-            if (item is null) return null;
-
-            if (!RbacService.CanAgentViewRecord(item.AssignedAgentId, item.CreatedByUserId))
-                return null;
-
-            return item;
         }
 
         public Lead Add(Lead lead)
@@ -289,6 +281,11 @@ namespace CRMS_Peguit.winforms.Controllers
             lead.IsDeleted = false;
             lead.DeletedAt = null;
 
+            if (CurrentSession.CanAccessBranching && !lead.BranchId.HasValue && CurrentSession.ActiveBranchId.HasValue)
+            {
+                lead.BranchId = CurrentSession.ActiveBranchId.Value;
+            }
+
             if (RbacService.CanAssignRecords)
             {
                 if (lead.AssignedAgentId <= 0)
@@ -303,15 +300,9 @@ namespace CRMS_Peguit.winforms.Controllers
                 ApplyAssignmentDefaults(lead);
             }
 
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                var qItem = SyncService.Instance.EnqueueOfflineCreate("Lead", lead, TenantId, CurrentSession.UserId);
-                lead.LeadId = -qItem.QueueId;
-                return lead;
-            }
-
             _db.Leads.Add(lead);
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveLeadsMirror(TenantId, new[] { lead }); } catch { }
             LogActivity("Lead Created", lead.LeadId, null, $"Lead '{lead.FullName}' was created.");
 
             if (lead.AssignedAgentId == null || lead.AssignedAgentId <= 0 || lead.AssignmentStatus == "pending_review")
@@ -323,6 +314,11 @@ namespace CRMS_Peguit.winforms.Controllers
                 _notifCtrl.CreateNotification(TenantId, lead.AssignedAgentId.Value, NotificationType.LeadAssigned, "Lead Assigned to You", $"You have been assigned Lead '{lead.FullName}'.", "Lead", lead.LeadId);
             }
 
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                SyncService.Instance.EnqueueOfflineCreate("Lead", lead, TenantId, CurrentSession.UserId);
+            }
+
             return lead;
         }
 
@@ -331,7 +327,6 @@ namespace CRMS_Peguit.winforms.Controllers
             if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
             {
                 SyncService.Instance.EnqueueOfflineUpdate("Lead", lead.LeadId, lead, TenantId, CurrentSession.UserId, lead.CreatedAt);
-                return;
             }
 
             var item = _db.Leads
@@ -385,6 +380,7 @@ namespace CRMS_Peguit.winforms.Controllers
             }
 
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveLeadsMirror(TenantId, new[] { item }); } catch { }
 
             LogActivity("Lead Updated", item.LeadId, null, $"Lead '{item.FullName}' was updated.");
         }
@@ -397,6 +393,7 @@ namespace CRMS_Peguit.winforms.Controllers
             item.IsDeleted = true;
             item.DeletedAt = DateTime.UtcNow;
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveLeadsMirror(TenantId, new[] { item }); } catch { }
             LogActivity("Lead Archived", item.LeadId, null, $"Lead '{item.FullName}' was archived.");
         }
         public void Restore(Lead lead)
@@ -409,6 +406,7 @@ namespace CRMS_Peguit.winforms.Controllers
             item.IsDeleted = false;
             item.DeletedAt = null;
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveLeadsMirror(TenantId, new[] { item }); } catch { }
             LogActivity("Lead Restored", item.LeadId, null, $"Lead '{item.FullName}' was restored from archive.");
         }
 
@@ -570,7 +568,8 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public List<Lead> GetPendingReview()
         {
-            return _db.Leads
+            using var db = LocalDb.CreateContext(TenantId);
+            return db.Leads
                 .AsNoTracking()
                 .Where(l => l.AssignmentStatus == "pending_review" || l.AssignedAgentId == null)
                 .OrderByDescending(l => l.CreatedAt)
@@ -791,6 +790,11 @@ namespace CRMS_Peguit.winforms.Controllers
                         : l.CreatedByUserId == uid);
                 }
 
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(l => l.BranchId == CurrentSession.ActiveBranchId.Value);
+                }
+
                 return query.Count();
             }
             catch (Exception ex)
@@ -804,9 +808,15 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             try
             {
-                int total = _db.Leads.AsNoTracking().Count(l => !l.IsDeleted);
+                var query = _db.Leads.AsNoTracking().Where(l => !l.IsDeleted);
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(l => l.BranchId == CurrentSession.ActiveBranchId.Value);
+                }
+
+                int total = query.Count();
                 if (total == 0) return 0.0;
-                int converted = _db.Leads.AsNoTracking().Count(l => !l.IsDeleted && l.Stage.ToLower() == "converted");
+                int converted = query.Count(l => l.Stage.ToLower() == "converted");
                 return Math.Round(((double)converted / total) * 100.0, 1);
             }
             catch (Exception ex)
@@ -820,9 +830,16 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             try
             {
-                return _db.Leads
+                var query = _db.Leads
                     .AsNoTracking()
-                    .Count(l => !l.IsDeleted && (l.AssignmentStatus == "pending_review" || l.AssignedAgentId == null));
+                    .Where(l => !l.IsDeleted && (l.AssignmentStatus == "pending_review" || l.AssignedAgentId == null));
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(l => l.BranchId == CurrentSession.ActiveBranchId.Value);
+                }
+
+                return query.Count();
             }
             catch (Exception ex)
             {

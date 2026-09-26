@@ -25,6 +25,9 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public ReportsController()
         {
+            if (RbacService.IsSuperAdmin)
+                throw new UnauthorizedAccessException("Super Administrators are restricted to platform infrastructure and cannot access tenant operational reports.");
+
             _db = LocalDb.CreateContext(CurrentSession.TenantId);
             QuestPDF.Settings.License = LicenseType.Community;
         }
@@ -41,6 +44,9 @@ namespace CRMS_Peguit.winforms.Controllers
                     .Include(d => d.Property)
                     .Include(d => d.Agent)
                     .Where(d => d.CreatedAt >= range.Start && d.CreatedAt <= range.End);
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                    query = query.Where(d => d.BranchId == CurrentSession.ActiveBranchId.Value);
 
                 if (agentId.HasValue)
                     query = query.Where(d => d.AgentId == agentId.Value);
@@ -101,6 +107,9 @@ namespace CRMS_Peguit.winforms.Controllers
                     .Include(l => l.AssignedAgent)
                     .Where(l => l.CreatedAt >= range.Start && l.CreatedAt <= range.End);
 
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                    query = query.Where(l => l.BranchId == CurrentSession.ActiveBranchId.Value);
+
                 if (agentId.HasValue)
                     query = query.Where(l => l.AssignedAgentId == agentId.Value);
 
@@ -147,6 +156,9 @@ namespace CRMS_Peguit.winforms.Controllers
                     .Include(d => d.Customer)
                     .Where(d => (d.Stage.ToLower() == "closed" || d.Stage.ToLower() == "closed-won" || d.Stage.ToLower() == "won") &&
                                 (d.ContractSignedDate ?? d.CreatedAt) >= range.Start && (d.ContractSignedDate ?? d.CreatedAt) <= range.End);
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                    query = query.Where(d => d.BranchId == CurrentSession.ActiveBranchId.Value);
 
                 if (agentId.HasValue)
                     query = query.Where(d => d.AgentId == agentId.Value);
@@ -198,6 +210,9 @@ namespace CRMS_Peguit.winforms.Controllers
                     .Include(p => p.ListedByAgent)
                     .Include(p => p.OwnerCustomer)
                     .Where(p => p.CreatedAt >= range.Start && p.CreatedAt <= range.End);
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                    query = query.Where(p => p.BranchId == CurrentSession.ActiveBranchId.Value);
 
                 if (!string.IsNullOrEmpty(propertyType))
                 {
@@ -266,9 +281,19 @@ namespace CRMS_Peguit.winforms.Controllers
             try
             {
                 var query = _db.SupportTickets
-                    .Include(t => t.Customer)
+                    .Include(t => t.Customer).ThenInclude(c => c.AssignedAgent)
                     .Include(t => t.AssignedToUser)
+                    .Include(t => t.RaisedByUser)
                     .Where(t => t.CreatedAt >= range.Start && t.CreatedAt <= range.End);
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    int bId = CurrentSession.ActiveBranchId.Value;
+                    query = query.Where(t =>
+                        (t.AssignedToUser != null && t.AssignedToUser.BranchId == bId) ||
+                        (t.RaisedByUser != null && t.RaisedByUser.BranchId == bId) ||
+                        (t.Customer != null && t.Customer.AssignedAgent != null && t.Customer.AssignedAgent.BranchId == bId));
+                }
 
                 if (!string.IsNullOrEmpty(priority))
                     query = query.Where(t => t.Priority.ToLower() == priority.ToLower());
@@ -337,6 +362,9 @@ namespace CRMS_Peguit.winforms.Controllers
                 var query = _db.Users.AsNoTracking()
                     .Include(u => u.Role)
                     .Where(u => u.Role.RoleName.ToLower() == "agent" && u.Status.ToLower() != "inactive");
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                    query = query.Where(u => u.BranchId == CurrentSession.ActiveBranchId.Value);
 
                 if (agentId.HasValue)
                     query = query.Where(u => u.UserId == agentId.Value);
@@ -625,7 +653,8 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             try
             {
-                return _db.Users.AsNoTracking()
+                using var db = LocalDb.CreateContext(CurrentSession.TenantId);
+                return db.Users.AsNoTracking()
                     .Include(u => u.Role)
                     .Include(u => u.Person)
                     .Where(u => u.Role.RoleName.ToLower() == "agent" && u.Status.ToLower() != "inactive")

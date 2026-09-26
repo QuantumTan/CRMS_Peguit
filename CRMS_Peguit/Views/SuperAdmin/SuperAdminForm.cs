@@ -4,15 +4,17 @@ using System.Windows.Forms;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
-using CRMS_Peguit.winforms.Views.Reports;
 using CRMS_Peguit.winforms.Views.SuperAdmin;
 
 // =============================================================================
 // SuperAdminForm — NEXA Super Admin Console Shell
-// Matches Figma navigation structure:
-//   - Dashboard (Platform Overview)
-//   - INSIGHTS: Reports
+// Architecture: Platform Infrastructure & Multi-Tenant Management
+//   - Dashboard (Platform Overview & Aggregate Metrics)
 //   - SYSTEM: Admins & Roles, Data & Backup, Settings & Policies, Subscription
+//
+// DATA BOUNDARY ATTESTATION:
+// SuperAdmin has ZERO access to tenant business/operational data (Leads, Deals,
+// Customers, Properties, Commissions, or Tenant CRM Reports).
 // =============================================================================
 
 namespace CRMS_Peguit.winforms
@@ -28,7 +30,6 @@ namespace CRMS_Peguit.winforms
         // ── Sidebar Controls ─────────────────────────────────────────────────
         private Panel _pnlNav = null!;
         private Button _btnDashboard = null!;
-        private Button _btnReports = null!;
         private Button _btnAdministrators = null!;
         private Button _btnBackups = null!;
         private Button _btnSystemSettings = null!;
@@ -42,7 +43,6 @@ namespace CRMS_Peguit.winforms
 
         // ── Child Views (lazy-loaded) ─────────────────────────────────────────
         private SuperAdminDashboardView? _dashboardView;
-        private ReportsView? _reportsView;
         private AdministratorsView? _administratorsView;
         private SubscriptionsView? _subscriptionsView;
         private SystemSettingsView? _systemSettingsView;
@@ -110,25 +110,26 @@ namespace CRMS_Peguit.winforms
             {
                 Dock = DockStyle.Left,
                 Width = 240,
-                BackColor = Color.FromArgb(10, 22, 39) // Exact Figma dark navy #0A1627
+                BackColor = Theme.SidebarBackground  // Slate 900 #0F172A — matches tenant exactly
             };
 
-            // Brand header (Dock = Top)
+            // ── Brand / Logo header (Dock = Top) ──────────────────────────────
             var pnlBrand = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 130,
-                BackColor = Color.FromArgb(10, 22, 39),
-                Padding = new Padding(20, 16, 20, 12)
+                Height = 72,
+                BackColor = Theme.SidebarBackground,
+                Padding = new Padding(20, 0, 20, 0)
             };
 
+            // NEXA triangle logo
             var lblLogoIcon = new Label
             {
                 Text = "△",
                 Font = new Font("Segoe UI", 16f, FontStyle.Bold),
                 ForeColor = Color.White,
                 AutoSize = true,
-                Location = new Point(20, 14)
+                Location = new Point(20, 22)
             };
             var lblBrand = new Label
             {
@@ -136,30 +137,37 @@ namespace CRMS_Peguit.winforms
                 Font = new Font("Segoe UI", 13.5f, FontStyle.Bold),
                 ForeColor = Color.White,
                 AutoSize = true,
-                Location = new Point(48, 12)
+                Location = new Point(48, 18)
             };
             var lblCrmSub = new Label
             {
                 Text = "CRM SYSTEM",
                 Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(148, 163, 184),
+                ForeColor = Theme.SidebarTextMuted,
                 AutoSize = true,
-                Location = new Point(50, 32)
+                Location = new Point(50, 38)
             };
             pnlBrand.Controls.Add(lblLogoIcon);
             pnlBrand.Controls.Add(lblBrand);
             pnlBrand.Controls.Add(lblCrmSub);
 
-            // User Info pill in sidebar (Figma style)
+            // ── User Profile Pill (Dock = Top, after brand) ───────────────────
+            var pnlProfileWrap = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 72,
+                BackColor = Theme.SidebarBackground,
+                Padding = new Padding(14, 10, 14, 10)
+            };
+
             var pnlUserPill = new Panel
             {
-                Location = new Point(14, 62),
-                Size = new Size(212, 54),
-                BackColor = Color.FromArgb(15, 30, 52)
+                Dock = DockStyle.Fill,
+                BackColor = Theme.SidebarProfileCard  // Slate 800 #1E293B
             };
             UiRadiusHelper.StyleCard(pnlUserPill, 8);
 
-            string adminName = CurrentSession.CurrentUser?.FullName ?? "Alex Kim";
+            string adminName = CurrentSession.CurrentUser?.FullName ?? "Super Admin";
             var avatarUser = new AvatarLabel(adminName, "Super Admin")
             {
                 Location = new Point(8, 7),
@@ -173,92 +181,80 @@ namespace CRMS_Peguit.winforms
             {
                 Size = new Size(8, 8),
                 Location = new Point(190, 22),
-                BackColor = Color.FromArgb(16, 185, 129)
+                BackColor = Color.FromArgb(16, 185, 129)  // Emerald 500
             };
             UiRadiusHelper.StyleCard(pnlDot, 4);
             pnlUserPill.Controls.Add(pnlDot);
+            pnlProfileWrap.Controls.Add(pnlUserPill);
 
-            pnlBrand.Controls.Add(pnlUserPill);
-
-            // Sign out link at bottom (Dock = Bottom)
+            // ── Sign Out (Dock = Bottom) ──────────────────────────────────────
             var pnlSignOut = new Panel
             {
                 Dock = DockStyle.Bottom,
                 Height = 56,
-                BackColor = Color.FromArgb(10, 22, 39),
-                Padding = new Padding(16, 12, 16, 12)
+                BackColor = Theme.SidebarBackground,
+                Padding = new Padding(16, 14, 16, 14)
             };
 
             var lnkSignOut = new Label
             {
                 Text = "⎋   Sign out",
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
-                ForeColor = Color.FromArgb(148, 163, 184),
+                Font = new Font("Segoe UI", 9.5f),
+                ForeColor = Theme.SidebarText,
                 AutoSize = true,
                 Cursor = Cursors.Hand,
-                Location = new Point(18, 16)
+                Location = new Point(18, 14)
             };
             lnkSignOut.MouseEnter += (_, _) => lnkSignOut.ForeColor = Color.White;
-            lnkSignOut.MouseLeave += (_, _) => lnkSignOut.ForeColor = Color.FromArgb(148, 163, 184);
+            lnkSignOut.MouseLeave += (_, _) => lnkSignOut.ForeColor = Theme.SidebarText;
             lnkSignOut.Click += LnkSignOut_Click;
             pnlSignOut.Controls.Add(lnkSignOut);
 
-            // Nav items container (Dock = Fill)
+            // ── Nav Items (Dock = Fill) ───────────────────────────────────────
             _pnlNav = new Panel
             {
                 Dock = DockStyle.Fill,
                 AutoScroll = true,
                 BackColor = Color.Transparent,
-                Padding = new Padding(10, 10, 10, 10)
+                Padding = new Padding(10, 8, 10, 8)
             };
 
             int y = 6;
 
-            // 1. Dashboard
+            // Dashboard
             _btnDashboard = CreateNavButton("⊞", "Dashboard", y);
             _btnDashboard.Click += (_, _) => NavigateTo(_btnDashboard);
             _pnlNav.Controls.Add(_btnDashboard);
-            y += 50;
+            y += 46;
 
-            // 2. Section: INSIGHTS
-            y += 6;
-            var lblSectionInsights = CreateSectionHeader("INSIGHTS", y);
-            _pnlNav.Controls.Add(lblSectionInsights);
-            y += 24;
-
-            _btnReports = CreateNavButton("📊", "Reports", y);
-            _btnReports.Click += (_, _) => NavigateTo(_btnReports);
-            _pnlNav.Controls.Add(_btnReports);
-            y += 50;
-
-            // 3. Section: SYSTEM
-            y += 6;
-            var lblSectionSystem = CreateSectionHeader("SYSTEM", y);
-            _pnlNav.Controls.Add(lblSectionSystem);
-            y += 24;
+            // Section: SYSTEM
+            y += 4;
+            _pnlNav.Controls.Add(CreateSectionHeader("SYSTEM", y));
+            y += 22;
 
             _btnAdministrators = CreateNavButton("🛡", "Admins & Roles", y);
             _btnAdministrators.Click += (_, _) => NavigateTo(_btnAdministrators);
             _pnlNav.Controls.Add(_btnAdministrators);
-            y += 50;
+            y += 46;
 
             _btnBackups = CreateNavButton("🗄", "Data & Backup", y);
             _btnBackups.Click += (_, _) => NavigateTo(_btnBackups);
             _pnlNav.Controls.Add(_btnBackups);
-            y += 50;
+            y += 46;
 
             _btnSystemSettings = CreateNavButton("⚙", "Settings & Policies", y);
             _btnSystemSettings.Click += (_, _) => NavigateTo(_btnSystemSettings);
             _pnlNav.Controls.Add(_btnSystemSettings);
-            y += 50;
+            y += 46;
 
             _btnSubscriptions = CreateNavButton("💳", "Subscription", y);
             _btnSubscriptions.Click += (_, _) => NavigateTo(_btnSubscriptions);
             _pnlNav.Controls.Add(_btnSubscriptions);
 
-            // Add in docking order
+            // Correct docking order: Fill first, then Bottom, then Top panels
             _sidebar.Controls.Add(_pnlNav);
             _sidebar.Controls.Add(pnlSignOut);
+            _sidebar.Controls.Add(pnlProfileWrap);
             _sidebar.Controls.Add(pnlBrand);
         }
 
@@ -268,8 +264,8 @@ namespace CRMS_Peguit.winforms
             {
                 Text = title,
                 Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(100, 116, 139), // Slate 500
-                Location = new Point(14, y),
+                ForeColor = Theme.SidebarTextMuted,   // Slate 500 — matches tenant
+                Location = new Point(16, y),
                 Size = new Size(200, 18)
             };
         }
@@ -278,22 +274,46 @@ namespace CRMS_Peguit.winforms
         {
             var btn = new Button
             {
-                Text = $"   {icon}    {label}",
-                Location = new Point(10, y),
+                Text = $"   {icon,-2}   {label}",
+                Location = new Point(8, y),
                 Size = new Size(220, 42),
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
-                ForeColor = Color.FromArgb(203, 213, 225),
+                ForeColor = Theme.SidebarText,
                 BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Cursor = Cursors.Hand,
-                Padding = new Padding(12, 0, 0, 0),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+                Padding = new Padding(16, 0, 0, 0)
             };
             btn.FlatAppearance.BorderSize = 0;
-            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(17, 34, 60);
-            btn.FlatAppearance.MouseDownBackColor = Color.FromArgb(25, 48, 85);
+            btn.FlatAppearance.MouseOverBackColor = Theme.SidebarHover;
+            btn.FlatAppearance.MouseDownBackColor = Theme.SidebarSelected;
             UiRadiusHelper.StyleButton(btn, 6);
+
+            // Fluent-style left accent bar — identical to MainForm tenant nav
+            btn.Paint += (s, e) =>
+            {
+                if (s is Button b && b == _activeNavBtn)
+                {
+                    e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    using var accentBrush = new SolidBrush(Theme.SidebarAccent);  // Sky 400 #38BDF8
+                    using var accentPath = UiRadiusHelper.CreateRoundedPath(
+                        new Rectangle(4, 7, 3, b.Height - 14), 2);
+                    e.Graphics.FillPath(accentBrush, accentPath);
+                }
+            };
+
+            btn.MouseEnter += (s, e) =>
+            {
+                if (s is Button b && b != _activeNavBtn)
+                    b.BackColor = Theme.SidebarHover;
+            };
+            btn.MouseLeave += (s, e) =>
+            {
+                if (s is Button b && b != _activeNavBtn)
+                    b.BackColor = Color.Transparent;
+            };
+
             return btn;
         }
 
@@ -349,7 +369,7 @@ namespace CRMS_Peguit.winforms
             // Middle Search Bar
             _txtHeaderSearch = new TextBox
             {
-                PlaceholderText = "🔍  Search leads, properties, deals...",
+                PlaceholderText = "🔍  Search tenants, administrators, policies...",
                 Font = new Font("Segoe UI", 9.5f),
                 Size = new Size(340, 32),
                 Location = new Point(170, 16)
@@ -401,17 +421,22 @@ namespace CRMS_Peguit.winforms
 
         private void NavigateTo(Button navBtn)
         {
+            // Deactivate previous
             if (_activeNavBtn != null)
             {
                 _activeNavBtn.BackColor = Color.Transparent;
-                _activeNavBtn.ForeColor = Color.FromArgb(203, 213, 225);
+                _activeNavBtn.ForeColor = Theme.SidebarText;
                 _activeNavBtn.Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+                _activeNavBtn.Invalidate();
             }
 
-            navBtn.BackColor = Color.FromArgb(17, 34, 60);
-            navBtn.ForeColor = Color.White;
+            // Activate new — matches tenant SetActiveNavButton
+            navBtn.BackColor = Theme.SidebarSelected;   // Slate 800 #1E293B
+            navBtn.ForeColor = Theme.SidebarTextActive; // White
             navBtn.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
             _activeNavBtn = navBtn;
+            navBtn.Invalidate(); // triggers Paint for the accent bar
+
 
             _mainPanel.Controls.Clear();
 
@@ -420,12 +445,6 @@ namespace CRMS_Peguit.winforms
             {
                 _dashboardView ??= new SuperAdminDashboardView();
                 view = _dashboardView;
-            }
-            else if (navBtn == _btnReports)
-            {
-                _reportsView ??= new ReportsView();
-                view = _reportsView;
-                _reportsView.EnsureReportLoaded();
             }
             else if (navBtn == _btnAdministrators)
             {

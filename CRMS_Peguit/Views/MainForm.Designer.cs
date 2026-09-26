@@ -17,6 +17,7 @@ namespace CRMS_Peguit.winforms
         private System.Windows.Forms.Button btnProperties = null!;
         private System.Windows.Forms.Button btnDeals = null!;
         private System.Windows.Forms.Button btnCampaigns = null!;
+        private System.Windows.Forms.Button btnClientRetention = null!;
         private System.Windows.Forms.Button btnActivities = null!;
         private System.Windows.Forms.Button btnFollowUps = null!;
         private System.Windows.Forms.Label lblSupportSection = null!;
@@ -70,6 +71,7 @@ namespace CRMS_Peguit.winforms
             this.btnProperties = new System.Windows.Forms.Button();
             this.btnDeals = new System.Windows.Forms.Button();
             this.btnCampaigns = new System.Windows.Forms.Button();
+            this.btnClientRetention = new System.Windows.Forms.Button();
             this.btnActivities = new System.Windows.Forms.Button();
             this.btnFollowUps = new System.Windows.Forms.Button();
             this.lblSupportSection = new System.Windows.Forms.Label();
@@ -164,6 +166,7 @@ namespace CRMS_Peguit.winforms
             this.pnlNav.Controls.Add(this.lblSupportSection);
             this.pnlNav.Controls.Add(this.btnFollowUps);
             this.pnlNav.Controls.Add(this.btnActivities);
+            this.pnlNav.Controls.Add(this.btnClientRetention);
             this.pnlNav.Controls.Add(this.btnCampaigns);
             this.pnlNav.Controls.Add(this.btnDeals);
             this.pnlNav.Controls.Add(this.btnBranching);
@@ -293,6 +296,23 @@ namespace CRMS_Peguit.winforms
             this.btnCampaigns.Text = "  📣  Campaigns";
             this.btnCampaigns.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             this.btnCampaigns.UseVisualStyleBackColor = true;
+            // 
+            // btnClientRetention
+            // 
+            this.btnClientRetention.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.btnClientRetention.Dock = System.Windows.Forms.DockStyle.Top;
+            this.btnClientRetention.FlatAppearance.BorderSize = 0;
+            this.btnClientRetention.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnClientRetention.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnClientRetention.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
+            this.btnClientRetention.Location = new System.Drawing.Point(0, 218);
+            this.btnClientRetention.Name = "btnClientRetention";
+            this.btnClientRetention.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
+            this.btnClientRetention.Size = new System.Drawing.Size(240, 38);
+            this.btnClientRetention.TabIndex = 6;
+            this.btnClientRetention.Text = "  💌  Client Retention";
+            this.btnClientRetention.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.btnClientRetention.UseVisualStyleBackColor = true;
             // 
             // btnActivities
             // 

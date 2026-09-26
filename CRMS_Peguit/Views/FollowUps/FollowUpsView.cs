@@ -20,6 +20,7 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
         private List<TaskReminder> _allReminders = new();
         private List<TaskReminder> _filteredReminders = new();
         private Panel _pnlEmptyState = null!;
+        private PaginationControl _pagination = null!;
 
         public FollowUpsView()
         {
@@ -27,14 +28,25 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             _controller = new FollowUpController();
 
             InitGridColumns();
+            InitPagination();
             InitEmptyState();
             ApplyStyling();
             BindEvents();
             UpdateFilterPillStyles();
-            RefreshData();
+            _ = RefreshDataAsync();
 
             this.Load += (_, _) => LayoutToolbar();
             this.Resize += (_, _) => LayoutToolbar();
+        }
+
+        private void InitPagination()
+        {
+            _pagination = new PaginationControl();
+            _pagination.SetItemLabel("follow-ups");
+            _pagination.PageChanged += (_, _) => PopulateGrid(resetPage: false);
+            _pagination.PageSizeChanged += (_, _) => PopulateGrid(resetPage: true);
+            pnlCard.Controls.Add(_pagination);
+            _pagination.BringToFront();
         }
 
         private void InitGridColumns()
@@ -267,14 +279,47 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
 
         public void RefreshData()
         {
-            _allReminders = _controller.GetAll();
-            UpdateKpiCounts();
-            ApplyFilterAndSearch();
+            _ = RefreshDataAsync();
         }
 
-        private void UpdateKpiCounts()
+        public async System.Threading.Tasks.Task RefreshDataAsync()
         {
-            var counts = _controller.GetKpiCounts();
+            try
+            {
+                var (reminders, counts) = await System.Threading.Tasks.Task.Run(() =>
+                {
+                    var r = _controller.GetAll();
+                    var c = _controller.GetKpiCounts();
+                    return (r, c);
+                });
+
+                if (IsDisposed) return;
+
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() =>
+                    {
+                        if (IsDisposed) return;
+                        _allReminders = reminders;
+                        ApplyKpiCounts(counts);
+                        ApplyFilterAndSearch();
+                    }));
+                }
+                else
+                {
+                    _allReminders = reminders;
+                    ApplyKpiCounts(counts);
+                    ApplyFilterAndSearch();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FollowUpsView] RefreshDataAsync error: {ex.Message}");
+            }
+        }
+
+        private void ApplyKpiCounts(FollowUpKpiCounts counts)
+        {
             kpiOverdue.SetValue(counts.Overdue.ToString("N0"));
             kpiToday.SetValue(counts.Today.ToString("N0"));
             kpiUpcoming.SetValue(counts.Upcoming.ToString("N0"));
@@ -368,14 +413,20 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             }
 
             _filteredReminders = source.OrderBy(r => r.DueDate).ToList();
-            PopulateGrid();
+            PopulateGrid(resetPage: true);
         }
 
-        private void PopulateGrid()
+        private void PopulateGrid(bool resetPage = false)
         {
             grid.Rows.Clear();
 
-            if (_filteredReminders.Count == 0)
+            int total = _filteredReminders.Count;
+            int page = resetPage ? 1 : (_pagination?.CurrentPage ?? 1);
+            int pageSize = _pagination?.PageSize ?? 25;
+
+            _pagination?.UpdatePagination(total, page, pageSize);
+
+            if (total == 0)
             {
                 _pnlEmptyState.Visible = true;
                 return;
@@ -383,7 +434,10 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
 
             _pnlEmptyState.Visible = false;
 
-            foreach (var r in _filteredReminders)
+            int effectivePage = _pagination?.CurrentPage ?? 1;
+            var pageItems = _filteredReminders.Skip((effectivePage - 1) * pageSize).Take(pageSize).ToList();
+
+            foreach (var r in pageItems)
             {
                 string clientTag = r.RelatedCustomerId.HasValue ? "Customer" : "Lead";
                 string clientName = r.RelatedCustomer?.FullName

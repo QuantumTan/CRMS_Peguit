@@ -26,15 +26,10 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public List<Deal> GetAll()
         {
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                var cached = LocalDataCache.Instance.GetCachedDeals(TenantId, CurrentSession.UserId, RbacService.IsAgent);
-                if (cached.Count > 0) return cached;
-            }
-
             try
             {
-                var query = _db.Deals
+                using var db = LocalDb.CreateContext(tenantId: TenantId);
+                var query = db.Deals
                     .Include(d => d.Customer).ThenInclude(c => c!.Person)
                     .Include(d => d.Property)
                     .Include(d => d.Agent).ThenInclude(u => u!.Person)
@@ -44,6 +39,11 @@ namespace CRMS_Peguit.winforms.Controllers
                 {
                     int currentUserId = CurrentSession.UserId;
                     query = query.Where(d => d.AgentId == currentUserId);
+                }
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(d => d.BranchId == CurrentSession.ActiveBranchId.Value);
                 }
 
                 var list = query
@@ -83,6 +83,11 @@ namespace CRMS_Peguit.winforms.Controllers
                 {
                     int currentUserId = CurrentSession.UserId;
                     query = query.Where(d => d.AgentId == currentUserId);
+                }
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(d => d.BranchId == CurrentSession.ActiveBranchId.Value);
                 }
 
                 if (!string.IsNullOrWhiteSpace(filterStage) && !string.Equals(filterStage, "All", StringComparison.OrdinalIgnoreCase))
@@ -149,6 +154,11 @@ namespace CRMS_Peguit.winforms.Controllers
                     query = query.Where(d => d.AgentId == currentUserId);
                 }
 
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(d => d.BranchId == CurrentSession.ActiveBranchId.Value);
+                }
+
                 var list = await query.Select(d => new { d.Stage, d.Value }).ToListAsync();
 
                 int total = list.Count;
@@ -201,6 +211,11 @@ namespace CRMS_Peguit.winforms.Controllers
             deal.CreatedByUserId = CurrentSession.UserId > 0 ? CurrentSession.UserId : 1;
             deal.CreatedAt = DateTime.UtcNow;
 
+            if (CurrentSession.CanAccessBranching && !deal.BranchId.HasValue && CurrentSession.ActiveBranchId.HasValue)
+            {
+                deal.BranchId = CurrentSession.ActiveBranchId.Value;
+            }
+
             // Apply defaults for commercial terms if not specified
             if (string.IsNullOrWhiteSpace(deal.PaymentScheme))
                 deal.PaymentScheme = "Bank Financing";
@@ -240,15 +255,15 @@ namespace CRMS_Peguit.winforms.Controllers
                 }
             }
 
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                var qItem = SyncService.Instance.EnqueueOfflineCreate("Deal", deal, TenantId, CurrentSession.UserId);
-                deal.DealId = -qItem.QueueId;
-                return deal;
-            }
-
             _db.Deals.Add(deal);
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveDealsMirror(TenantId, new[] { deal }); } catch { }
+
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                SyncService.Instance.EnqueueOfflineCreate("Deal", deal, TenantId, CurrentSession.UserId);
+            }
+
             return deal;
         }
 
@@ -257,7 +272,6 @@ namespace CRMS_Peguit.winforms.Controllers
             if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
             {
                 SyncService.Instance.EnqueueOfflineUpdate("Deal", deal.DealId, deal, TenantId, CurrentSession.UserId, deal.CreatedAt);
-                return;
             }
 
             var item = _db.Deals.Include(d => d.Contingencies).Include(d => d.DealClauses).SingleOrDefault(x => x.DealId == deal.DealId);
@@ -286,6 +300,7 @@ namespace CRMS_Peguit.winforms.Controllers
             item.ContractSignedDate = deal.ContractSignedDate;
 
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveDealsMirror(TenantId, new[] { item }); } catch { }
 
             if (!string.Equals(oldStage, newStage, StringComparison.OrdinalIgnoreCase))
             {
@@ -354,7 +369,8 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public Dictionary<int, string> GetCustomerNames()
         {
-            return _db.Customers
+            using var db = LocalDb.CreateContext(tenantId: TenantId);
+            return db.Customers
                 .Include(x => x.Person)
                 .AsNoTracking()
                 .OrderBy(x => x.Person.LastName)
@@ -367,7 +383,8 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public Dictionary<int, string> GetPropertyAddresses()
         {
-            return _db.Properties
+            using var db = LocalDb.CreateContext(tenantId: TenantId);
+            return db.Properties
                 .AsNoTracking()
                 .OrderBy(x => x.Address)
                 .ToDictionary(
@@ -378,7 +395,8 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public Dictionary<int, string> GetAgentNames()
         {
-            return _db.Users
+            using var db = LocalDb.CreateContext(tenantId: TenantId);
+            return db.Users
                 .Include(x => x.Person)
                 .AsNoTracking()
                 .OrderBy(x => x.Person.FirstName)
@@ -502,6 +520,11 @@ namespace CRMS_Peguit.winforms.Controllers
                     query = query.Where(d => d.AgentId == uid);
                 }
 
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(d => d.BranchId == CurrentSession.ActiveBranchId.Value);
+                }
+
                 return query.Count();
             }
             catch (Exception ex)
@@ -516,11 +539,16 @@ namespace CRMS_Peguit.winforms.Controllers
             try
             {
                 var now = DateTime.UtcNow;
-                return _db.Deals
-                    .AsNoTracking()
-                    .Count(d => d.Stage.ToLower() == "closed" &&
+                var query = _db.Deals.AsNoTracking().Where(d => d.Stage.ToLower() == "closed" &&
                                ((d.ContractSignedDate.HasValue && d.ContractSignedDate.Value.Year == now.Year && d.ContractSignedDate.Value.Month == now.Month) ||
                                 (d.CreatedAt.Year == now.Year && d.CreatedAt.Month == now.Month)));
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(d => d.BranchId == CurrentSession.ActiveBranchId.Value);
+                }
+
+                return query.Count();
             }
             catch (Exception ex)
             {
@@ -534,13 +562,18 @@ namespace CRMS_Peguit.winforms.Controllers
             try
             {
                 var now = DateTime.UtcNow;
-                var closedDealsThisMonth = _db.Deals
+                var query = _db.Deals
                     .AsNoTracking()
                     .Where(d => d.Stage.ToLower() == "closed" &&
                                ((d.ContractSignedDate.HasValue && d.ContractSignedDate.Value.Year == now.Year && d.ContractSignedDate.Value.Month == now.Month) ||
-                                (d.CreatedAt.Year == now.Year && d.CreatedAt.Month == now.Month)))
-                    .ToList();
+                                (d.CreatedAt.Year == now.Year && d.CreatedAt.Month == now.Month)));
 
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(d => d.BranchId == CurrentSession.ActiveBranchId.Value);
+                }
+
+                var closedDealsThisMonth = query.ToList();
                 return closedDealsThisMonth.Sum(d => d.Value * (d.CommissionRate > 1m ? d.CommissionRate / 100m : d.CommissionRate));
             }
             catch (Exception ex)
@@ -558,10 +591,16 @@ namespace CRMS_Peguit.winforms.Controllers
                 var now = DateTime.UtcNow;
                 var startMonth = new DateTime(now.Year, now.Month, 1).AddMonths(-(months - 1));
 
-                var deals = _db.Deals
+                var query = _db.Deals
                     .AsNoTracking()
-                    .Where(d => d.Stage.ToLower() == "closed" && ((d.ContractSignedDate ?? d.CreatedAt) >= startMonth))
-                    .ToList();
+                    .Where(d => d.Stage.ToLower() == "closed" && ((d.ContractSignedDate ?? d.CreatedAt) >= startMonth));
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(d => d.BranchId == CurrentSession.ActiveBranchId.Value);
+                }
+
+                var deals = query.ToList();
 
                 for (int i = 0; i < months; i++)
                 {

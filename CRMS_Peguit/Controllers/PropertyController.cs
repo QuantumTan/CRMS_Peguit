@@ -28,7 +28,8 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             try
             {
-                var query = _db.Properties.AsNoTracking();
+                using var db = LocalDb.CreateContext(TenantId);
+                var query = db.Properties.AsNoTracking();
 
                 // R23 & R25 (revised): Visibility scoped to creator while Pending, assignee once assigned.
                 // Manager/Admin retain full oversight (R26).
@@ -39,6 +40,11 @@ namespace CRMS_Peguit.winforms.Controllers
                         (p.ListedByAgentId.HasValue && p.ListedByAgentId.Value > 0)
                             ? p.ListedByAgentId.Value == currentUserId
                             : p.CreatedByUserId == currentUserId);
+                }
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(p => p.BranchId == CurrentSession.ActiveBranchId.Value);
                 }
 
                 return query
@@ -74,6 +80,11 @@ namespace CRMS_Peguit.winforms.Controllers
                         (p.ListedByAgentId.HasValue && p.ListedByAgentId.Value > 0)
                             ? p.ListedByAgentId.Value == currentUserId
                             : p.CreatedByUserId == currentUserId);
+                }
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    query = query.Where(p => p.BranchId == CurrentSession.ActiveBranchId.Value);
                 }
 
                 if (!string.IsNullOrWhiteSpace(filterStatus) && !string.Equals(filterStatus, "All", StringComparison.OrdinalIgnoreCase))
@@ -178,6 +189,11 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             property.CreatedAt = DateTime.UtcNow;
             property.CreatedByUserId = CurrentSession.UserId > 0 ? CurrentSession.UserId : 1;
+
+            if (CurrentSession.CanAccessBranching && !property.BranchId.HasValue && CurrentSession.ActiveBranchId.HasValue)
+            {
+                property.BranchId = CurrentSession.ActiveBranchId.Value;
+            }
 
             if (RbacService.CanAssignRecords)
             {
@@ -303,7 +319,8 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public List<Property> GetPendingReview()
         {
-            return _db.Properties
+            using var db = LocalDb.CreateContext(TenantId);
+            return db.Properties
                 .AsNoTracking()
                 .Where(p => p.AssignmentStatus == "pending_review" || p.ListedByAgentId == null)
                 .OrderByDescending(p => p.CreatedAt)
@@ -314,7 +331,8 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             var sellerTypes = new[] { "seller", "both" };
 
-            return _db.Customers
+            using var db = LocalDb.CreateContext(TenantId);
+            return db.Customers
                 .AsNoTracking()
                 .Where(c => sellerTypes.Contains(c.Type.ToLower()) && c.Status.ToLower() == "active")
                 .OrderBy(c => c.Person.LastName)
@@ -340,13 +358,14 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             try
             {
-                var agentRoleIds = _db.Roles
+                using var db = LocalDb.CreateContext(TenantId);
+                var agentRoleIds = db.Roles
                     .AsNoTracking()
                     .Where(r => r.RoleName.ToLower() == "agent")
                     .Select(r => r.RoleId)
                     .ToList();
 
-                return _db.Users
+                return db.Users
                     .AsNoTracking()
                     .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status.ToLower() != "inactive")
                     .OrderBy(u => u.Person.LastName)

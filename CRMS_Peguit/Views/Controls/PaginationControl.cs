@@ -134,6 +134,11 @@ namespace CRMS_Peguit.winforms.Controls
             UpdateDisplay();
         }
 
+        public void ResetPage()
+        {
+            _currentPage = 1;
+        }
+
         public void UpdatePagination(int totalRecords, int currentPage, int pageSize)
         {
             _totalRecords = totalRecords;

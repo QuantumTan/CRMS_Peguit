@@ -64,7 +64,7 @@ namespace CRMS_Peguit.winforms.Models.Services
                 };
 
                 using var proc = Process.Start(psi);
-                proc?.WaitForExit(8000);
+                proc?.WaitForExit(2000);
             }
             catch
             {

@@ -52,11 +52,8 @@ namespace CRMS_Peguit.winforms.Controllers
         /// </summary>
         public bool CanViewTimeline(int? assignedAgentId)
         {
-            // SuperAdmin always has system oversight
-            if (RbacService.IsSuperAdmin) return true;
-
-            // Manager visibility if coaching oversight is enabled
-            if (RbacService.IsManager && AllowManagerActivityVisibility) return true;
+            // SuperAdmin, Admin, and Manager have system/management oversight
+            if (RbacService.HasFullOversight) return true;
 
             // Strict Agent boundary: Agent sees activities only for assigned customers/leads
             if (RbacService.IsAgent && assignedAgentId == CurrentSession.UserId) return true;
@@ -113,36 +110,6 @@ namespace CRMS_Peguit.winforms.Controllers
                 activity.ActivityDate = DateTime.UtcNow;
             }
 
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                // In offline mode, verify assignment against cached data if agent
-                if (!RbacService.IsSuperAdmin)
-                {
-                    if (activity.RelatedCustomerId.HasValue)
-                    {
-                        var cachedCust = LocalDataCache.Instance.GetCachedCustomers(TenantId, currentUserId, RbacService.IsAgent)
-                            .FirstOrDefault(c => c.CustomerId == activity.RelatedCustomerId.Value);
-                        if (cachedCust == null || (cachedCust.AssignedAgentId.HasValue && cachedCust.AssignedAgentId.Value != currentUserId))
-                        {
-                            throw new UnauthorizedAccessException("You can only log activities for customers assigned to you.");
-                        }
-                    }
-                    else if (activity.RelatedLeadId.HasValue)
-                    {
-                        var cachedLead = LocalDataCache.Instance.GetCachedLeads(TenantId, currentUserId, RbacService.IsAgent)
-                            .FirstOrDefault(l => l.LeadId == activity.RelatedLeadId.Value);
-                        if (cachedLead == null || (cachedLead.AssignedAgentId.HasValue && cachedLead.AssignedAgentId.Value != currentUserId))
-                        {
-                            throw new UnauthorizedAccessException("You can only log activities for leads assigned to you.");
-                        }
-                    }
-                }
-
-                var qItem = SyncService.Instance.EnqueueOfflineCreate("Activity", activity, TenantId, currentUserId);
-                activity.ActivityId = -qItem.QueueId;
-                return activity;
-            }
-
             // Verify assignment to current agent (unless SuperAdmin)
             if (!RbacService.IsSuperAdmin)
             {
@@ -166,6 +133,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
             _db.Activities.Add(activity);
             _db.SaveChanges();
+            try { LocalDataCache.Instance.SaveActivitiesMirror(TenantId, new[] { activity }); } catch { }
+
+            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            {
+                SyncService.Instance.EnqueueOfflineCreate("Activity", activity, TenantId, currentUserId);
+            }
 
             // Auto-advance lead from "new" to "contacted" on interaction
             if (activity.RelatedLeadId.HasValue)
@@ -195,94 +168,6 @@ namespace CRMS_Peguit.winforms.Controllers
         public List<TimelineItemDto> GetTimeline(int? customerId, int? leadId, string filter = "All")
         {
             var timeline = new List<TimelineItemDto>();
-
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                var cachedActivities = LocalDataCache.Instance.GetCachedActivities(TenantId, CurrentSession.UserId, RbacService.IsAgent);
-                if (customerId.HasValue)
-                    cachedActivities = cachedActivities.Where(a => a.RelatedCustomerId == customerId.Value).ToList();
-                else if (leadId.HasValue)
-                    cachedActivities = cachedActivities.Where(a => a.RelatedLeadId == leadId.Value).ToList();
-                else
-                    return timeline;
-
-                foreach (var a in cachedActivities)
-                {
-                    string cat = "System Events";
-                    string displayTitle = a.Type;
-
-                    if (a.Type.Equals("Call", StringComparison.OrdinalIgnoreCase))
-                    {
-                        cat = "Calls";
-                        string outcomeStr = a.Outcome.HasValue ? FormatCallOutcome(a.Outcome.Value) : "Logged";
-                        string durStr = a.DurationMinutes.HasValue && a.DurationMinutes.Value > 0 ? $" ({a.DurationMinutes}m)" : "";
-                        displayTitle = $"Call: {outcomeStr}{durStr}";
-                    }
-                    else if (a.Type.Equals("Email", StringComparison.OrdinalIgnoreCase))
-                    {
-                        cat = "Emails";
-                        displayTitle = "Email Interaction";
-                    }
-                    else if (a.Type.Equals("Meeting", StringComparison.OrdinalIgnoreCase))
-                    {
-                        cat = "Meetings";
-                        string durStr = a.DurationMinutes.HasValue && a.DurationMinutes.Value > 0 ? $" ({a.DurationMinutes}m)" : "";
-                        displayTitle = $"Meeting{durStr}";
-                    }
-
-                    timeline.Add(new TimelineItemDto
-                    {
-                        Id = $"act-{a.ActivityId}",
-                        Source = "Manual",
-                        Type = a.Type,
-                        Category = cat,
-                        Title = displayTitle,
-                        Notes = a.Notes,
-                        Timestamp = a.ActivityDate,
-                        ActorName = "Agent",
-                        Outcome = a.Outcome,
-                        DurationMinutes = a.DurationMinutes,
-                        RelatedCustomerId = a.RelatedCustomerId,
-                        RelatedLeadId = a.RelatedLeadId,
-                        RawActivityId = a.ActivityId,
-                        CanCreateFollowUp = true
-                    });
-                }
-
-                var cachedTasks = LocalDataCache.Instance.GetCachedTaskReminders(TenantId, CurrentSession.UserId, RbacService.IsAgent)
-                    .Where(t => t.Status == "Completed");
-                if (customerId.HasValue)
-                    cachedTasks = cachedTasks.Where(t => t.RelatedCustomerId == customerId.Value);
-                else if (leadId.HasValue)
-                    cachedTasks = cachedTasks.Where(t => t.RelatedLeadId == leadId.Value);
-
-                foreach (var t in cachedTasks)
-                {
-                    timeline.Add(new TimelineItemDto
-                    {
-                        Id = $"task-{t.TaskReminderId}",
-                        Source = "System",
-                        Type = "FollowUp",
-                        Category = "System Events",
-                        Title = $"Completed Follow-Up: {t.Title}",
-                        Notes = t.Notes,
-                        Timestamp = t.CompletedAt ?? t.DueDate,
-                        ActorName = "Agent",
-                        RelatedCustomerId = t.RelatedCustomerId,
-                        RelatedLeadId = t.RelatedLeadId,
-                        CanCreateFollowUp = true
-                    });
-                }
-
-                timeline = timeline.OrderByDescending(t => t.Timestamp).ToList();
-
-                if (!string.IsNullOrWhiteSpace(filter) && !filter.Equals("All", StringComparison.OrdinalIgnoreCase))
-                {
-                    timeline = timeline.Where(t => t.Category.Equals(filter, StringComparison.OrdinalIgnoreCase)).ToList();
-                }
-
-                return timeline;
-            }
 
             try
             {
@@ -482,6 +367,88 @@ namespace CRMS_Peguit.winforms.Controllers
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[ActivityController.GetTimeline] Error: {ex.Message}");
+                var cachedActivities = LocalDataCache.Instance.GetCachedActivities(TenantId, CurrentSession.UserId, RbacService.IsAgent);
+                if (customerId.HasValue)
+                    cachedActivities = cachedActivities.Where(a => a.RelatedCustomerId == customerId.Value).ToList();
+                else if (leadId.HasValue)
+                    cachedActivities = cachedActivities.Where(a => a.RelatedLeadId == leadId.Value).ToList();
+                else
+                    return timeline;
+
+                foreach (var a in cachedActivities)
+                {
+                    string cat = "System Events";
+                    string displayTitle = a.Type;
+
+                    if (a.Type.Equals("Call", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cat = "Calls";
+                        string outcomeStr = a.Outcome.HasValue ? FormatCallOutcome(a.Outcome.Value) : "Logged";
+                        string durStr = a.DurationMinutes.HasValue && a.DurationMinutes.Value > 0 ? $" ({a.DurationMinutes}m)" : "";
+                        displayTitle = $"Call: {outcomeStr}{durStr}";
+                    }
+                    else if (a.Type.Equals("Email", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cat = "Emails";
+                        displayTitle = "Email Interaction";
+                    }
+                    else if (a.Type.Equals("Meeting", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cat = "Meetings";
+                        string durStr = a.DurationMinutes.HasValue && a.DurationMinutes.Value > 0 ? $" ({a.DurationMinutes}m)" : "";
+                        displayTitle = $"Meeting{durStr}";
+                    }
+
+                    timeline.Add(new TimelineItemDto
+                    {
+                        Id = $"act-{a.ActivityId}",
+                        Source = "Manual",
+                        Type = a.Type,
+                        Category = cat,
+                        Title = displayTitle,
+                        Notes = a.Notes,
+                        Timestamp = a.ActivityDate,
+                        ActorName = "Agent",
+                        Outcome = a.Outcome,
+                        DurationMinutes = a.DurationMinutes,
+                        RelatedCustomerId = a.RelatedCustomerId,
+                        RelatedLeadId = a.RelatedLeadId,
+                        RawActivityId = a.ActivityId,
+                        CanCreateFollowUp = true
+                    });
+                }
+
+                var cachedTasks = LocalDataCache.Instance.GetCachedTaskReminders(TenantId, CurrentSession.UserId, RbacService.IsAgent)
+                    .Where(t => t.Status == "Completed");
+                if (customerId.HasValue)
+                    cachedTasks = cachedTasks.Where(t => t.RelatedCustomerId == customerId.Value);
+                else if (leadId.HasValue)
+                    cachedTasks = cachedTasks.Where(t => t.RelatedLeadId == leadId.Value);
+
+                foreach (var t in cachedTasks)
+                {
+                    timeline.Add(new TimelineItemDto
+                    {
+                        Id = $"task-{t.TaskReminderId}",
+                        Source = "System",
+                        Type = "FollowUp",
+                        Category = "System Events",
+                        Title = $"Completed Follow-Up: {t.Title}",
+                        Notes = t.Notes,
+                        Timestamp = t.CompletedAt ?? t.DueDate,
+                        ActorName = "Agent",
+                        RelatedCustomerId = t.RelatedCustomerId,
+                        RelatedLeadId = t.RelatedLeadId,
+                        CanCreateFollowUp = true
+                    });
+                }
+
+                timeline = timeline.OrderByDescending(t => t.Timestamp).ToList();
+
+                if (!string.IsNullOrWhiteSpace(filter) && !filter.Equals("All", StringComparison.OrdinalIgnoreCase))
+                {
+                    timeline = timeline.Where(t => t.Category.Equals(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+                }
             }
 
             return timeline;
@@ -534,98 +501,6 @@ namespace CRMS_Peguit.winforms.Controllers
         public List<TimelineItemDto> GetAllForAgent(int? agentId = null, string filter = "All", string? search = null)
         {
             var list = new List<TimelineItemDto>();
-
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                int effectiveUserId = agentId ?? CurrentSession.UserId;
-                var cachedActivities = LocalDataCache.Instance.GetCachedActivities(TenantId, effectiveUserId, RbacService.IsAgent);
-                foreach (var a in cachedActivities)
-                {
-                    string cat = "System Events";
-                    string displayTitle = a.Type;
-
-                    if (a.Type.Equals("Call", StringComparison.OrdinalIgnoreCase))
-                    {
-                        cat = "Calls";
-                        string outcomeStr = a.Outcome.HasValue ? FormatCallOutcome(a.Outcome.Value) : "Logged";
-                        string durStr = a.DurationMinutes.HasValue && a.DurationMinutes.Value > 0 ? $" ({a.DurationMinutes}m)" : "";
-                        displayTitle = $"Call: {outcomeStr}{durStr}";
-                    }
-                    else if (a.Type.Equals("Email", StringComparison.OrdinalIgnoreCase))
-                    {
-                        cat = "Emails";
-                        displayTitle = "Email Interaction";
-                    }
-                    else if (a.Type.Equals("Meeting", StringComparison.OrdinalIgnoreCase))
-                    {
-                        cat = "Meetings";
-                        string durStr = a.DurationMinutes.HasValue && a.DurationMinutes.Value > 0 ? $" ({a.DurationMinutes}m)" : "";
-                        displayTitle = $"Meeting{durStr}";
-                    }
-
-                    list.Add(new TimelineItemDto
-                    {
-                        Id = $"act-{a.ActivityId}",
-                        Source = "Manual",
-                        Type = a.Type,
-                        Category = cat,
-                        Title = displayTitle,
-                        Notes = a.Notes,
-                        Timestamp = a.ActivityDate,
-                        ActorName = "Agent",
-                        ClientName = "Contact",
-                        ClientType = a.RelatedCustomerId.HasValue ? "Customer" : "Lead",
-                        Outcome = a.Outcome,
-                        DurationMinutes = a.DurationMinutes,
-                        RelatedCustomerId = a.RelatedCustomerId,
-                        RelatedLeadId = a.RelatedLeadId,
-                        RawActivityId = a.ActivityId,
-                        CanCreateFollowUp = true
-                    });
-                }
-
-                var cachedTasks = LocalDataCache.Instance.GetCachedTaskReminders(TenantId, effectiveUserId, RbacService.IsAgent)
-                    .Where(t => t.Status == "Completed");
-                foreach (var t in cachedTasks)
-                {
-                    list.Add(new TimelineItemDto
-                    {
-                        Id = $"task-{t.TaskReminderId}",
-                        Source = "System",
-                        Type = "FollowUp",
-                        Category = "System Events",
-                        Title = $"Completed Follow-Up: {t.Title}",
-                        Notes = t.Notes,
-                        Timestamp = t.CompletedAt ?? t.DueDate,
-                        ActorName = "Agent",
-                        ClientName = "Contact",
-                        ClientType = t.RelatedCustomerId.HasValue ? "Customer" : "Lead",
-                        RelatedCustomerId = t.RelatedCustomerId,
-                        RelatedLeadId = t.RelatedLeadId,
-                        CanCreateFollowUp = true
-                    });
-                }
-
-                list = list.OrderByDescending(x => x.Timestamp).ToList();
-
-                if (!string.IsNullOrWhiteSpace(search))
-                {
-                    string s = search.Trim();
-                    list = list.Where(item =>
-                        item.Title.Contains(s, StringComparison.OrdinalIgnoreCase) ||
-                        item.ClientName.Contains(s, StringComparison.OrdinalIgnoreCase) ||
-                        item.Type.Contains(s, StringComparison.OrdinalIgnoreCase) ||
-                        (item.Notes != null && item.Notes.Contains(s, StringComparison.OrdinalIgnoreCase))
-                    ).ToList();
-                }
-
-                if (!string.IsNullOrWhiteSpace(filter) && !filter.Equals("All", StringComparison.OrdinalIgnoreCase))
-                {
-                    list = list.Where(x => x.Category.Equals(filter, StringComparison.OrdinalIgnoreCase)).ToList();
-                }
-
-                return list;
-            }
 
             try
             {
@@ -793,23 +668,108 @@ namespace CRMS_Peguit.winforms.Controllers
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[ActivityController.GetAllForAgent] Error: {ex.Message}");
+                int effectiveUserId = agentId ?? CurrentSession.UserId;
+                var cachedActivities = LocalDataCache.Instance.GetCachedActivities(TenantId, effectiveUserId, RbacService.IsAgent);
+                foreach (var a in cachedActivities)
+                {
+                    string cat = "System Events";
+                    string displayTitle = a.Type;
+
+                    if (a.Type.Equals("Call", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cat = "Calls";
+                        string outcomeStr = a.Outcome.HasValue ? FormatCallOutcome(a.Outcome.Value) : "Logged";
+                        string durStr = a.DurationMinutes.HasValue && a.DurationMinutes.Value > 0 ? $" ({a.DurationMinutes}m)" : "";
+                        displayTitle = $"Call: {outcomeStr}{durStr}";
+                    }
+                    else if (a.Type.Equals("Email", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cat = "Emails";
+                        displayTitle = "Email Interaction";
+                    }
+                    else if (a.Type.Equals("Meeting", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cat = "Meetings";
+                        string durStr = a.DurationMinutes.HasValue && a.DurationMinutes.Value > 0 ? $" ({a.DurationMinutes}m)" : "";
+                        displayTitle = $"Meeting{durStr}";
+                    }
+
+                    list.Add(new TimelineItemDto
+                    {
+                        Id = $"act-{a.ActivityId}",
+                        Source = "Manual",
+                        Type = a.Type,
+                        Category = cat,
+                        Title = displayTitle,
+                        Notes = a.Notes,
+                        Timestamp = a.ActivityDate,
+                        ActorName = "Agent",
+                        ClientName = "Contact",
+                        ClientType = a.RelatedCustomerId.HasValue ? "Customer" : "Lead",
+                        Outcome = a.Outcome,
+                        DurationMinutes = a.DurationMinutes,
+                        RelatedCustomerId = a.RelatedCustomerId,
+                        RelatedLeadId = a.RelatedLeadId,
+                        RawActivityId = a.ActivityId,
+                        CanCreateFollowUp = true
+                    });
+                }
+
+                var cachedTasks = LocalDataCache.Instance.GetCachedTaskReminders(TenantId, effectiveUserId, RbacService.IsAgent)
+                    .Where(t => t.Status == "Completed");
+                foreach (var t in cachedTasks)
+                {
+                    list.Add(new TimelineItemDto
+                    {
+                        Id = $"task-{t.TaskReminderId}",
+                        Source = "System",
+                        Type = "FollowUp",
+                        Category = "System Events",
+                        Title = $"Completed Follow-Up: {t.Title}",
+                        Notes = t.Notes,
+                        Timestamp = t.CompletedAt ?? t.DueDate,
+                        ActorName = "Agent",
+                        ClientName = "Contact",
+                        ClientType = t.RelatedCustomerId.HasValue ? "Customer" : "Lead",
+                        RelatedCustomerId = t.RelatedCustomerId,
+                        RelatedLeadId = t.RelatedLeadId,
+                        CanCreateFollowUp = true
+                    });
+                }
+
+                list = list.OrderByDescending(x => x.Timestamp).ToList();
+
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    string s = search.Trim();
+                    list = list.Where(item =>
+                        item.Title.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                        item.ClientName.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                        item.Type.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                        (item.Notes != null && item.Notes.Contains(s, StringComparison.OrdinalIgnoreCase))
+                    ).ToList();
+                }
+
+                if (!string.IsNullOrWhiteSpace(filter) && !filter.Equals("All", StringComparison.OrdinalIgnoreCase))
+                {
+                    list = list.Where(x => x.Category.Equals(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+                }
             }
             return list;
         }
 
+        public CRMS_Peguit.domain.Common.PagedResult<TimelineItemDto> GetPagedForAgent(int? agentId = null, string filter = "All", string? search = null, int pageNumber = 1, int pageSize = 25)
+        {
+            var all = GetAllForAgent(agentId, filter, search);
+            int total = all.Count;
+            int page = Math.Max(1, pageNumber);
+            int size = Math.Max(1, pageSize);
+            var pagedItems = all.Skip((page - 1) * size).Take(size).ToList();
+            return new CRMS_Peguit.domain.Common.PagedResult<TimelineItemDto>(pagedItems, total, page, size);
+        }
+
         public (int total, int calls, int emails, int meetings) GetActivityStatsForAgent(int? agentId = null)
         {
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                int effectiveUserId = agentId ?? CurrentSession.UserId;
-                var list = LocalDataCache.Instance.GetCachedActivities(TenantId, effectiveUserId, RbacService.IsAgent);
-                int total = list.Count;
-                int calls = list.Count(a => a.Type == "Call");
-                int emails = list.Count(a => a.Type == "Email");
-                int meetings = list.Count(a => a.Type == "Meeting");
-                return (total, calls, emails, meetings);
-            }
-
             try
             {
                 var query = _db.Activities.AsNoTracking().AsQueryable();
@@ -823,9 +783,16 @@ namespace CRMS_Peguit.winforms.Controllers
                 int meetings = query.Count(a => a.Type == "Meeting");
                 return (total, calls, emails, meetings);
             }
-            catch
+            catch (Exception ex)
             {
-                return (0, 0, 0, 0);
+                System.Diagnostics.Debug.WriteLine($"[ActivityController.GetActivityStatsForAgent] Error: {ex.Message}");
+                int effectiveUserId = agentId ?? CurrentSession.UserId;
+                var list = LocalDataCache.Instance.GetCachedActivities(TenantId, effectiveUserId, RbacService.IsAgent);
+                int total = list.Count;
+                int calls = list.Count(a => a.Type == "Call");
+                int emails = list.Count(a => a.Type == "Email");
+                int meetings = list.Count(a => a.Type == "Meeting");
+                return (total, calls, emails, meetings);
             }
         }
 

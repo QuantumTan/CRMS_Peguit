@@ -222,7 +222,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
 
                 if (_agentDict.Count == 0)
                 {
-                    _agentDict = _controller.GetAgentDictionary();
+                    _agentDict = await System.Threading.Tasks.Task.Run(() => _controller.GetAgentDictionary());
                 }
 
                 _pagination.UpdatePagination(pagedResult.TotalCount, pagedResult.PageNumber, pagedResult.PageSize);

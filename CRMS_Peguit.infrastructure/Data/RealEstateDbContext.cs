@@ -34,6 +34,7 @@ namespace CRMS_Peguit.infrastructure.data
         public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
         public DbSet<AutomatedEmailSettings> AutomatedEmailSettings => Set<AutomatedEmailSettings>();
         public DbSet<MarketUpdateLog> MarketUpdateLogs => Set<MarketUpdateLog>();
+        public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
         public DbSet<Branch> Branches => Set<Branch>();
 
         public RealEstateDbContext(
@@ -587,6 +588,19 @@ namespace CRMS_Peguit.infrastructure.data
                     .WithOne(x => x.Branch)
                     .HasForeignKey(x => x.BranchId)
                     .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            builder.Entity<EmailTemplate>(entity =>
+            {
+                entity.HasKey(x => x.TemplateId);
+                entity.Property(x => x.Name).HasMaxLength(150).IsRequired();
+                entity.Property(x => x.Category).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.TargetAudience).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.EmailFormat).HasMaxLength(20).IsRequired();
+                entity.Property(x => x.Subject).HasMaxLength(300).IsRequired();
+                entity.Property(x => x.CallToActionText).HasMaxLength(200);
+                entity.Property(x => x.CallToActionUrl).HasMaxLength(500);
+                entity.Property(x => x.CreatedByRole).HasMaxLength(50).IsRequired();
             });
 
             builder.Entity<MarketUpdateLog>().HasQueryFilter(x => x.TenantId == _tenantId);

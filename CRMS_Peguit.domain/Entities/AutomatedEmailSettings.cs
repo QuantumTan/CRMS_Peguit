@@ -11,6 +11,7 @@ namespace CRMS_Peguit.domain.entities
         public int FrequencyDays { get; set; } = 180;
         public decimal AnnualAppreciationRatePercent { get; set; } = 5.0m;
 
+        public int? ActiveTemplateId { get; set; }
         public string EmailFormat { get; set; } = "Html"; // "Html" or "PlainText"
         public string TargetAudience { get; set; } = "All"; // "All", "Buyers", "Sellers"
         public string BrokerageName { get; set; } = "NEXA Real Estate Advisory";

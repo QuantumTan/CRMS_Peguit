@@ -120,6 +120,7 @@ namespace CRMS_Peguit.winforms.Services
                 else
                 {
                     existing.IsEnabled = updatedSettings.IsEnabled;
+                    existing.ActiveTemplateId = updatedSettings.ActiveTemplateId;
                     existing.FrequencyDays = Math.Max(1, updatedSettings.FrequencyDays);
                     existing.AnnualAppreciationRatePercent = updatedSettings.AnnualAppreciationRatePercent;
                     existing.EmailFormat = string.IsNullOrWhiteSpace(updatedSettings.EmailFormat) ? "Html" : updatedSettings.EmailFormat;
@@ -318,9 +319,9 @@ namespace CRMS_Peguit.winforms.Services
 
         public static string FormatVisualCardMockup(AutomatedEmailSettings settings, ValuationMetrics metrics, string recipient)
         {
-            string origStr = $"₱{metrics.OriginalPrice:N2}";
-            string estStr = $"₱{metrics.EstimatedValue:N2}";
-            string gainStr = $"₱{metrics.EquityGain:N2}";
+            string origStr = $"₱{metrics.OriginalPrice:N0}";
+            string estStr = $"₱{metrics.EstimatedValue:N0}";
+            string gainStr = $"₱{metrics.EquityGain:N0}";
             string rateStr = metrics.AnnualRatePercent.ToString("F1");
             string yearsStr = metrics.YearsOwned.ToString("F1");
             string gainPercentStr = metrics.EquityGainPercent.ToString("F1");
@@ -328,36 +329,24 @@ namespace CRMS_Peguit.winforms.Services
             string subject = ReplaceTokens(settings.SubjectTemplate, metrics.CustomerName, metrics.FirstName,
                 metrics.PropertyAddress, metrics.PropertyType, origStr, estStr, gainStr, gainPercentStr, rateStr, yearsStr, metrics.AgentName);
 
+            string body = ReplaceTokens(settings.BodyTemplate, metrics.CustomerName, metrics.FirstName,
+                metrics.PropertyAddress, metrics.PropertyType, origStr, estStr, gainStr, gainPercentStr, rateStr, yearsStr, metrics.AgentName);
+
+            string formatStr = settings.EmailFormat == "Html" ? "Branded Client Report (Visual)" : "1-on-1 Personal Note (Plain Text)";
+
             return
-                $"═══════════════════════════════════════════════════════════════\r\n" +
-                $" 🏢 {settings.BrokerageName.ToUpperInvariant()} · ASSET REPORT\r\n" +
-                $"═══════════════════════════════════════════════════════════════\r\n" +
-                $"TO      : {recipient}\r\n" +
+                $"{settings.BrokerageName.ToUpperInvariant()} · ASSET REPORT\r\n\r\n" +
+                $"TO : {recipient}\r\n" +
                 $"SUBJECT : {subject}\r\n" +
-                $"FORMAT  : {(settings.EmailFormat == "Html" ? "Branded HTML (Visual Report)" : "1-on-1 Personal Plain Text")}\r\n" +
-                $"───────────────────────────────────────────────────────────────\r\n\r\n" +
-                $"Dear {metrics.CustomerName},\r\n\r\n" +
-                $"As part of our continuous advisory service at {settings.BrokerageName},\r\n" +
-                $"here is an updated market valuation and equity report for your asset:\r\n\r\n" +
-                $"┌─────────────────────────────────────────────────────────────┐\r\n" +
-                $"│  ESTIMATED NET EQUITY GAIN                                  │\r\n" +
-                $"│  +{gainStr} (+{gainPercentStr}% Growth)                     │\r\n" +
-                $"│  Current Market Valuation: {estStr}                         │\r\n" +
-                $"└─────────────────────────────────────────────────────────────┘\r\n\r\n" +
-                $"ASSET BREAKDOWN:\r\n" +
-                $"• Property Address : {metrics.PropertyAddress}\r\n" +
-                $"• Asset Category   : {metrics.PropertyType}\r\n" +
-                $"• Acquisition Price: {origStr}\r\n" +
-                $"• Holding Tenure   : {yearsStr} year(s) at +{rateStr}% est. annual growth\r\n\r\n" +
-                $"CALL TO ACTION:\r\n" +
-                $"👉 [{settings.CallToActionText}]\r\n\r\n" +
-                $"ADVISORY SIGNOFF:\r\n" +
+                $"FORMAT : {formatStr}\r\n\r\n" +
+                $"Dear {metrics.FirstName},\r\n\r\n" +
+                $"As part of our continuous advisory service at {settings.BrokerageName},\r\n\r\n" +
+                $"{body}\r\n\r\n" +
+                $"ACTION BUTTON : [{settings.CallToActionText}]\r\n\r\n" +
+                $"ADVISOR SIGNATURE :\r\n" +
                 $"{metrics.AgentName}\r\n" +
                 $"Licensed Real Estate Advisory Team\r\n" +
-                $"{settings.BrokerageName}\r\n\r\n" +
-                $"───────────────────────────────────────────────────────────────\r\n" +
-                $"🔒 Confidential & informational real estate valuation advisory.\r\n" +
-                $"═══════════════════════════════════════════════════════════════";
+                $"{settings.BrokerageName}";
         }
 
         public static string SavePreviewHtmlToFile(AutomatedEmailSettings settings, ValuationMetrics metrics)
@@ -802,7 +791,7 @@ namespace CRMS_Peguit.winforms.Services
             return (subject, html);
         }
 
-        private static string ReplaceTokens(
+        public static string ReplaceTokens(
             string template,
             string customerName,
             string firstName,

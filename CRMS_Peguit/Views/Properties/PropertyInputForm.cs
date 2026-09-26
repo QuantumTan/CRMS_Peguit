@@ -162,6 +162,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
                     Price = price,
                     OwnerCustomerId = ownerId,
                     ListedByAgentId = agentId,
+                    BranchId = CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue ? CurrentSession.ActiveBranchId.Value : null,
                     CreatedAt = DateTime.UtcNow
                 };
             }

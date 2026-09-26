@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
+using CRMS_Peguit.infrastructure.Seeding;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Services.Offline;
 
@@ -289,6 +290,7 @@ namespace CRMS_Peguit.winforms.Models.Services
                             tChanges += await SyncTable<User>(local, cloud, "Users", details);
                             tChanges += await SyncTable<Customer>(local, cloud, "Customers", details);
                             tChanges += await SyncTable<BuyerProfile>(local, cloud, "BuyerProfiles", details);
+                            tChanges += await SyncTable<Branch>(local, cloud, "Branches", details);
                             tChanges += await SyncTable<Property>(local, cloud, "Properties", details);
                             tChanges += await SyncTable<Lead>(local, cloud, "Leads", details);
                             tChanges += await SyncTable<Deal>(local, cloud, "Deals", details);
@@ -296,8 +298,10 @@ namespace CRMS_Peguit.winforms.Models.Services
                             tChanges += await SyncTable<DealClause>(local, cloud, "DealClauses", details);
                             tChanges += await SyncTable<Activity>(local, cloud, "Activities", details);
                             tChanges += await SyncTable<PropertyShowingDetail>(local, cloud, "PropertyShowingDetails", details);
+                            tChanges += await SyncTable<Campaign>(local, cloud, "Campaigns", details);
+                            tChanges += await SyncTable<TaskReminder>(local, cloud, "TaskReminders", details);
                             tChanges += await SyncTable<SupportTicket>(local, cloud, "SupportTickets", details);
-                            tChanges += await SyncTable<Subscription>(local, cloud, "Subscriptions", details);
+                            tChanges += await SyncTable<TicketComment>(local, cloud, "TicketComments", details);
                             tChanges += await SyncTable<SystemSetting>(local, cloud, "SystemSettings", details);
                             tChanges += await SyncTable<BackupLog>(local, cloud, "BackupLogs", details);
                             tChanges += await SyncTable<LoginSession>(local, cloud, "LoginSessions", details);
@@ -359,39 +363,55 @@ namespace CRMS_Peguit.winforms.Models.Services
             List<string> details)
             where T : class
         {
+            local.ChangeTracker.Clear();
             cloud.ChangeTracker.Clear();
 
             var localRows = await local.Set<T>().IgnoreQueryFilters().AsNoTracking().ToListAsync();
-            if (localRows.Count == 0) return 0;
-
             var cloudRows = await cloud.Set<T>().IgnoreQueryFilters().AsNoTracking().ToListAsync();
 
-            var entityType = cloud.Model.FindEntityType(typeof(T));
+            if (localRows.Count == 0 && cloudRows.Count == 0) return 0;
+
+            var entityType = local.Model.FindEntityType(typeof(T)) ?? cloud.Model.FindEntityType(typeof(T));
             var primaryKey = entityType?.FindPrimaryKey();
             var keyProp = primaryKey?.Properties[0].PropertyInfo;
             if (keyProp == null) return 0;
 
+            var localMap = localRows.ToDictionary(r => keyProp.GetValue(r)!, r => r);
             var cloudMap = cloudRows.ToDictionary(r => keyProp.GetValue(r)!, r => r);
 
-            var toInsert = new List<T>();
-            var toUpdate = new List<T>();
+            var cloudToInsert = new List<T>();
+            var cloudToUpdate = new List<T>();
+            var localToInsert = new List<T>();
+            var localToUpdate = new List<T>();
 
+            // 1. PULL (Cloud -> Local): if record exists on cloud but missing on local, pull it down!
+            foreach (var cloudRow in cloudRows)
+            {
+                var keyVal = keyProp.GetValue(cloudRow)!;
+                if (!localMap.ContainsKey(keyVal))
+                {
+                    localToInsert.Add(cloudRow);
+                }
+            }
+
+            // 2. PUSH (Local -> Cloud): if record exists on local but missing on cloud, push it up!
             foreach (var localRow in localRows)
             {
                 var keyVal = keyProp.GetValue(localRow)!;
-                if (!cloudMap.TryGetValue(keyVal, out var existing))
+                if (!cloudMap.TryGetValue(keyVal, out var existingCloud))
                 {
-                    toInsert.Add(localRow);
+                    cloudToInsert.Add(localRow);
                 }
                 else
                 {
+                    // Both have it: check if values differ
                     bool isDifferent = false;
                     foreach (var prop in entityType!.GetProperties())
                     {
                         var pInfo = prop.PropertyInfo;
                         if (pInfo == null) continue;
                         var localVal = pInfo.GetValue(localRow);
-                        var cloudVal = pInfo.GetValue(existing);
+                        var cloudVal = pInfo.GetValue(existingCloud);
 
                         if (localVal is DateTime dt1 && cloudVal is DateTime dt2)
                         {
@@ -412,43 +432,88 @@ namespace CRMS_Peguit.winforms.Models.Services
 
                     if (isDifferent)
                     {
-                        toUpdate.Add(localRow);
+                        // Operational local changes take priority for synchronization
+                        cloudToUpdate.Add(localRow);
                     }
                 }
             }
 
-            if (toInsert.Count == 0 && toUpdate.Count == 0)
+            bool hasIdentity = TablesWithIdentity.Contains(tableName);
+
+            // Execute local changes (PULL)
+            if (localToInsert.Count > 0 || localToUpdate.Count > 0)
             {
-                return 0;
+                try
+                {
+                    await SaveWithIdentityInsertAsync(local, localToInsert, localToUpdate, tableName, hasIdentity);
+                }
+                catch (Exception ex)
+                {
+                    Log($"[Pull to Local Error] {tableName}: {ex.Message}");
+                }
             }
 
-            var cloudSet = cloud.Set<T>();
+            // Execute cloud changes (PUSH)
+            if (cloudToInsert.Count > 0 || cloudToUpdate.Count > 0)
+            {
+                try
+                {
+                    await SaveWithIdentityInsertAsync(cloud, cloudToInsert, cloudToUpdate, tableName, hasIdentity);
+                }
+                catch (Exception ex)
+                {
+                    Log($"[Push to Cloud Error] {tableName}: {ex.Message}");
+                }
+            }
+
+            int totalChanges = localToInsert.Count + localToUpdate.Count + cloudToInsert.Count + cloudToUpdate.Count;
+            if (totalChanges > 0)
+            {
+                var parts = new List<string>();
+                if (localToInsert.Count > 0) parts.Add($"↓{localToInsert.Count} pull");
+                if (cloudToInsert.Count > 0) parts.Add($"↑{cloudToInsert.Count} push");
+                if (cloudToUpdate.Count > 0) parts.Add($"~{cloudToUpdate.Count} upd");
+                details.Add($"{tableName}: {string.Join(", ", parts)}");
+            }
+            return totalChanges;
+        }
+
+        private async Task SaveWithIdentityInsertAsync<T>(
+            RealEstateDbContext db,
+            List<T> toInsert,
+            List<T> toUpdate,
+            string tableName,
+            bool hasIdentity)
+            where T : class
+        {
+            if (toInsert.Count == 0 && toUpdate.Count == 0) return;
+
+            db.ChangeTracker.Clear();
+            var dbSet = db.Set<T>();
 
             foreach (var item in toUpdate)
             {
-                cloudSet.Attach(item);
-                cloud.Entry(item).State = EntityState.Modified;
+                dbSet.Attach(item);
+                db.Entry(item).State = EntityState.Modified;
             }
 
             foreach (var item in toInsert)
             {
-                cloudSet.Add(item);
+                dbSet.Add(item);
             }
 
-            bool hasIdentity = TablesWithIdentity.Contains(tableName);
-            var strategy = cloud.Database.CreateExecutionStrategy();
-
+            var strategy = db.Database.CreateExecutionStrategy();
             if (toInsert.Count > 0 && hasIdentity)
             {
                 await strategy.ExecuteAsync(async () =>
                 {
                     var safeTableName = tableName.Replace("]", "]]");
-                    await using var tx = await cloud.Database.BeginTransactionAsync();
+                    await using var tx = await db.Database.BeginTransactionAsync();
 
 #pragma warning disable EF1002
-                    await cloud.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT [dbo].[{safeTableName}] ON;");
-                    await cloud.SaveChangesAsync();
-                    await cloud.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT [dbo].[{safeTableName}] OFF;");
+                    await db.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT [dbo].[{safeTableName}] ON;");
+                    await db.SaveChangesAsync();
+                    await db.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT [dbo].[{safeTableName}] OFF;");
 #pragma warning restore EF1002
 
                     await tx.CommitAsync();
@@ -458,15 +523,11 @@ namespace CRMS_Peguit.winforms.Models.Services
             {
                 await strategy.ExecuteAsync(async () =>
                 {
-                    await cloud.SaveChangesAsync();
+                    await db.SaveChangesAsync();
                 });
             }
 
-            cloud.ChangeTracker.Clear();
-
-            int tableChanges = toInsert.Count + toUpdate.Count;
-            details.Add($"{tableName}: +{toInsert.Count} ins, ~{toUpdate.Count} upd");
-            return tableChanges;
+            db.ChangeTracker.Clear();
         }
 
         private async Task PullMissingUsersAndRoles(RealEstateDbContext local, RealEstateDbContext cloud, int tenantId)
@@ -936,6 +997,54 @@ namespace CRMS_Peguit.winforms.Models.Services
             catch
             {
                 // ignore logging failures
+            }
+        }
+
+        public async Task EnsureTenantDataPopulatedAsync(int tenantId)
+        {
+            if (tenantId <= 0) tenantId = 1;
+
+            try
+            {
+                using var local = LocalDb.CreateContext(tenantId);
+                bool localEmpty = !await local.Customers.AnyAsync() || !await local.Properties.AnyAsync();
+
+                if (localEmpty)
+                {
+                    Log($"[Tenant {tenantId}] Local operational data is empty. Starting population...");
+                    NotifyProgress("Checking cloud and local data...", isRunning: true);
+
+                    // If online and cloud is configured, pull from cloud
+                    bool online = await CheckConnectivityAsync();
+                    if (online && !string.IsNullOrWhiteSpace(_cloudConnection))
+                    {
+                        await SyncAsync();
+                    }
+
+                    // Recheck after sync
+                    using var localRecheck = LocalDb.CreateContext(tenantId);
+                    if (!await localRecheck.Customers.AnyAsync() || !await localRecheck.Properties.AnyAsync())
+                    {
+                        Log($"[Tenant {tenantId}] Seeding full sample data into local database...");
+                        await DbSeeder.SeedTestUsersAsync(localRecheck, tenantId);
+
+                        // If online, push seeded data to cloud
+                        if (online && !string.IsNullOrWhiteSpace(_cloudConnection))
+                        {
+                            await SyncAsync();
+                        }
+                    }
+                }
+
+                // Refresh SQLite mirror cache for fast offline access
+                await RefreshUserCacheAsync(
+                    tenantId,
+                    CurrentSession.UserId,
+                    CurrentSession.CurrentUser?.Role.ToString() ?? "Admin");
+            }
+            catch (Exception ex)
+            {
+                Log($"[EnsureTenantDataPopulatedAsync Error] {ex.Message}");
             }
         }
 

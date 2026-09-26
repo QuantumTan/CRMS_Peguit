@@ -183,6 +183,61 @@ namespace CRMS_Peguit.winforms.Views.Sync
             };
 
             ConfigureGridColumns();
+
+            var pnlEmptyState = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.White,
+                Visible = false,
+                Name = "pnlEmptyState"
+            };
+
+            var lblEmptyIcon = new Label
+            {
+                Text = "✅",
+                Font = new Font("Segoe UI", 42f),
+                TextAlign = ContentAlignment.MiddleCenter,
+                ForeColor = Color.FromArgb(22, 163, 74),
+                Dock = DockStyle.None,
+                AutoSize = true
+            };
+            lblEmptyIcon.Location = new Point((pnlEmptyState.Width - lblEmptyIcon.Width) / 2, 80);
+            lblEmptyIcon.Anchor = AnchorStyles.None;
+
+            var lblEmptyTitle = new Label
+            {
+                Text = "All data is synced",
+                Font = new Font("Segoe UI", 14f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(15, 23, 42),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Dock = DockStyle.None,
+                AutoSize = true
+            };
+
+            var lblEmptySubtitle = new Label
+            {
+                Text = "No pending, failed, or conflicted records.\r\nYour local database is fully in sync with the cloud.",
+                Font = new Font("Segoe UI", 10f),
+                ForeColor = Color.FromArgb(100, 116, 139),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Dock = DockStyle.None,
+                AutoSize = true
+            };
+
+            pnlEmptyState.Controls.Add(lblEmptyIcon);
+            pnlEmptyState.Controls.Add(lblEmptyTitle);
+            pnlEmptyState.Controls.Add(lblEmptySubtitle);
+
+            pnlEmptyState.SizeChanged += (s, e) =>
+            {
+                int cx = pnlEmptyState.ClientSize.Width / 2;
+                int startY = pnlEmptyState.ClientSize.Height / 2 - 90;
+                lblEmptyIcon.Location = new Point(cx - lblEmptyIcon.Width / 2, startY);
+                lblEmptyTitle.Location = new Point(cx - lblEmptyTitle.Width / 2, lblEmptyIcon.Bottom + 10);
+                lblEmptySubtitle.Location = new Point(cx - lblEmptySubtitle.Width / 2, lblEmptyTitle.Bottom + 8);
+            };
+
+            pnlGrid.Controls.Add(pnlEmptyState);
             pnlGrid.Controls.Add(_grid);
 
             // ==========================================================
@@ -396,7 +451,7 @@ namespace CRMS_Peguit.winforms.Views.Sync
             _lblPendingCount.Text = $"Pending: {counts.Pending}";
             _lblConflictCount.Text = $"Conflicts: {counts.Conflict}";
             _lblFailedCount.Text = $"Failed: {counts.Failed}";
-            _lblSyncedCount.Text = $"Synced: {counts.Synced}";
+            _lblSyncedCount.Text = counts.Synced > 0 ? $"Synced: {counts.Synced}" : "✓ Up to date";
 
             var items = LocalDataCache.Instance.GetAllQueueItems(tenantId);
             if (_activeFilter != "All")
@@ -430,22 +485,33 @@ namespace CRMS_Peguit.winforms.Views.Sync
                     actionText
                 );
 
-                // Style rows based on status
                 var row = _grid.Rows[rowIdx];
                 if (item.Status == "Conflict")
                 {
-                    row.DefaultCellStyle.BackColor = Color.FromArgb(254, 243, 199); // Amber-100
+                    row.DefaultCellStyle.BackColor = Color.FromArgb(254, 243, 199);
                     row.DefaultCellStyle.ForeColor = Color.FromArgb(146, 64, 14);
                 }
                 else if (item.Status == "Failed")
                 {
-                    row.DefaultCellStyle.BackColor = Color.FromArgb(254, 242, 242); // Red-50
+                    row.DefaultCellStyle.BackColor = Color.FromArgb(254, 242, 242);
                     row.DefaultCellStyle.ForeColor = Color.FromArgb(185, 28, 28);
                 }
                 else if (item.Status == "Synced")
                 {
                     row.DefaultCellStyle.ForeColor = Color.FromArgb(100, 116, 139);
                 }
+            }
+
+            // Show empty-state panel when queue has no items to display
+            bool hasItems = _grid.Rows.Count > 0;
+            _grid.Visible = hasItems;
+
+            var emptyPanel = this.Controls.Find("pnlEmptyState", true).FirstOrDefault()
+                          ?? _grid.Parent?.Controls.Find("pnlEmptyState", true).FirstOrDefault();
+            if (emptyPanel != null)
+            {
+                emptyPanel.Visible = !hasItems;
+                if (!hasItems) emptyPanel.BringToFront();
             }
         }
     }

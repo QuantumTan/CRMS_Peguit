@@ -26,6 +26,7 @@ namespace CRMS_Peguit.winforms.Views.Branching
 
         private TextBox _txtSearch = null!;
         private DataGridView _grid = null!;
+        private PaginationControl _pagination = null!;
         private Button _btnAdd = null!;
         private Button _btnEdit = null!;
         private Button _btnToggleStatus = null!;
@@ -121,7 +122,8 @@ namespace CRMS_Peguit.winforms.Views.Branching
                 Text = "📍 Current Working Context: All Branches (Company-Wide Overview)"
             };
             pnlBanner.Controls.Add(_lblActiveBranchBanner);
-            pnlContent.Controls.Add(pnlBanner);
+            // (added to pnlContent later, in correct dock order)
+
 
             // 3. KPI CARDS
             var pnlKpis = new TableLayoutPanel
@@ -146,8 +148,8 @@ namespace CRMS_Peguit.winforms.Views.Branching
             pnlKpis.Controls.Add(_kpiActive, 1, 0);
             pnlKpis.Controls.Add(_kpiStaff, 2, 0);
             pnlKpis.Controls.Add(_kpiRevenue, 3, 0);
+            // (added to pnlContent later, in correct dock order)
 
-            pnlContent.Controls.Add(pnlKpis);
 
             // 4. TOOLBAR
             var pnlToolbar = new Panel
@@ -227,8 +229,8 @@ namespace CRMS_Peguit.winforms.Views.Branching
             UiRadiusHelper.StyleButton(_btnToggleStatus, 6);
             _btnToggleStatus.Click += BtnToggleStatus_Click;
             pnlToolbar.Controls.Add(_btnToggleStatus);
+            // (added to pnlContent later, in correct dock order)
 
-            pnlContent.Controls.Add(pnlToolbar);
 
             // 5. GRID CARD
             var pnlGridCard = new Panel
@@ -269,7 +271,7 @@ namespace CRMS_Peguit.winforms.Views.Branching
                     if (_grid.Columns[e.ColumnIndex].HeaderText == "Branch Code")
                     {
                         e.CellStyle.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
-                        e.CellStyle.ForeColor = Color.FromArgb(107, 33, 168); // Distinct Purple
+                        e.CellStyle.ForeColor = Color.FromArgb(107, 33, 168);
                     }
                     if (_grid.Columns[e.ColumnIndex].HeaderText == "Status" && e.Value != null)
                     {
@@ -280,8 +282,24 @@ namespace CRMS_Peguit.winforms.Views.Branching
                 }
             };
 
+            _pagination = new PaginationControl();
+            _pagination.SetItemLabel("branches");
+            _pagination.Dock = DockStyle.Bottom;
+            _pagination.PageChanged += (_, _) => ApplyFilter(resetPage: false);
+            _pagination.PageSizeChanged += (_, _) => ApplyFilter(resetPage: true);
+
             pnlGridCard.Controls.Add(_grid);
-            pnlContent.Controls.Add(pnlGridCard);
+            pnlGridCard.Controls.Add(_pagination);
+            _pagination.BringToFront();
+
+            // ── WinForms dock order: Fill added FIRST, then Top items added in REVERSE display order ──
+            // Display order (top→bottom): pnlBanner → pnlKpis → pnlToolbar → pnlGridCard(Fill)
+            // Add order to Controls:      pnlGridCard(Fill) first, then pnlToolbar, pnlKpis, pnlBanner
+
+            pnlContent.Controls.Add(pnlGridCard);     // Fill — must be first
+            pnlContent.Controls.Add(pnlToolbar);       // Top — added in reverse (last Top shown = added last)
+            pnlContent.Controls.Add(pnlKpis);          // Top
+            pnlContent.Controls.Add(pnlBanner);        // Top — added last so it renders at the very top
 
             Controls.Add(pnlContent);
         }
@@ -312,7 +330,7 @@ namespace CRMS_Peguit.winforms.Views.Branching
                 ConfigureKpi(_kpiRevenue, "BRANCH VOLUME", $"₱{totalVol:N0}", "Aggregated transaction value", Theme.PrimaryDark, KpiIconType.Currency);
 
                 UpdateActiveBranchBanner();
-                ApplyFilter();
+                ApplyFilter(resetPage: true);
             }
             catch (Exception ex)
             {
@@ -334,7 +352,7 @@ namespace CRMS_Peguit.winforms.Views.Branching
             }
         }
 
-        private void ApplyFilter()
+        private void ApplyFilter(bool resetPage = false)
         {
             var query = _branches.AsEnumerable();
             if (!string.IsNullOrWhiteSpace(_txtSearch.Text))
@@ -345,7 +363,23 @@ namespace CRMS_Peguit.winforms.Views.Branching
                                          b.Address.Contains(s, StringComparison.OrdinalIgnoreCase));
             }
 
-            var displayList = query.Select(b => new
+            var allFiltered = query.ToList();
+            int total = allFiltered.Count;
+            int page = resetPage ? 1 : (_pagination?.CurrentPage ?? 1);
+            int pageSize = _pagination?.PageSize ?? 25;
+
+            _pagination?.UpdatePagination(total, page, pageSize);
+
+            if (total == 0)
+            {
+                _grid.DataSource = null;
+                return;
+            }
+
+            int effectivePage = _pagination?.CurrentPage ?? 1;
+            var pageItems = allFiltered.Skip((effectivePage - 1) * pageSize).Take(pageSize).ToList();
+
+            var displayList = pageItems.Select(b => new
             {
                 b.BranchId,
                 b.BranchCode,

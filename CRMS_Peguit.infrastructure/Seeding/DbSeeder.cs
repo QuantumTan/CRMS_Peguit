@@ -63,26 +63,47 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 .Select(u => u.Person!.Email!.ToLower())
                 .ToListAsync();
 
-            string specificAdminEmail = tenantId switch
-            {
-                3 => "tenantc_admin@test.com",
-                2 => "tenantb_admin@test.com",
-                _ => "tenanta_admin@test.com"
-            };
-            string specificAdminName = tenantId switch
-            {
-                3 => "Tenant C",
-                2 => "Tenant B",
-                _ => "Tenant A"
-            };
+            List<(string FirstName, string LastName, string Email, string Phone, int RoleId, string Password, int? BranchId)> baseUsersToEnsure;
 
-            var baseUsersToEnsure = new List<(string FirstName, string LastName, string Email, string Phone, int RoleId, string Password, int? BranchId)>
+            if (tenantId == 2)
             {
-                ("System", "Admin", "admin@test.com", "09170000001", adminRole.RoleId, "Admin123!", tenantId == 3 ? hqBranchId : null),
-                (specificAdminName, "Admin", specificAdminEmail, "09170000099", adminRole.RoleId, "Admin123!", tenantId == 3 ? hqBranchId : null),
-                ("Test", "Manager", "manager@test.com", "09170000002", managerRole.RoleId, "Manager123!", tenantId == 3 ? hqBranchId : null),
-                ("Test", "Agent", "agent@test.com", "09170000003", agentRole.RoleId, "Agent123!", tenantId == 3 ? hqBranchId : null)
-            };
+                baseUsersToEnsure = new List<(string FirstName, string LastName, string Email, string Phone, int RoleId, string Password, int? BranchId)>
+                {
+                    ("Tenant B", "Admin", "admin.b@test.com", "09180000001", adminRole.RoleId, "Admin123!", null),
+                    ("Tenant B", "Admin", "tenantb_admin@test.com", "09180000099", adminRole.RoleId, "Admin123!", null),
+                    ("Tenant B", "Manager", "manager.b@test.com", "09180000002", managerRole.RoleId, "Manager123!", null),
+                    ("Tenant B", "Manager", "tenantb_manager@test.com", "09180000098", managerRole.RoleId, "Manager123!", null),
+                    ("Tenant B", "Agent", "agent.b@test.com", "09180000003", agentRole.RoleId, "Agent123!", null),
+                    ("Tenant B", "Agent", "tenantb_agent@test.com", "09180000097", agentRole.RoleId, "Agent123!", null)
+                };
+            }
+            else if (tenantId == 3)
+            {
+                baseUsersToEnsure = new List<(string FirstName, string LastName, string Email, string Phone, int RoleId, string Password, int? BranchId)>
+                {
+                    ("Tenant C", "Admin", "admin.c@test.com", "09190000001", adminRole.RoleId, "Admin123!", hqBranchId),
+                    ("Tenant C", "Admin", "tenantc_admin@test.com", "09190000099", adminRole.RoleId, "Admin123!", hqBranchId),
+                    ("Tenant C", "Manager", "manager.c@test.com", "09190000002", managerRole.RoleId, "Manager123!", hqBranchId),
+                    ("Tenant C", "Manager", "tenantc_manager@test.com", "09190000098", managerRole.RoleId, "Manager123!", hqBranchId),
+                    ("Tenant C", "Agent", "agent.c@test.com", "09190000003", agentRole.RoleId, "Agent123!", hqBranchId),
+                    ("Tenant C", "Agent", "tenantc_agent@test.com", "09190000097", agentRole.RoleId, "Agent123!", hqBranchId)
+                };
+            }
+            else
+            {
+                baseUsersToEnsure = new List<(string FirstName, string LastName, string Email, string Phone, int RoleId, string Password, int? BranchId)>
+                {
+                    ("Tenant A", "Admin", "admin.a@test.com", "09170000001", adminRole.RoleId, "Admin123!", null),
+                    ("Tenant A", "Admin", "tenanta_admin@test.com", "09170000099", adminRole.RoleId, "Admin123!", null),
+                    ("System", "Admin", "admin@test.com", "09170000000", adminRole.RoleId, "Admin123!", null),
+                    ("Tenant A", "Manager", "manager.a@test.com", "09170000002", managerRole.RoleId, "Manager123!", null),
+                    ("Tenant A", "Manager", "tenanta_manager@test.com", "09170000098", managerRole.RoleId, "Manager123!", null),
+                    ("Test", "Manager", "manager@test.com", "09170000010", managerRole.RoleId, "Manager123!", null),
+                    ("Tenant A", "Agent", "agent.a@test.com", "09170000003", agentRole.RoleId, "Agent123!", null),
+                    ("Tenant A", "Agent", "tenanta_agent@test.com", "09170000097", agentRole.RoleId, "Agent123!", null),
+                    ("Test", "Agent", "agent@test.com", "09170000020", agentRole.RoleId, "Agent123!", null)
+                };
+            }
 
             var toAdd = new List<User>();
             foreach (var bu in baseUsersToEnsure)
@@ -152,8 +173,6 @@ namespace CRMS_Peguit.infrastructure.Seeding
             {
                 teamMembers = new (string FirstName, string LastName, string Email, string Phone, int RoleId, string Password, int? BranchId)[]
                 {
-                    ("Tenant B", "Manager", "manager.b@test.com", "09180000002", managerRole.RoleId, "Manager123!", null),
-                    ("Tenant B", "Agent", "agent.b@test.com", "09180000003", agentRole.RoleId, "Agent123!", null),
                     ("Valerie", "Cross", "valerie.cross@test.com", "09281122334", managerRole.RoleId, "Manager123!", null),
                     ("Elena", "Rostova", "elena.rostova@test.com", "09174455667", agentRole.RoleId, "Agent123!", null),
                     ("Marcus", "Vance", "marcus.vance@test.com", "09185566778", agentRole.RoleId, "Agent123!", null),
@@ -166,8 +185,6 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 teamMembers = new (string FirstName, string LastName, string Email, string Phone, int RoleId, string Password, int? BranchId)[]
                 {
                     // Manila HQ (Branch 1)
-                    ("Tenant C", "Manager", "manager.c@test.com", "09190000002", managerRole.RoleId, "Manager123!", hqBranchId),
-                    ("Tenant C", "Agent", "agent.c@test.com", "09190000003", agentRole.RoleId, "Agent123!", hqBranchId),
                     ("Gabriel", "Santos", "gabriel.santos@test.com", "09171234567", agentRole.RoleId, "Agent123!", hqBranchId),
 
                     // Cebu Central (Branch 2)
@@ -423,6 +440,7 @@ namespace CRMS_Peguit.infrastructure.Seeding
             if (tenantId == 3 && branches.Count > 0)
             {
                 var deals = await db.Deals.Include(d => d.Agent).Include(d => d.Property).Take(500).ToListAsync();
+                var hqAgents = salesAgents.Where(a => a.BranchId == hqBranchId || a.BranchId == null).ToList();
                 var cebuAgents = salesAgents.Where(a => a.BranchId == cebuBranchId).ToList();
                 var davaoAgents = salesAgents.Where(a => a.BranchId == davaoBranchId).ToList();
                 bool anyChanged = false;
@@ -443,6 +461,11 @@ namespace CRMS_Peguit.infrastructure.Seeding
                     {
                         var dAgent = davaoAgents[i % davaoAgents.Count];
                         if (d.AgentId != dAgent.UserId) { d.AgentId = dAgent.UserId; d.CreatedByUserId = dAgent.UserId; anyChanged = true; }
+                    }
+                    else if (hqAgents.Count > 0)
+                    {
+                        var hAgent = hqAgents[i % hqAgents.Count];
+                        if (d.AgentId != hAgent.UserId) { d.AgentId = hAgent.UserId; d.CreatedByUserId = hAgent.UserId; anyChanged = true; }
                     }
 
                     if (d.BranchId != targetBranchId)
@@ -566,7 +589,7 @@ namespace CRMS_Peguit.infrastructure.Seeding
                     Phone = phone
                 };
 
-                var assignedAgent = agents[rnd.Next(agents.Count)];
+                var assignedAgent = agents[i % agents.Count];
                 int typeRoll = rnd.Next(100);
                 string custType = typeRoll < 60 ? "buyer" : (typeRoll < 85 ? "seller" : "investor");
 

@@ -16,16 +16,17 @@ namespace CRMS_Peguit.winforms.Auth
         public static bool IsAgent =>
             CurrentSession.CurrentUser?.Role == UserRole.SalesStaff;
 
-        // R26. Manager and Admin retain full oversight regardless of ownership.
+        // R26. Manager and Admin retain full oversight of tenant CRM data regardless of ownership.
+        // Multi-tenant Security: SuperAdmin is platform-level ONLY and has ZERO access to tenant operational/business data.
         public static bool HasFullOversight =>
-            IsManager || IsAdmin || IsSuperAdmin;
+            (IsManager || IsAdmin) && !IsSuperAdmin;
 
         // R24. Only Manager or Admin may set or change ownership.
         public static bool CanAssignRecords =>
-            IsManager || IsAdmin;
+            (IsManager || IsAdmin) && !IsSuperAdmin;
 
         public static bool CanApproveAssignments =>
-            IsManager;
+            IsManager && !IsSuperAdmin;
 
         // R23 (revised) & R25 (revised):
         // Visibility is scoped to exactly one Agent at a time:
@@ -35,6 +36,9 @@ namespace CRMS_Peguit.winforms.Auth
         // Manager and Admin retain full oversight regardless of this (per R26).
         public static bool CanAgentViewRecord(int? assignedAgentId, int? createdByUserId)
         {
+            if (IsSuperAdmin)
+                return false;
+
             if (HasFullOversight)
                 return true;
 
@@ -58,23 +62,23 @@ namespace CRMS_Peguit.winforms.Auth
         // Operational sales records (Leads, Customers, Deals) are created by frontline Agents.
         // Managers supervise, approve, reassign, and archive.
         public static bool CanCreateSalesRecord =>
-            IsAgent || IsSuperAdmin;
+            IsAgent;
 
         public static bool CanExportData =>
-            IsAdmin || IsManager || IsSuperAdmin;
+            (IsAdmin || IsManager) && !IsSuperAdmin;
 
         public static bool CanViewBrokerageMargins =>
-            IsAdmin || IsSuperAdmin;
+            IsAdmin && !IsSuperAdmin;
 
         public static bool CanExportFinancialSettlements =>
-            IsAdmin || IsSuperAdmin;
+            IsAdmin && !IsSuperAdmin;
 
         public static bool CanEditRecord(int? assignedAgentId, int? createdByUserId, string? assignmentStatus = null)
         {
-            if (IsAdmin)
-                return false; // Admin has oversight, does not directly manage records
+            if (IsSuperAdmin || IsAdmin)
+                return false; // SuperAdmin has zero tenant access; Admin has oversight but does not directly manage records
 
-            if (IsManager || IsSuperAdmin)
+            if (IsManager)
                 return true;
 
             // While a record is pending review by management, operational editing is locked for agents
@@ -86,10 +90,10 @@ namespace CRMS_Peguit.winforms.Auth
 
         public static bool CanArchiveRecord(int? assignedAgentId, int? createdByUserId)
         {
-            if (IsAdmin)
+            if (IsSuperAdmin || IsAdmin)
                 return false;
 
-            if (IsManager || IsSuperAdmin)
+            if (IsManager)
                 return true;
 
             return CanAgentViewRecord(assignedAgentId, createdByUserId);

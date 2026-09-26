@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Drawing;
 using CRMS_Peguit.domain.entities;
+using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -14,6 +15,8 @@ namespace CRMS_Peguit.winforms.Views.Users
     {
         private readonly UserController _controller;
         private readonly User? _user;
+        private Label? _lblBranch;
+        private ComboBox? _cmbBranch;
         
         public AdminUserEditForm() : this(new UserController(), null)
         {
@@ -33,7 +36,7 @@ namespace CRMS_Peguit.winforms.Views.Users
                 txtPassword.Visible = false;
                 lblConfirm.Visible = false;
                 txtConfirmPassword.Visible = false;
-                this.ClientSize = new Size(400, 450);
+                this.ClientSize = new Size(400, CurrentSession.CanAccessBranching ? 510 : 450);
 
                 txtFirstName.Text = _user!.FirstName;
                 txtMiddleName.Text = _user.MiddleName;
@@ -41,9 +44,46 @@ namespace CRMS_Peguit.winforms.Views.Users
                 txtSuffix.Text = _user.Suffix;
                 txtEmail.Text = _user.Email;
             }
+            else
+            {
+                this.ClientSize = new Size(400, CurrentSession.CanAccessBranching ? 590 : 540);
+            }
+
+            if (CurrentSession.CanAccessBranching)
+            {
+                _lblBranch = new Label
+                {
+                    Text = "Assigned Branch (Tenant C)",
+                    Location = new Point(cmbRole.Left, cmbRole.Bottom + 12),
+                    AutoSize = true,
+                    Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                    ForeColor = Color.FromArgb(107, 33, 168)
+                };
+
+                _cmbBranch = new ComboBox
+                {
+                    DropDownStyle = ComboBoxStyle.DropDownList,
+                    Location = new Point(cmbRole.Left, _lblBranch.Bottom + 4),
+                    Size = new Size(cmbRole.Width, 26),
+                    Font = new Font("Segoe UI", 9f)
+                };
+
+                Controls.Add(_lblBranch);
+                Controls.Add(_cmbBranch);
+
+                int offset = 54;
+                if (!isEdit)
+                {
+                    lblPassword.Top += offset;
+                    txtPassword.Top += offset;
+                    lblConfirm.Top += offset;
+                    txtConfirmPassword.Top += offset;
+                }
+                btnSave.Top += offset;
+                btnCancel.Top += offset;
+            }
 
             UiRadiusHelper.StyleButton(btnSave, 8);
-
             UiRadiusHelper.StyleButton(btnCancel, 8);
 
             txtFirstName.MaxLength = 50;
@@ -67,6 +107,37 @@ namespace CRMS_Peguit.winforms.Views.Users
             if (_user != null)
             {
                 cmbRole.SelectedValue = _user.RoleId;
+            }
+
+            if (CurrentSession.CanAccessBranching && _cmbBranch != null)
+            {
+                var branchController = new BranchController();
+                var branches = await branchController.GetAllBranchesAsync();
+                var branchOptions = new List<object>
+                {
+                    new { BranchId = 0, BranchDisplay = "🌐 (Company-wide / All Branches)" }
+                };
+                foreach (var b in branches.Where(b => b.IsActive))
+                {
+                    branchOptions.Add(new { BranchId = b.BranchId, BranchDisplay = $"🏢 {b.BranchName} ({b.BranchCode})" });
+                }
+
+                _cmbBranch.DisplayMember = "BranchDisplay";
+                _cmbBranch.ValueMember = "BranchId";
+                _cmbBranch.DataSource = branchOptions;
+
+                if (_user?.BranchId.HasValue == true && _user.BranchId.Value > 0)
+                {
+                    _cmbBranch.SelectedValue = _user.BranchId.Value;
+                }
+                else if (CurrentSession.ActiveBranchId.HasValue)
+                {
+                    _cmbBranch.SelectedValue = CurrentSession.ActiveBranchId.Value;
+                }
+                else
+                {
+                    _cmbBranch.SelectedValue = 0;
+                }
             }
         }
 
@@ -102,6 +173,11 @@ namespace CRMS_Peguit.winforms.Views.Users
                 }
 
                 var roleId = (int)cmbRole.SelectedValue;
+                int? branchId = null;
+                if (CurrentSession.CanAccessBranching && _cmbBranch?.SelectedValue is int bId && bId > 0)
+                {
+                    branchId = bId;
+                }
 
                 if (_user == null)
                 {
@@ -118,7 +194,8 @@ namespace CRMS_Peguit.winforms.Views.Users
                         LastName = txtLastName.Text.Trim(),
                         Suffix = txtSuffix.Text.Trim(),
                         Email = txtEmail.Text.Trim(),
-                        RoleId = roleId
+                        RoleId = roleId,
+                        BranchId = branchId
                     };
                     await _controller.CreateAsync(newUser, txtPassword.Text);
                 }
@@ -130,6 +207,7 @@ namespace CRMS_Peguit.winforms.Views.Users
                     _user.Suffix = txtSuffix.Text.Trim();
                     _user.Email = txtEmail.Text.Trim();
                     _user.RoleId = roleId;
+                    _user.BranchId = branchId;
 
                     await _controller.UpdateAsync(_user);
                 }

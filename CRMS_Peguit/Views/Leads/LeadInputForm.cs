@@ -1,4 +1,5 @@
 using CRMS_Peguit.domain.entities;
+using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
 
@@ -223,6 +224,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
                     Priority = cmbPriority.SelectedItem?.ToString() ?? "medium",
                     ExpectedValue = expectedValue,
                     Notes = NullIfEmpty(txtNotes.Text),
+                    BranchId = CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue ? CurrentSession.ActiveBranchId.Value : null,
                     CreatedAt = DateTime.UtcNow,
                     IsDeleted = false,
                     DeletedAt = null

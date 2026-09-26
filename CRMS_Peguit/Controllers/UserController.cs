@@ -36,11 +36,19 @@ namespace CRMS_Peguit.winforms.Controllers
         public async Task<List<User>> GetAllAsync(bool includeInactive = false)
         {
             EnsureAdmin();
-            var query = _db.Users.AsNoTracking();
+            var query = _db.Users
+                .Include(u => u.Branch)
+                .Include(u => u.Person)
+                .AsNoTracking();
 
             if (!includeInactive)
             {
                 query = query.Where(u => u.Status == "active");
+            }
+
+            if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+            {
+                query = query.Where(u => u.BranchId == CurrentSession.ActiveBranchId.Value);
             }
 
             // Exclude Admins and SuperAdmins from the managed list
@@ -163,6 +171,7 @@ namespace CRMS_Peguit.winforms.Controllers
             existing.Suffix = user.Suffix;
             existing.Email = user.Email;
             existing.RoleId = user.RoleId;
+            existing.BranchId = user.BranchId;
 
             await _db.SaveChangesAsync();
         }

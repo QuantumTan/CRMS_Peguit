@@ -74,33 +74,45 @@ namespace CRMS_Peguit.winforms.Views.Controls
         public void PollNotifications()
         {
             int currentUserId = CurrentSession.UserId;
+            int tenantId = CurrentSession.TenantId;
             if (currentUserId <= 0) return;
 
-            try
+            Task.Run(() =>
             {
-                // Run role-specific trigger evaluation during polling
-                if (RbacService.IsAgent)
+                try
                 {
-                    _controller.CheckFollowUpReminders(currentUserId);
-                }
+                    using var ctrl = new NotificationController();
 
-                if (RbacService.IsAdmin || RbacService.IsSuperAdmin)
-                {
-                    _controller.CheckSubscriptionAlerts(CurrentSession.TenantId);
-                    _controller.CheckBackupAlerts(CurrentSession.TenantId);
-                }
+                    // Run role-specific trigger evaluation during polling
+                    if (RbacService.IsAgent)
+                    {
+                        ctrl.CheckFollowUpReminders(currentUserId);
+                    }
 
-                int count = _controller.GetUnreadCount(currentUserId);
-                if (_unreadCount != count)
-                {
-                    _unreadCount = count;
-                    Invalidate();
+                    if (RbacService.IsAdmin || RbacService.IsSuperAdmin)
+                    {
+                        ctrl.CheckSubscriptionAlerts(tenantId);
+                        ctrl.CheckBackupAlerts(tenantId);
+                    }
+
+                    int count = ctrl.GetUnreadCount(currentUserId);
+                    if (!IsDisposed && _unreadCount != count)
+                    {
+                        BeginInvoke(() =>
+                        {
+                            if (!IsDisposed && _unreadCount != count)
+                            {
+                                _unreadCount = count;
+                                Invalidate();
+                            }
+                        });
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[NotificationBell.PollNotifications] Error: {ex.Message}");
-            }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[NotificationBell.PollNotifications] Error: {ex.Message}");
+                }
+            });
         }
 
         protected override void OnMouseEnter(EventArgs e)

@@ -145,10 +145,19 @@ namespace CRMS_Peguit.winforms.Controllers
 
                 // Glanceable Chart: Team Deals Won vs. Lost this month
                 var startOfMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
-                int dealsWon = _db.Deals.AsNoTracking()
-                    .Count(d => (d.Stage == "Closed" || d.Stage == "Closed-Won" || d.Stage == "Won") && ((d.ContractSignedDate != null && d.ContractSignedDate >= startOfMonth) || d.CreatedAt >= startOfMonth));
-                int dealsLost = _db.Deals.AsNoTracking()
-                    .Count(d => (d.Stage == "Lost" || d.Stage == "Closed-Lost") && d.CreatedAt >= startOfMonth);
+                var wonQuery = _db.Deals.AsNoTracking()
+                    .Where(d => (d.Stage == "Closed" || d.Stage == "Closed-Won" || d.Stage == "Won") && ((d.ContractSignedDate != null && d.ContractSignedDate >= startOfMonth) || d.CreatedAt >= startOfMonth));
+                var lostQuery = _db.Deals.AsNoTracking()
+                    .Where(d => (d.Stage == "Lost" || d.Stage == "Closed-Lost") && d.CreatedAt >= startOfMonth);
+
+                if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+                {
+                    wonQuery = wonQuery.Where(d => d.BranchId == CurrentSession.ActiveBranchId.Value);
+                    lostQuery = lostQuery.Where(d => d.BranchId == CurrentSession.ActiveBranchId.Value);
+                }
+
+                int dealsWon = wonQuery.Count();
+                int dealsLost = lostQuery.Count();
 
                 // Top 5 pending assignments (Customers and Leads awaiting manager action)
                 var pendingApprovals = ApprovalCtrl.GetPendingApprovals()
@@ -257,7 +266,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 string activeUsersSub = $"{managersCount} Manager{(managersCount == 1 ? "" : "s")} · {agentsCount} Agent{(agentsCount == 1 ? "" : "s")}";
 
                 var ticketKpis = SupportTicketCtrl.GetKpiCounts();
-                int openTickets = SupportTicketCtrl.GetOpenTicketsCount();
+                int openTickets = ticketKpis.Open;
                 int overdueTickets = ticketKpis.Overdue;
                 string openTicketsSub = overdueTickets > 0 ? $"{overdueTickets} overdue" : string.Empty;
 
@@ -268,9 +277,9 @@ namespace CRMS_Peguit.winforms.Controllers
                 var (subStatus, subExpiry) = GetSubscriptionDetails();
 
                 // Glanceable Chart 1: Ticket Status Breakdown (Open / In Progress / Resolved)
-                int openT = _db.SupportTickets.AsNoTracking().Count(t => !t.IsDeleted && (t.Status == "Open" || t.Status == "New"));
-                int inProgT = _db.SupportTickets.AsNoTracking().Count(t => !t.IsDeleted && (t.Status == "In Progress" || t.Status == "InProgress"));
-                int resT = _db.SupportTickets.AsNoTracking().Count(t => !t.IsDeleted && (t.Status == "Resolved" || t.Status == "Closed"));
+                int openT = ticketKpis.Open;
+                int inProgT = ticketKpis.InProgress;
+                int resT = ticketKpis.Resolved;
 
                 // Team Roster Snapshot (6-8 Managers and Agents)
                 var teamRoster = UserCtrl.GetTeamRoster(8);

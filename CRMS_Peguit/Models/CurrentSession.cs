@@ -137,7 +137,9 @@ namespace CRMS_Peguit.winforms.Auth
 
             if (moduleName.Equals("Campaigns", StringComparison.OrdinalIgnoreCase) ||
                 moduleName.Equals("TasksReminders", StringComparison.OrdinalIgnoreCase) ||
+                moduleName.Equals("FollowUps", StringComparison.OrdinalIgnoreCase) ||
                 moduleName.Equals("Approvals", StringComparison.OrdinalIgnoreCase) ||
+                moduleName.Equals("Activities", StringComparison.OrdinalIgnoreCase) ||
                 moduleName.Equals("Actions", StringComparison.OrdinalIgnoreCase))
             {
                 if (!CanAccessActions) return false;
