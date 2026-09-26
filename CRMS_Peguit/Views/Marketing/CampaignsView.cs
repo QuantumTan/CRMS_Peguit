@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
-using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Models.ViewModels;
@@ -16,8 +15,8 @@ namespace CRMS_Peguit.winforms.Views.Marketing
 {
     public partial class CampaignsView : UserControl
     {
-        private readonly CampaignController _campaignController;
-        private readonly LeadController _leadController;
+        private readonly CampaignApiService _campaignController;
+        private readonly LeadApiService _leadController;
         private string _selectedSource = "All";
 
         // Pagination Controls
@@ -26,8 +25,8 @@ namespace CRMS_Peguit.winforms.Views.Marketing
 
         public CampaignsView()
         {
-            _campaignController = new CampaignController();
-            _leadController = new LeadController();
+            _campaignController = new CampaignApiService();
+            _leadController = new LeadApiService();
 
             InitializeComponent();
             ApplyModernStyling();

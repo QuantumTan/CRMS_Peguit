@@ -4,17 +4,18 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
-using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Views.Properties
 {
     public partial class PropertyDetailForm : Form
     {
         private Property? _property;
-        private readonly PropertyController? _controller;
+        private readonly PropertyApiService? _controller;
 
         private Panel? _pnlHeader;
         private Panel? _pnlFooter;
@@ -27,7 +28,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
             InitializeComponent();
         }
 
-        public PropertyDetailForm(Property property, PropertyController controller)
+        public PropertyDetailForm(Property property, PropertyApiService controller)
         {
             _property = property;
             _controller = controller;

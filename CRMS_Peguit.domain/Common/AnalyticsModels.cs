@@ -1,6 +1,7 @@
 using System;
+using System.Collections.Generic;
 
-namespace CRMS_Peguit.winforms.Models.Analytics
+namespace CRMS_Peguit.domain.Common
 {
     public class DateRangeFilter
     {
@@ -93,7 +94,7 @@ namespace CRMS_Peguit.winforms.Models.Analytics
             Value = value;
         }
     }
-    
+
     public class LeadFunnelData
     {
         public int New { get; set; }
@@ -118,7 +119,7 @@ namespace CRMS_Peguit.winforms.Models.Analytics
             Lost = lost;
         }
     }
-    
+
     public class WonLostData
     {
         public int Won { get; set; }
@@ -134,7 +135,7 @@ namespace CRMS_Peguit.winforms.Models.Analytics
             Lost = lost;
         }
     }
-    
+
     public class TicketBreakdownData
     {
         public int Open { get; set; }
@@ -156,7 +157,7 @@ namespace CRMS_Peguit.winforms.Models.Analytics
             Overdue = overdue;
         }
     }
-    
+
     public class AgentPerformance
     {
         public int UserId { get; set; }
@@ -174,7 +175,7 @@ namespace CRMS_Peguit.winforms.Models.Analytics
             CommissionEarned = commissionEarned;
         }
     }
-    
+
     public class SourceMetric
     {
         public string Source { get; set; } = string.Empty;
@@ -187,7 +188,7 @@ namespace CRMS_Peguit.winforms.Models.Analytics
             Count = count;
         }
     }
-    
+
     public class ActivityFeedItem
     {
         public string Icon { get; set; } = string.Empty;
@@ -220,13 +221,40 @@ namespace CRMS_Peguit.winforms.Models.Analytics
 
     public class AnalyticsDetailRow
     {
-        public string RecordType { get; set; } = string.Empty; // "Deal", "Lead", "Ticket"
-        public string Reference { get; set; } = string.Empty;  // "DL-0012", "LD-0045", "TK-0089"
-        public string Title { get; set; } = string.Empty;      // Title, Name, or Subject
-        public string Status { get; set; } = string.Empty;     // Won, Lost, Open, Qualified, etc.
-        public string AssignedTo { get; set; } = string.Empty; // Agent Full Name
-        public decimal Value { get; set; }                     // Deal Value or Budget
-        public DateTime Date { get; set; }                     // Creation or Signed Date
-        public string Details { get; set; } = string.Empty;    // Extra context (source, priority, commission)
+        public string RecordType { get; set; } = string.Empty;
+        public string Reference { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string AssignedTo { get; set; } = string.Empty;
+        public decimal Value { get; set; }
+        public DateTime Date { get; set; }
+        public string Details { get; set; } = string.Empty;
+    }
+
+    public class AnalyticsSnapshot
+    {
+        public int TotalDealsClosed { get; set; }
+        public decimal TotalSalesVolume { get; set; }
+        public decimal TotalCommissionEarned { get; set; }
+        public decimal ActivePipelineValue { get; set; }
+        public decimal AverageDealSize { get; set; }
+        public int ActiveLeads { get; set; }
+        public double LeadConversionRate { get; set; }
+        public double WinRate { get; set; }
+        public int OpenSupportTickets { get; set; }
+        public double AverageDaysToClose { get; set; }
+        public int ActivePropertiesCount { get; set; }
+        public decimal ActiveInventoryValue { get; set; }
+
+        public List<MonthlyMetric> DealsOverTime { get; set; } = new();
+        public LeadFunnelData? LeadFunnel { get; set; }
+        public WonLostData? DealsWonVsLost { get; set; }
+        public TicketBreakdownData? TicketBreakdown { get; set; }
+
+        public List<AgentPerformance>? TopAgents { get; set; }
+        public List<SourceMetric>? LeadSourceBreakdown { get; set; }
+        public List<PropertyDistributionMetric>? PropertyDistribution { get; set; }
+
+        public List<ActivityFeedItem> RecentActivity { get; set; } = new();
     }
 }

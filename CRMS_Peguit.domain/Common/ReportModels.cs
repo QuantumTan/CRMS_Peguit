@@ -1,6 +1,7 @@
 using System;
+using System.Collections.Generic;
 
-namespace CRMS_Peguit.winforms.Models.Analytics
+namespace CRMS_Peguit.domain.Common
 {
     public class SalesReportRow
     {
@@ -14,7 +15,6 @@ namespace CRMS_Peguit.winforms.Models.Analytics
         public string Stage { get; set; } = string.Empty;
         public string ExpectedOrClosedDate { get; set; } = string.Empty;
 
-        // Backward compatibility properties
         public decimal Value { get => DealValue; set => DealValue = value; }
         public string ClosedDate { get => ExpectedOrClosedDate; set => ExpectedOrClosedDate = value; }
 
@@ -33,7 +33,7 @@ namespace CRMS_Peguit.winforms.Models.Analytics
             ExpectedOrClosedDate = date;
         }
     }
-    
+
     public class LeadProgressRow
     {
         public string LeadName { get; set; } = string.Empty;
@@ -46,7 +46,6 @@ namespace CRMS_Peguit.winforms.Models.Analytics
         public string ConvertedToCustomer { get; set; } = string.Empty;
         public string CreatedDate { get; set; } = string.Empty;
 
-        // Backward compatibility
         public int DaysInStage { get => DaysInPipeline; set => DaysInPipeline = value; }
 
         public LeadProgressRow() { }
@@ -64,7 +63,7 @@ namespace CRMS_Peguit.winforms.Models.Analytics
             CreatedDate = createdDate;
         }
     }
-    
+
     public class CommissionReportRow
     {
         public string DealRef { get; set; } = string.Empty;
@@ -79,7 +78,6 @@ namespace CRMS_Peguit.winforms.Models.Analytics
         public string CloseDate { get; set; } = string.Empty;
         public string SettlementStatus { get; set; } = "Settled";
 
-        // Backward compatibility
         public decimal CommissionRate { get => AgentSplitPercent; set => AgentSplitPercent = value; }
         public decimal CommissionAmount { get => AgentPayoutAmount; set => AgentPayoutAmount = value; }
 
@@ -128,7 +126,7 @@ namespace CRMS_Peguit.winforms.Models.Analytics
             ListedDate = listedDate;
         }
     }
-    
+
     public class TicketResolutionRow
     {
         public string TicketNumber { get; set; } = string.Empty;
@@ -158,7 +156,7 @@ namespace CRMS_Peguit.winforms.Models.Analytics
             SlaMet = slaMet;
         }
     }
-    
+
     public class AgentActivityRow
     {
         public string AgentName { get; set; } = string.Empty;
@@ -171,7 +169,6 @@ namespace CRMS_Peguit.winforms.Models.Analytics
         public int FollowUpsCompleted { get; set; }
         public int TicketsResolved { get; set; }
 
-        // Backward compatibility
         public int LeadsWorked { get => ActiveLeads; set => ActiveLeads = value; }
 
         public AgentActivityRow() { }

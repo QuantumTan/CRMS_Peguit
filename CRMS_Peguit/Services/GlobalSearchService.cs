@@ -1,4 +1,6 @@
-using CRMS_Peguit.winforms.Controllers;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace CRMS_Peguit.winforms.Services
 {
@@ -15,7 +17,7 @@ namespace CRMS_Peguit.winforms.Services
 
     /// <summary>
     /// Lightweight in-memory cross-module search across Customers, Leads, Properties, and Deals.
-    /// Runs against data already loaded by each module controller.
+    /// Runs against data already loaded by each module API service.
     /// </summary>
     public static class GlobalSearchService
     {
@@ -33,7 +35,7 @@ namespace CRMS_Peguit.winforms.Services
             // Customers
             try
             {
-                var ctl = new CustomerController();
+                using var ctl = new CustomerApiService();
                 foreach (var c in ctl.GetAll()
                     .Where(c => Hits(c.FullName, query) || Hits(c.Email, query) || Hits(c.Phone, query))
                     .Take(maxPerModule))
@@ -52,7 +54,7 @@ namespace CRMS_Peguit.winforms.Services
             // Leads
             try
             {
-                var ctl = new LeadController();
+                using var ctl = new LeadApiService();
                 foreach (var l in ctl.GetAll()
                     .Where(l => Hits(l.FullName, query) || Hits(l.Email, query) || Hits(l.Phone, query))
                     .Take(maxPerModule))
@@ -71,7 +73,7 @@ namespace CRMS_Peguit.winforms.Services
             // Properties
             try
             {
-                var ctl = new PropertyController();
+                using var ctl = new PropertyApiService();
                 foreach (var p in ctl.GetAll()
                     .Where(p => Hits(p.Address, query) || Hits(p.PropertyType, query) || Hits(p.Status, query))
                     .Take(maxPerModule))
@@ -90,10 +92,10 @@ namespace CRMS_Peguit.winforms.Services
             // Deals
             try
             {
-                var ctl = new DealController();
+                using var ctl = new DealApiService();
                 var deals = ctl.GetAll();
-                var custNames = ctl.GetCustomerNames();   // Dictionary<int, string>
-                var propAddresses = ctl.GetPropertyAddresses(); // Dictionary<int, string>
+                var custNames = ctl.GetCustomerNames();
+                var propAddresses = ctl.GetPropertyAddresses();
                 foreach (var d in deals
                     .Where(d => Hits(GetName(custNames, d.CustomerId), query) ||
                                 Hits(GetName(propAddresses, d.PropertyId), query) ||
@@ -114,7 +116,7 @@ namespace CRMS_Peguit.winforms.Services
             // Support Tickets
             try
             {
-                var ctl = new SupportTicketController();
+                using var ctl = new SupportTicketApiService();
                 foreach (var t in ctl.GetAll()
                     .Where(t => Hits(t.TicketNumber, query) ||
                                 Hits(t.Category, query) ||

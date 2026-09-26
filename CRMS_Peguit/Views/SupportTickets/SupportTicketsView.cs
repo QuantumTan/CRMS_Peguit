@@ -6,7 +6,6 @@ using System.Linq;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
-using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -16,7 +15,7 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
 {
     public partial class SupportTicketsView : UserControl
     {
-        private readonly SupportTicketController _controller;
+        private readonly SupportTicketApiService _controller;
         private string _filterStatus = "All";
         private Button? _btnExport;
         private Panel _pnlEmptyState = null!;
@@ -29,7 +28,7 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
         public SupportTicketsView()
         {
             InitializeComponent();
-            _controller = new SupportTicketController();
+            _controller = new SupportTicketApiService();
 
             _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
             _searchDebounceTimer.Tick += async (_, _) =>

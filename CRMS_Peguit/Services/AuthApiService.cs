@@ -3,7 +3,7 @@ using System.Threading.Tasks;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Models.Services;
 
-namespace CRMS_Peguit.winforms.Controllers
+namespace CRMS_Peguit.winforms.Services
 {
     public class LoginValidationResult
     {
@@ -14,19 +14,16 @@ namespace CRMS_Peguit.winforms.Controllers
         public static LoginValidationResult Failure(string error) => new() { IsValid = false, ErrorMessage = error };
     }
 
-    /// <summary>
-    /// Controller managing authentication workflow, credential validation, and session lifecycle.
-    /// </summary>
-    public class AuthController
+    public class AuthApiService
     {
         private readonly AuthService _authService;
 
-        public AuthController(string? apiBaseUrl = null)
+        public AuthApiService(string? apiBaseUrl = null)
         {
             _authService = new AuthService(apiBaseUrl ?? DbConfiguration.GetApiBaseUrl());
         }
 
-        public AuthController(AuthService authService)
+        public AuthApiService(AuthService authService)
         {
             _authService = authService;
         }

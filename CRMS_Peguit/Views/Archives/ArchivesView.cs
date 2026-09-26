@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
-using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -25,9 +24,10 @@ namespace CRMS_Peguit.winforms.Views.Archives
 
     public class ArchivesView : UserControl
     {
-        private readonly CustomerController _customerController;
-        private readonly LeadController _leadController;
-        private readonly UserController _userController;
+        private readonly CustomerApiService _customerController;
+        private readonly LeadApiService _leadController;
+        private readonly UserApiService _userController;
+        private readonly SupportTicketApiService _ticketController;
 
         private Panel pnlCard = null!;
         private Label lblTitle = null!;
@@ -49,9 +49,10 @@ namespace CRMS_Peguit.winforms.Views.Archives
 
         public ArchivesView()
         {
-            _customerController = new CustomerController();
-            _leadController = new LeadController();
-            _userController = new UserController();
+            _customerController = new CustomerApiService();
+            _leadController = new LeadApiService();
+            _userController = new UserApiService();
+            _ticketController = new SupportTicketApiService();
 
             InitializeComponent();
             InitPagination();
@@ -367,25 +368,18 @@ namespace CRMS_Peguit.winforms.Views.Archives
                 }
 
                 // 4. Archived Support Tickets
-                using (var db = LocalDb.CreateContext(CurrentSession.TenantId))
+                var tickets = _ticketController.GetArchived();
+                foreach (var t in tickets)
                 {
-                    var tickets = db.SupportTickets
-                        .Where(t => t.IsDeleted)
-                        .OrderByDescending(t => t.CreatedAt)
-                        .ToList();
-
-                    foreach (var t in tickets)
+                    _allItems.Add(new ArchivedItemDto
                     {
-                        _allItems.Add(new ArchivedItemDto
-                        {
-                            Id = $"t-{t.TicketId}",
-                            EntityType = "Ticket",
-                            Name = $"Ticket #{t.TicketNumber}: {t.Category}",
-                            Subtitle = t.Description,
-                            ArchivedAt = t.ResolvedAt ?? t.CreatedAt,
-                            RawEntity = t
-                        });
-                    }
+                        Id = $"t-{t.TicketId}",
+                        EntityType = "Ticket",
+                        Name = $"Ticket #{t.TicketNumber}: {t.Category}",
+                        Subtitle = t.Description,
+                        ArchivedAt = t.ResolvedAt ?? t.CreatedAt,
+                        RawEntity = t
+                    });
                 }
 
                 // Sort by date descending
@@ -483,13 +477,7 @@ namespace CRMS_Peguit.winforms.Views.Archives
                 }
                 else if (item.RawEntity is SupportTicket ticket)
                 {
-                    using var db = LocalDb.CreateContext(CurrentSession.TenantId);
-                    var t = db.SupportTickets.FirstOrDefault(x => x.TicketId == ticket.TicketId);
-                    if (t != null)
-                    {
-                        t.IsDeleted = false;
-                        db.SaveChanges();
-                    }
+                    _ticketController.Restore(ticket.TicketId);
                 }
 
                 MessageBox.Show(

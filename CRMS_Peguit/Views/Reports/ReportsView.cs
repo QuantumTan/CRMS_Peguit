@@ -5,9 +5,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using CRMS_Peguit.winforms.Auth;
-using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
-using CRMS_Peguit.winforms.Models.Analytics;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
 using Color = System.Drawing.Color;
@@ -18,7 +17,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
     {
         private enum ViewDisplayMode { Both, ChartsOnly, TableOnly }
 
-        private readonly ReportsController? _controller;
+        private readonly ReportsApiService? _controller;
         private object? _currentData;
         private object? _unfilteredData;
         private ReportHeader? _currentHeader;
@@ -42,7 +41,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 return;
             }
 
-            _controller = new ReportsController();
+            _controller = new ReportsApiService();
             SetupUI();
             LoadDropdowns();
             WireEvents();

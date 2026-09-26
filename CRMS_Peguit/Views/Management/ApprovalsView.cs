@@ -6,10 +6,10 @@ using System.Linq;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
-using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Models.ViewModels;
+using CRMS_Peguit.winforms.Services;
 using CRMS_Peguit.winforms.Views.Customers;
 using CRMS_Peguit.winforms.Views.Leads;
 using CRMS_Peguit.winforms.Views.Properties;
@@ -19,7 +19,7 @@ namespace CRMS_Peguit.winforms.Views.Management
 {
     public partial class ApprovalsView : UserControl
     {
-        private readonly ApprovalController _approvalController;
+        private readonly ApprovalApiService _approvalController;
 
         private string _filterType = "All";
         private List<PendingApprovalItem> _allItems = new();
@@ -30,7 +30,7 @@ namespace CRMS_Peguit.winforms.Views.Management
         {
             InitializeComponent();
 
-            _approvalController = new ApprovalController();
+            _approvalController = new ApprovalApiService();
 
             InitPagination();
             InitEmptyState();

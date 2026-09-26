@@ -1,38 +1,42 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Models.ViewModels;
 
-namespace CRMS_Peguit.winforms.Controllers
+namespace CRMS_Peguit.winforms.Services
 {
-    public class ApprovalController : IDisposable
+    public class ApprovalApiService : BaseApiService
     {
-        private readonly LeadController _leadController;
-        private readonly CustomerController _customerController;
-        private readonly PropertyController _propertyController;
+        private CustomerApiService? _customerService;
+        private LeadApiService? _leadService;
+        private PropertyApiService? _propertyService;
 
-        public LeadController LeadController => _leadController;
-        public CustomerController CustomerController => _customerController;
-        public PropertyController PropertyController => _propertyController;
+        public CustomerApiService CustomerService => _customerService ??= new CustomerApiService(httpClient: Client);
+        public LeadApiService LeadService => _leadService ??= new LeadApiService(httpClient: Client);
+        public PropertyApiService PropertyService => _propertyService ??= new PropertyApiService(httpClient: Client);
 
-        public ApprovalController()
+        // Aliases for compatibility
+        public CustomerApiService CustomerController => CustomerService;
+        public LeadApiService LeadController => LeadService;
+        public PropertyApiService PropertyController => PropertyService;
+
+        public ApprovalApiService(string? baseUrl = null, HttpClient? httpClient = null)
+            : base(baseUrl, httpClient)
         {
-            _leadController = new LeadController();
-            _customerController = new CustomerController();
-            _propertyController = new PropertyController();
         }
 
         public List<PendingApprovalItem> GetPendingApprovals()
         {
             var items = new List<PendingApprovalItem>();
 
-            // 1. Pending Leads
-            var leads = _leadController.GetPendingReview();
+            var leads = LeadService.GetPendingReview();
             foreach (var lead in leads)
             {
                 string submitter = GetUserName(lead.CreatedByUserId);
-                string assigned = _leadController.GetAssignedAgentName(lead.AssignedAgentId) ?? "Unassigned";
+                string assigned = LeadService.GetAssignedAgentName(lead.AssignedAgentId) ?? "Unassigned";
 
                 items.Add(new PendingApprovalItem
                 {
@@ -48,12 +52,11 @@ namespace CRMS_Peguit.winforms.Controllers
                 });
             }
 
-            // 2. Pending Customers
-            var customers = _customerController.GetPendingReview();
+            var customers = CustomerService.GetPendingReview();
             foreach (var cust in customers)
             {
                 string submitter = GetUserName(cust.CreatedByUserId);
-                string assigned = _customerController.GetAssignedAgentName(cust.AssignedAgentId) ?? "Unassigned";
+                string assigned = CustomerService.GetAssignedAgentName(cust.AssignedAgentId) ?? "Unassigned";
 
                 items.Add(new PendingApprovalItem
                 {
@@ -69,12 +72,11 @@ namespace CRMS_Peguit.winforms.Controllers
                 });
             }
 
-            // 3. Pending Properties
-            var properties = _propertyController.GetPendingReview();
+            var properties = PropertyService.GetPendingReview();
             foreach (var prop in properties)
             {
                 string submitter = GetUserName(prop.CreatedByUserId);
-                string assigned = _propertyController.GetListedAgentName(prop.ListedByAgentId) ?? "Unassigned";
+                string assigned = PropertyService.GetListedAgentName(prop.ListedByAgentId) ?? "Unassigned";
 
                 items.Add(new PendingApprovalItem
                 {
@@ -93,24 +95,21 @@ namespace CRMS_Peguit.winforms.Controllers
             return items.OrderByDescending(x => x.CreatedAt).ToList();
         }
 
-        public List<AgentPickerItem> GetAgents()
-        {
-            return _leadController.GetAgents();
-        }
+        public List<AgentPickerItem> GetAgents() => LeadService.GetAgents();
 
         public void AssignAgent(PendingApprovalItem item, int? agentId, bool approveNow, string? notes)
         {
             if (item.Type == "Lead" && item.OriginalEntity is Lead lead)
             {
-                _leadController.AssignAgent(lead, agentId, approveNow, notes);
+                LeadService.AssignAgent(lead, agentId, approveNow, notes);
             }
             else if (item.Type == "Customer" && item.OriginalEntity is Customer cust)
             {
-                _customerController.AssignAgent(cust, agentId, approveNow, notes);
+                CustomerService.AssignAgent(cust, agentId, approveNow, notes);
             }
             else if (item.Type == "Property" && item.OriginalEntity is Property prop)
             {
-                _propertyController.AssignAgent(prop, agentId, approveNow, notes);
+                PropertyService.AssignAgent(prop, agentId, approveNow, notes);
             }
         }
 
@@ -118,29 +117,30 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             if (item.Type == "Lead" && item.OriginalEntity is Lead lead)
             {
-                _leadController.ApproveAssignment(lead, notes);
+                LeadService.ApproveAssignment(lead, notes);
             }
             else if (item.Type == "Customer" && item.OriginalEntity is Customer cust)
             {
-                _customerController.ApproveAssignment(cust, notes);
+                CustomerService.ApproveAssignment(cust, notes);
             }
             else if (item.Type == "Property" && item.OriginalEntity is Property prop)
             {
-                _propertyController.ApproveAssignment(prop, notes);
+                PropertyService.ApproveAssignment(prop, notes);
             }
         }
 
         private string GetUserName(int? userId)
         {
             if (!userId.HasValue || userId.Value <= 0) return "—";
-            return _customerController.GetAssignedAgentName(userId.Value) ?? $"User #{userId.Value}";
+            return CustomerService.GetAssignedAgentName(userId.Value) ?? $"User #{userId.Value}";
         }
 
-        public void Dispose()
+        public override void Dispose()
         {
-            _leadController.Dispose();
-            _customerController.Dispose();
-            _propertyController.Dispose();
+            base.Dispose();
+            _customerService?.Dispose();
+            _leadService?.Dispose();
+            _propertyService?.Dispose();
         }
     }
 }

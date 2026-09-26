@@ -4,9 +4,9 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
-using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -19,7 +19,7 @@ namespace CRMS_Peguit.winforms.Views.Activities
 {
     public partial class ActivitiesView : UserControl
     {
-        private readonly ActivityController _controller;
+        private readonly ActivityApiService _controller;
         private string _filterCategory = "All"; // "All", "Calls", "Emails", "Meetings", "System Events"
         private List<TimelineItemDto> _items = new();
         private Panel _pnlEmptyState = null!;
@@ -28,7 +28,7 @@ namespace CRMS_Peguit.winforms.Views.Activities
         public ActivitiesView()
         {
             InitializeComponent();
-            _controller = new ActivityController();
+            _controller = new ActivityApiService();
 
             InitGridColumns();
             InitPagination();
@@ -424,7 +424,7 @@ namespace CRMS_Peguit.winforms.Views.Activities
                 var fuItem = new ToolStripMenuItem("➕ Schedule Follow-Up");
                 fuItem.Click += (_, _) =>
                 {
-                    using var fuCtrl = new FollowUpController();
+                    using var fuCtrl = new FollowUpApiService();
                     var template = _controller.CreateFollowUpTemplate(item);
                     using var form = new FollowUpInputForm(fuCtrl, template);
                     if (form.ShowDialog(this.FindForm()) == DialogResult.OK && form.Result != null)
@@ -446,7 +446,7 @@ namespace CRMS_Peguit.winforms.Views.Activities
 
             if (item.RelatedCustomerId.HasValue)
             {
-                using var custCtrl = new CustomerController();
+                using var custCtrl = new CustomerApiService();
                 var customer = custCtrl.GetById(item.RelatedCustomerId.Value);
                 if (customer != null)
                 {
@@ -457,7 +457,7 @@ namespace CRMS_Peguit.winforms.Views.Activities
             }
             else if (item.RelatedLeadId.HasValue)
             {
-                using var leadCtrl = new LeadController();
+                using var leadCtrl = new LeadApiService();
                 var lead = leadCtrl.GetById(item.RelatedLeadId.Value);
                 if (lead != null)
                 {

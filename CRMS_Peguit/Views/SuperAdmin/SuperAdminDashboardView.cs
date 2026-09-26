@@ -3,9 +3,10 @@ using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using CRMS_Peguit.winforms.Controllers;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 // =============================================================================
 // SuperAdminDashboardView — KPI row + "Subscriptions by Status" bar chart.
@@ -20,7 +21,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 {
     public class SuperAdminDashboardView : UserControl
     {
-        private readonly SuperAdminController _controller = new();
+        private readonly SuperAdminApiService _controller = new();
 
         // KPI cards
         private KpiCard _kpiTenants = null!;

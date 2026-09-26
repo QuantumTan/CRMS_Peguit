@@ -5,7 +5,6 @@ using System.Windows.Forms;
 using System.Drawing;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
-using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
 
@@ -13,16 +12,16 @@ namespace CRMS_Peguit.winforms.Views.Users
 {
     public partial class AdminUserEditForm : Form
     {
-        private readonly UserController _controller;
+        private readonly UserApiService _controller;
         private readonly User? _user;
         private Label? _lblBranch;
         private ComboBox? _cmbBranch;
         
-        public AdminUserEditForm() : this(new UserController(), null)
+        public AdminUserEditForm() : this(new UserApiService(), null)
         {
         }
 
-        public AdminUserEditForm(UserController controller, User? user)
+        public AdminUserEditForm(UserApiService controller, User? user)
         {
             _controller = controller;
             _user = user;
@@ -111,8 +110,8 @@ namespace CRMS_Peguit.winforms.Views.Users
 
             if (CurrentSession.CanAccessBranching && _cmbBranch != null)
             {
-                var branchController = new BranchController();
-                var branches = await branchController.GetAllBranchesAsync();
+                var branchService = new BranchApiService();
+                var branches = await branchService.GetAllBranchesAsync();
                 var branchOptions = new List<object>
                 {
                     new { BranchId = 0, BranchDisplay = "🌐 (Company-wide / All Branches)" }

@@ -20,17 +20,6 @@ namespace CRMS_Peguit.winforms
             // Automatically ensure SQL Server LocalDB instance is actively running before database access
             LocalDbHelper.EnsureLocalDbRunning(localConnection);
 
-            // Propagate connection string to environment so all components share the resolved value
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CRMS_CONNECTION")))
-            {
-                Environment.SetEnvironmentVariable("CRMS_CONNECTION", localConnection);
-            }
-            if (!string.IsNullOrWhiteSpace(cloudConnection) &&
-                string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CRMS_CLOUD_CONNECTION")))
-            {
-                Environment.SetEnvironmentVariable("CRMS_CLOUD_CONNECTION", cloudConnection);
-            }
-
             if (args.Contains("--verify-assets"))
             {
                 var logo = AppBrand.Logo;
@@ -42,8 +31,8 @@ namespace CRMS_Peguit.winforms
             if (args.Contains("--verify-reports"))
             {
                 CRMS_Peguit.winforms.Auth.CurrentSession.Start(1, 1, "System Admin", "admin@test.com", "Admin", null, false);
-                using var rptCtrl = new CRMS_Peguit.winforms.Controllers.ReportsController();
-                var range = CRMS_Peguit.winforms.Models.Analytics.DateRangeFilter.ThisYear();
+                using var rptCtrl = new CRMS_Peguit.winforms.Services.ReportsApiService();
+                var range = CRMS_Peguit.domain.Common.DateRangeFilter.ThisYear();
                 var sales = rptCtrl.GetSalesReport(range);
                 var leads = rptCtrl.GetLeadProgressReport(range);
                 var comms = rptCtrl.GetCommissionReport(range);
@@ -51,14 +40,14 @@ namespace CRMS_Peguit.winforms
                 var tix = rptCtrl.GetTicketResolutionReport(range);
                 Console.WriteLine($"[VERIFY] Sales: {sales.Count}, Leads: {leads.Count}, Comms: {comms.Count}, Activities: {acts.Count}, Tickets: {tix.Count}");
 
-                using var anaCtrl = new CRMS_Peguit.winforms.Controllers.AnalyticsController();
+                using var anaCtrl = new CRMS_Peguit.winforms.Services.AnalyticsApiService();
                 var snap = anaCtrl.GetSnapshot(range);
                 int tixOpen = snap?.TicketBreakdown?.Open ?? 0;
                 int tixRes = snap?.TicketBreakdown?.Resolved ?? 0;
                 Console.WriteLine($"[VERIFY] Analytics Closed Deals: {snap?.TotalDealsClosed}, Commission: ₱{snap?.TotalCommissionEarned:N2}, OverTime Months: {snap?.DealsOverTime.Count}, Tickets: Open={tixOpen}, Res={tixRes}");
 
-                using var dealCtrl = new CRMS_Peguit.winforms.Controllers.DealController();
-                var monthRange = CRMS_Peguit.winforms.Models.Analytics.DateRangeFilter.ThisMonth();
+                using var dealCtrl = new CRMS_Peguit.winforms.Services.DealApiService();
+                var monthRange = CRMS_Peguit.domain.Common.DateRangeFilter.ThisMonth();
                 var monthComms = rptCtrl.GetCommissionReport(monthRange);
                 var monthEarnedDashboard = dealCtrl.GetCommissionEarnedThisMonth();
                 var monthEarnedReports = monthComms.Sum(c => c.GrossCommission);
@@ -136,8 +125,8 @@ namespace CRMS_Peguit.winforms
                     Console.WriteLine($"  ├─ Branch {b.BranchCode} ({b.BranchName}): Users={branchUsers}, Properties={branchProps}, Deals={branchDeals}, Leads={branchLeads}");
                 }
 
-                // 5. Cross-Database Aggregation in SuperAdminSubscriptionController
-                var saCtrl = new CRMS_Peguit.winforms.Controllers.SuperAdminSubscriptionController();
+                // 5. Cross-Database Aggregation in SuperAdminSubscriptionApiService
+                var saCtrl = new CRMS_Peguit.winforms.Services.SuperAdminSubscriptionApiService();
                 var bi = saCtrl.GetPlatformBiSummaryAsync().GetAwaiter().GetResult();
                 // 6. Verify Logins across Tenants
                 var authService = new CRMS_Peguit.winforms.Auth.AuthService("http://localhost:5000");
@@ -214,7 +203,7 @@ namespace CRMS_Peguit.winforms
                 int testUserId = 1;
                 CRMS_Peguit.winforms.Auth.CurrentSession.Start(testUserId, 1, "System Admin", "admin@test.com", "Admin", null, false);
 
-                using var notifCtrl = new CRMS_Peguit.winforms.Controllers.NotificationController();
+                using var notifCtrl = new CRMS_Peguit.winforms.Services.NotificationApiService();
 
                 // 1. Test creation
                 var n1 = notifCtrl.CreateNotification(1, testUserId, domain.entities.NotificationType.LeadAssigned, "Test Lead Assigned", "You were assigned test lead.", "Lead", 101);

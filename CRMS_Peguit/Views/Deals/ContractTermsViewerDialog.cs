@@ -3,8 +3,8 @@ using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
-using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Views.Deals
 {
@@ -22,7 +22,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
         private Button _btnExport = null!;
         private Button _btnClose = null!;
 
-        public ContractTermsViewerDialog(Deal deal, DealController controller)
+        public ContractTermsViewerDialog(Deal deal, DealApiService controller)
         {
             _deal = deal ?? throw new ArgumentNullException(nameof(deal));
 
@@ -30,8 +30,9 @@ namespace CRMS_Peguit.winforms.Views.Deals
                 ?? (controller.GetCustomerNames().TryGetValue(_deal.CustomerId, out string? b) ? b : $"Customer #{_deal.CustomerId}");
             string prop = _deal.Property?.Address
                 ?? (controller.GetPropertyAddresses().TryGetValue(_deal.PropertyId, out string? p) ? p : $"Property #{_deal.PropertyId}");
+            string? a = null;
             string agent = _deal.Agent?.FullName
-                ?? (_deal.AgentId.HasValue && controller.GetAgentNames().TryGetValue(_deal.AgentId.Value, out string? a) ? a : "Unassigned");
+                ?? ((_deal.AgentId.HasValue && controller.GetAgentNames().TryGetValue(_deal.AgentId.Value, out a)) ? a : "Unassigned");
 
             _documentText = DealClauseLibrary.FormatTermSheetText(_deal, buyer, prop, agent);
 

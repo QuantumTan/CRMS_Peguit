@@ -1,12 +1,12 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
-using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Views.Shared
 {
@@ -47,7 +47,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
             BackColor = Color.White;
 
             // Load records assigned to current agent
-            using var fuController = new FollowUpController();
+            using var fuController = new FollowUpApiService();
             _assignedCustomers = fuController.GetAssignedCustomers();
             _assignedLeads = fuController.GetAssignedLeads();
 
@@ -434,7 +434,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
 
             try
             {
-                using var actCtrl = new ActivityController();
+                using var actCtrl = new ActivityApiService();
                 var activity = new Activity
                 {
                     Type = actType,

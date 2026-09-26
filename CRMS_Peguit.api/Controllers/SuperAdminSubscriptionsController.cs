@@ -2,69 +2,44 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using CRMS_Peguit.domain.entities;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.infrastructure.data;
-using CRMS_Peguit.winforms.Models.Services;
 
-namespace CRMS_Peguit.winforms.Controllers
+namespace CRMS_Peguit.api.Controllers
 {
-    /// <summary>
-    /// Platform-level BI summary — aggregate counts from MasterCrmsDbContext ONLY.
-    /// SECURITY: This DTO intentionally contains NO fields sourced from Customer, Lead, Deal,
-    /// Property, Activity, SupportTicket, TaskReminder, or Notification tables.
-    /// All fields are derived exclusively from Companies and Subscriptions in the master DB.
-    /// TotalPlatformDeals / TotalPlatformDealVolume / TotalPlatformCustomers / TotalPlatformLeads
-    /// were REMOVED (they required querying tenant RealEstateDbContext — outside Super Admin scope).
-    /// </summary>
-    public class PlatformBiSummaryDto
+    [ApiController]
+    [Route("api/[controller]")]
+    public class SuperAdminSubscriptionsController : ControllerBase
     {
-        public int TotalTenants { get; set; }
-        public int ActiveSubscriptions { get; set; }
-        public int ExpiringSubscriptions { get; set; }
-        public int ExpiredSubscriptions { get; set; }
-        public decimal TotalMrr { get; set; }
+        private readonly MasterCrmsDbContext _masterDb;
 
-        public int TenantACount { get; set; }
-        public int TenantBCount { get; set; }
-        public int TenantCCount { get; set; }
-    }
-
-    public class TenantSubscriptionDto
-    {
-        public int SubscriptionId { get; set; }
-        public int CompanyId { get; set; }
-        public string CompanyCode { get; set; } = string.Empty;
-        public string CompanyName { get; set; } = string.Empty;
-        public string PlanName { get; set; } = string.Empty;
-        public TenantTier Tier { get; set; }
-        public DateTime StartDate { get; set; }
-        public DateTime? EndDate { get; set; }
-        public decimal BillingAmount { get; set; }
-        public string Status { get; set; } = string.Empty;
-    }
-
-    public class SuperAdminSubscriptionController
-    {
-        private MasterCrmsDbContext CreateMasterDb()
+        public SuperAdminSubscriptionsController(MasterCrmsDbContext masterDb)
         {
-            return LocalDb.CreateMasterContext();
+            _masterDb = masterDb;
         }
 
-        public async Task<PlatformBiSummaryDto> GetPlatformBiSummaryAsync()
+        private bool ValidateSuperAdmin()
         {
-            var summary = new PlatformBiSummaryDto();
+            return ApiSecurityHelper.IsSuperAdmin(User) || ApiSecurityHelper.IsAdmin(User);
+        }
 
+        [HttpGet("bi-summary")]
+        public async Task<ActionResult<PlatformBiSummaryDto>> GetPlatformBiSummary()
+        {
+            if (!ValidateSuperAdmin()) return Forbid();
+
+            var summary = new PlatformBiSummaryDto();
             try
             {
-                using var masterDb = CreateMasterDb();
-                var companies = await masterDb.Companies
+                var companies = await _masterDb.Companies
                     .Include(c => c.Subscriptions)
                     .AsNoTracking()
                     .ToListAsync();
 
                 summary.TotalTenants = companies.Count;
-
                 var allSubs = companies.SelectMany(c => c.Subscriptions).ToList();
                 var now = DateTime.UtcNow;
                 var monthEnd = now.AddDays(30);
@@ -80,7 +55,6 @@ namespace CRMS_Peguit.winforms.Controllers
             }
             catch
             {
-                // Fallback defaults if Master DB empty
                 summary.TotalTenants = 3;
                 summary.ActiveSubscriptions = 3;
                 summary.TotalMrr = 17500m;
@@ -89,17 +63,18 @@ namespace CRMS_Peguit.winforms.Controllers
                 summary.TenantCCount = 1;
             }
 
-            return summary;
+            return Ok(summary);
         }
 
-        public async Task<List<TenantSubscriptionDto>> GetAllSubscriptionsAsync()
+        [HttpGet]
+        public async Task<ActionResult<List<TenantSubscriptionDto>>> GetAllSubscriptions()
         {
-            var list = new List<TenantSubscriptionDto>();
+            if (!ValidateSuperAdmin()) return Forbid();
 
+            var list = new List<TenantSubscriptionDto>();
             try
             {
-                using var masterDb = CreateMasterDb();
-                var companies = await masterDb.Companies
+                var companies = await _masterDb.Companies
                     .Include(c => c.Subscriptions)
                     .AsNoTracking()
                     .ToListAsync();
@@ -144,7 +119,6 @@ namespace CRMS_Peguit.winforms.Controllers
             }
             catch
             {
-                // Return seeded mock if Master DB not yet seeded
                 list.Add(new TenantSubscriptionDto
                 {
                     SubscriptionId = 1,
@@ -158,7 +132,6 @@ namespace CRMS_Peguit.winforms.Controllers
                     BillingAmount = 2500m,
                     Status = "Active"
                 });
-
                 list.Add(new TenantSubscriptionDto
                 {
                     SubscriptionId = 2,
@@ -172,7 +145,6 @@ namespace CRMS_Peguit.winforms.Controllers
                     BillingAmount = 5500m,
                     Status = "Active"
                 });
-
                 list.Add(new TenantSubscriptionDto
                 {
                     SubscriptionId = 3,
@@ -188,69 +160,57 @@ namespace CRMS_Peguit.winforms.Controllers
                 });
             }
 
-            return list;
+            return Ok(list);
         }
 
-        public async Task<bool> UpdateSubscriptionAsync(int subscriptionId, string newPlanName, string newStatus, decimal billingAmount, DateTime? endDate)
+        [HttpPut("{subscriptionId}")]
+        public async Task<ActionResult> UpdateSubscription(int subscriptionId, [FromBody] UpdateSubscriptionRequest req)
         {
-            try
-            {
-                using var masterDb = CreateMasterDb();
-                var sub = await masterDb.Subscriptions.FirstOrDefaultAsync(s => s.SubscriptionId == subscriptionId);
-                if (sub != null)
-                {
-                    sub.PlanName = newPlanName;
-                    sub.Status = newStatus;
-                    sub.BillingAmount = billingAmount;
-                    sub.EndDate = endDate;
-                    await masterDb.SaveChangesAsync();
-                    return true;
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[UpdateSubscriptionAsync] Error: {ex.Message}");
-            }
-            return false;
+            if (!ValidateSuperAdmin()) return Forbid();
+
+            var sub = await _masterDb.Subscriptions.FirstOrDefaultAsync(s => s.SubscriptionId == subscriptionId);
+            if (sub == null) return NotFound();
+
+            sub.PlanName = req.PlanName;
+            sub.Status = req.Status;
+            sub.BillingAmount = req.BillingAmount;
+            sub.EndDate = req.EndDate;
+            await _masterDb.SaveChangesAsync();
+
+            return Ok(new { success = true });
         }
 
-        public async Task<bool> ChangeTenantTierAsync(int companyId, string newPlanName)
+        [HttpPost("tier/{companyId}")]
+        public async Task<ActionResult> ChangeTenantTier(int companyId, [FromBody] ChangeTierRequest req)
         {
-            try
-            {
-                using var masterDb = CreateMasterDb();
-                var sub = await masterDb.Subscriptions
-                    .Where(s => s.CompanyId == companyId)
-                    .OrderByDescending(s => s.StartDate)
-                    .FirstOrDefaultAsync();
+            if (!ValidateSuperAdmin()) return Forbid();
 
-                if (sub != null)
-                {
-                    sub.PlanName = newPlanName;
-                    await masterDb.SaveChangesAsync();
-                    return true;
-                }
-                else
-                {
-                    var newSub = new Subscription
-                    {
-                        CompanyId = companyId,
-                        PlanName = newPlanName,
-                        StartDate = DateTime.UtcNow,
-                        EndDate = DateTime.UtcNow.AddYears(1),
-                        BillingAmount = newPlanName.Contains("Tenant C") ? 9500m : (newPlanName.Contains("Tenant B") ? 5500m : 2500m),
-                        Status = "Active"
-                    };
-                    masterDb.Subscriptions.Add(newSub);
-                    await masterDb.SaveChangesAsync();
-                    return true;
-                }
-            }
-            catch (Exception ex)
+            var sub = await _masterDb.Subscriptions
+                .Where(s => s.CompanyId == companyId)
+                .OrderByDescending(s => s.StartDate)
+                .FirstOrDefaultAsync();
+
+            if (sub != null)
             {
-                System.Diagnostics.Debug.WriteLine($"[ChangeTenantTierAsync] Error: {ex.Message}");
-                return false;
+                sub.PlanName = req.PlanName;
+                await _masterDb.SaveChangesAsync();
             }
+            else
+            {
+                var newSub = new Subscription
+                {
+                    CompanyId = companyId,
+                    PlanName = req.PlanName,
+                    StartDate = DateTime.UtcNow,
+                    EndDate = DateTime.UtcNow.AddYears(1),
+                    BillingAmount = req.PlanName.Contains("Tenant C") ? 9500m : (req.PlanName.Contains("Tenant B") ? 5500m : 2500m),
+                    Status = "Active"
+                };
+                _masterDb.Subscriptions.Add(newSub);
+                await _masterDb.SaveChangesAsync();
+            }
+
+            return Ok(new { success = true });
         }
     }
 }

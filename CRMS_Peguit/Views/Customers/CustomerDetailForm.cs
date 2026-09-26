@@ -3,9 +3,10 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
-using CRMS_Peguit.winforms.Controllers;
+using CRMS_Peguit.winforms.Services;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Views.FollowUps;
 using CRMS_Peguit.winforms.Views.Shared;
@@ -15,7 +16,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
     public partial class CustomerDetailForm : Form
     {
         private Customer? _customer;
-        private readonly CustomerController? _controller;
+        private readonly CustomerApiService? _controller;
         private string _timelineFilter = "All";
 
         private Panel? _pnlHeader;
@@ -30,7 +31,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
             InitializeComponent();
         }
 
-        public CustomerDetailForm(Customer customer, CustomerController controller)
+        public CustomerDetailForm(Customer customer, CustomerApiService controller)
         {
             _customer = customer;
             _controller = controller;
@@ -295,7 +296,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
             }
 
             // --- Card 4: Unified Interaction Timeline ---
-            using var actCtrl = new ActivityController();
+            using var actCtrl = new ActivityApiService();
             bool canViewTimeline = actCtrl.CanViewTimeline(_customer.AssignedAgentId);
             bool canLogActivity = (RbacService.IsAgent && _customer.AssignedAgentId == CurrentSession.UserId) || RbacService.IsSuperAdmin;
             var timelineItems = canViewTimeline ? actCtrl.GetTimeline(_customer.CustomerId, null, _timelineFilter) : new List<TimelineItemDto>();
@@ -541,7 +542,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
             return tile;
         }
 
-        private Panel CreateUnifiedTimelineRow(TimelineItemDto item, ActivityController actCtrl)
+        private Panel CreateUnifiedTimelineRow(TimelineItemDto item, ActivityApiService actCtrl)
         {
             var row = new Panel
             {
@@ -598,7 +599,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
             {
                 bool isConnected = item.Outcome.Value == CallOutcome.Connected;
                 var outcomeBadge = UiDetailCardHelper.CreatePillBadge(
-                    ActivityController.FormatCallOutcome(item.Outcome.Value),
+                    ActivityApiService.FormatCallOutcome(item.Outcome.Value),
                     isConnected ? Color.FromArgb(236, 253, 245) : Color.FromArgb(254, 243, 199),
                     isConnected ? Color.FromArgb(4, 120, 87) : Color.FromArgb(180, 83, 9),
                     isConnected ? Color.FromArgb(167, 243, 208) : Color.FromArgb(253, 230, 138));
@@ -651,7 +652,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
                 UiRadiusHelper.AttachHoverFeedback(btnFollowUp, Color.White, Color.FromArgb(241, 245, 249));
                 btnFollowUp.Click += (_, _) =>
                 {
-                    using var fuCtrl = new FollowUpController();
+                    using var fuCtrl = new FollowUpApiService();
                     var template = actCtrl.CreateFollowUpTemplate(item);
                     using var fuForm = new FollowUpInputForm(fuCtrl, template);
                     if (fuForm.ShowDialog(this) == DialogResult.OK && fuForm.Result != null)

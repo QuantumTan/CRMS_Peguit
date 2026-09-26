@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using CRMS_Peguit.infrastructure.data;
 
 namespace CRMS_Peguit.api
@@ -24,12 +24,30 @@ namespace CRMS_Peguit.api
             if (context.User?.Identity?.IsAuthenticated == true)
             {
                 var claim = context.User.FindFirst("tenantId")?.Value;
-                return int.TryParse(claim, out var claimedTenantId) ? claimedTenantId : 0;
+                if (int.TryParse(claim, out var claimedTenantId) && claimedTenantId > 0)
+                    return claimedTenantId;
             }
 
-            // Not authenticated yet - this only happens on the login endpoint
-            // itself, which has no JWT to read a tenant from yet.
-            var header = context.Request.Headers["X-Company-Id"].ToString();
+            // Extract from Bearer token if not unpacked by authentication middleware
+            var authHeader = context.Request.Headers["Authorization"].ToString();
+            if (!string.IsNullOrWhiteSpace(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                var tokenStr = authHeader.Substring(7).Trim();
+                try
+                {
+                    var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+                    var jwt = handler.ReadJwtToken(tokenStr);
+                    var claim = jwt.Claims.FirstOrDefault(c => c.Type == "tenantId")?.Value;
+                    if (int.TryParse(claim, out var claimedTenantId) && claimedTenantId > 0)
+                        return claimedTenantId;
+                }
+                catch { }
+            }
+
+            // Fallback to headers (for initial unauthenticated/login discovery or client header)
+            var header = context.Request.Headers["X-Tenant-Id"].ToString();
+            if (string.IsNullOrWhiteSpace(header))
+                header = context.Request.Headers["X-Company-Id"].ToString();
             return int.TryParse(header, out var tenantId) ? tenantId : 0;
         }
     }

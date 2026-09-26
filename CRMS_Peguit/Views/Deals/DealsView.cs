@@ -1,7 +1,7 @@
 using System.Drawing.Drawing2D;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
-using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -10,7 +10,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
 {
     public partial class DealsView : UserControl
     {
-        private readonly DealController _controller;
+        private readonly DealApiService _controller;
         private string _filterStage = "All";
         private Panel _pnlEmptyState = null!;
         private Button? _btnExport;
@@ -26,7 +26,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
         public DealsView()
         {
             InitializeComponent();
-            _controller = new DealController();
+            _controller = new DealApiService();
 
             _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
             _searchDebounceTimer.Tick += async (_, _) =>

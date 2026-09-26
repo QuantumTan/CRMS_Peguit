@@ -1,7 +1,7 @@
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
-using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Views.Leads
 {
@@ -146,8 +146,8 @@ namespace CRMS_Peguit.winforms.Views.Leads
         {
             try
             {
-                using var campaignController = new CampaignController();
-                var sources = campaignController.GetActiveCampaignSources();
+                using var campaignService = new CampaignApiService();
+                var sources = campaignService.GetActiveCampaignSources();
                 cmbSource.Items.Clear();
                 foreach (var s in sources)
                 {
@@ -170,7 +170,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
             string firstName = txtFirstName.Text.Trim();
             string lastName = txtLastName.Text.Trim();
 
-            if (!LeadController.ValidateLeadInput(
+            if (!LeadApiService.ValidateLeadInput(
                 firstName,
                 lastName,
                 txtEmail.Text,

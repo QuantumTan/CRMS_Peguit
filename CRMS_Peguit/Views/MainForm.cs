@@ -1121,7 +1121,7 @@ namespace CRMS_Peguit.winforms
 
             try
             {
-                var branchController = new CRMS_Peguit.winforms.Controllers.BranchController();
+                var branchController = new CRMS_Peguit.winforms.Services.BranchApiService();
                 var branches = await branchController.GetAllBranchesAsync();
                 if (branches.Count > 0)
                 {

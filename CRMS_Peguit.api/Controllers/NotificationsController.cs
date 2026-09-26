@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
@@ -10,6 +10,21 @@ using CRMS_Peguit.infrastructure.data;
 
 namespace CRMS_Peguit.api.Controllers
 {
+    public record CreateNotificationDto(
+        int RecipientUserId,
+        NotificationType Type,
+        string Title,
+        string Message,
+        string? TargetEntity = null,
+        int? TargetEntityId = null);
+
+    public record BroadcastNotificationDto(
+        NotificationType Type,
+        string Title,
+        string Message,
+        string? TargetEntity = null,
+        int? TargetEntityId = null);
+
     [ApiController]
     [Route("api/[controller]")]
     public class NotificationsController : ControllerBase
@@ -21,20 +36,13 @@ namespace CRMS_Peguit.api.Controllers
             _db = db;
         }
 
-        private int GetCurrentUserId(int fallbackUserId = 0)
-        {
-            var claim = User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (int.TryParse(claim, out var uid) && uid > 0)
-            {
-                return uid;
-            }
-            return fallbackUserId;
-        }
+        private (int UserId, string Role, int TenantId) CurrentUser =>
+            ApiSecurityHelper.GetCurrentUserInfo(HttpContext);
 
         [HttpGet("my")]
-        public async Task<IActionResult> GetMy([FromQuery] int userId, [FromQuery] int take = 50)
+        public async Task<IActionResult> GetMy([FromQuery] int? userId = null, [FromQuery] int take = 50)
         {
-            int resolvedUserId = GetCurrentUserId(userId);
+            int resolvedUserId = (userId.HasValue && userId.Value > 0) ? userId.Value : CurrentUser.UserId;
             if (resolvedUserId <= 0) return BadRequest("A valid userId is required.");
 
             var items = await _db.Notifications
@@ -48,9 +56,9 @@ namespace CRMS_Peguit.api.Controllers
         }
 
         [HttpGet("unread-count")]
-        public async Task<IActionResult> GetUnreadCount([FromQuery] int userId)
+        public async Task<IActionResult> GetUnreadCount([FromQuery] int? userId = null)
         {
-            int resolvedUserId = GetCurrentUserId(userId);
+            int resolvedUserId = (userId.HasValue && userId.Value > 0) ? userId.Value : CurrentUser.UserId;
             if (resolvedUserId <= 0) return BadRequest("A valid userId is required.");
 
             var count = await _db.Notifications
@@ -77,9 +85,9 @@ namespace CRMS_Peguit.api.Controllers
         }
 
         [HttpPut("read-all")]
-        public async Task<IActionResult> MarkAllAsRead([FromQuery] int userId)
+        public async Task<IActionResult> MarkAllAsRead([FromQuery] int? userId = null)
         {
-            int resolvedUserId = GetCurrentUserId(userId);
+            int resolvedUserId = (userId.HasValue && userId.Value > 0) ? userId.Value : CurrentUser.UserId;
             if (resolvedUserId <= 0) return BadRequest("A valid userId is required.");
 
             var unread = await _db.Notifications
@@ -98,9 +106,9 @@ namespace CRMS_Peguit.api.Controllers
         }
 
         [HttpGet("preferences")]
-        public async Task<IActionResult> GetPreferences([FromQuery] int userId)
+        public async Task<IActionResult> GetPreferences([FromQuery] int? userId = null)
         {
-            int resolvedUserId = GetCurrentUserId(userId);
+            int resolvedUserId = (userId.HasValue && userId.Value > 0) ? userId.Value : CurrentUser.UserId;
             if (resolvedUserId <= 0) return BadRequest("A valid userId is required.");
 
             var rows = await _db.NotificationPreferences
@@ -119,9 +127,9 @@ namespace CRMS_Peguit.api.Controllers
         }
 
         [HttpPut("preferences")]
-        public async Task<IActionResult> UpdatePreferences([FromQuery] int userId, [FromBody] Dictionary<string, bool> preferences)
+        public async Task<IActionResult> UpdatePreferences([FromBody] Dictionary<string, bool> preferences, [FromQuery] int? userId = null)
         {
-            int resolvedUserId = GetCurrentUserId(userId);
+            int resolvedUserId = (userId.HasValue && userId.Value > 0) ? userId.Value : CurrentUser.UserId;
             if (resolvedUserId <= 0) return BadRequest("A valid userId is required.");
 
             var existing = await _db.NotificationPreferences
@@ -153,10 +161,107 @@ namespace CRMS_Peguit.api.Controllers
             return Ok(new { success = true });
         }
 
-        [HttpPost("prune")]
-        public async Task<IActionResult> PruneOld([FromQuery] int userId, [FromQuery] int daysOld = 90)
+        [HttpPost]
+        public async Task<IActionResult> CreateNotification([FromBody] CreateNotificationDto dto)
         {
-            int resolvedUserId = GetCurrentUserId(userId);
+            // Debounce check: duplicate within 2 minutes
+            var cutoff = DateTime.UtcNow.AddMinutes(-2);
+            bool duplicate = await _db.Notifications.AnyAsync(n =>
+                n.RecipientUserId == dto.RecipientUserId &&
+                n.Type == dto.Type &&
+                n.Title == dto.Title &&
+                n.CreatedAt > cutoff);
+
+            if (duplicate) return Ok(new { message = "Debounced duplicate", created = false });
+
+            // Preference check
+            var pref = await _db.NotificationPreferences
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.UserId == dto.RecipientUserId && p.Type == dto.Type);
+            if (pref != null && !pref.IsEnabled)
+                return Ok(new { message = "Suppressed by preference", created = false });
+
+            var notif = new Notification
+            {
+                RecipientUserId = dto.RecipientUserId,
+                Type = dto.Type,
+                Title = dto.Title,
+                Message = dto.Message,
+                RelatedEntityType = dto.TargetEntity,
+                RelatedEntityId = dto.TargetEntityId,
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _db.Notifications.Add(notif);
+            await _db.SaveChangesAsync();
+            return Ok(notif);
+        }
+
+        [HttpPost("notify-managers")]
+        public async Task<IActionResult> NotifyManagers([FromBody] BroadcastNotificationDto dto)
+        {
+            var managerUsers = await _db.Users
+                .Include(u => u.Role)
+                .Where(u => u.Role != null && (u.Role.RoleName.ToLower() == "manager" || u.Role.RoleName.ToLower() == "admin") && u.Status.ToLower() != "inactive")
+                .ToListAsync();
+
+            int sent = 0;
+            foreach (var m in managerUsers)
+            {
+                var n = new Notification
+                {
+                    RecipientUserId = m.UserId,
+                    Type = dto.Type,
+                    Title = dto.Title,
+                    Message = dto.Message,
+                    RelatedEntityType = dto.TargetEntity,
+                    RelatedEntityId = dto.TargetEntityId,
+                    IsRead = false,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _db.Notifications.Add(n);
+                sent++;
+            }
+
+            await _db.SaveChangesAsync();
+            return Ok(new { sentCount = sent });
+        }
+
+        [HttpPost("notify-admins")]
+        public async Task<IActionResult> NotifyAdmins([FromBody] BroadcastNotificationDto dto)
+        {
+            var adminUsers = await _db.Users
+                .Include(u => u.Role)
+                .Where(u => u.Role != null && u.Role.RoleName.ToLower() == "admin" && u.Status.ToLower() != "inactive")
+                .ToListAsync();
+
+            int sent = 0;
+            foreach (var a in adminUsers)
+            {
+                var n = new Notification
+                {
+                    RecipientUserId = a.UserId,
+                    Type = dto.Type,
+                    Title = dto.Title,
+                    Message = dto.Message,
+                    RelatedEntityType = dto.TargetEntity,
+                    RelatedEntityId = dto.TargetEntityId,
+                    IsRead = false,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _db.Notifications.Add(n);
+                sent++;
+            }
+
+            await _db.SaveChangesAsync();
+            return Ok(new { sentCount = sent });
+        }
+
+        [HttpPost("prune")]
+        public async Task<IActionResult> PruneOld([FromQuery] int? userId = null, [FromQuery] int daysOld = 90)
+        {
+            int resolvedUserId = (userId.HasValue && userId.Value > 0) ? userId.Value : CurrentUser.UserId;
             if (resolvedUserId <= 0) return BadRequest("A valid userId is required.");
 
             var cutoff = DateTime.UtcNow.AddDays(-daysOld);

@@ -1,5 +1,5 @@
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.winforms.Models.Services;
-using CRMS_Peguit.winforms.Controllers;
 
 namespace CRMS_Peguit.winforms.Views.Shared
 {

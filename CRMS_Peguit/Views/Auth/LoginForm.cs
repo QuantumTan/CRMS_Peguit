@@ -1,5 +1,5 @@
 using CRMS_Peguit.winforms.Auth;
-using CRMS_Peguit.winforms.Controllers;
+using CRMS_Peguit.winforms.Services;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Models.Roles;
 using ReaLTaiizor.Forms;
@@ -11,7 +11,7 @@ namespace CRMS_Peguit.winforms
 {
     public partial class LoginForm : Form
     {
-        private readonly AuthController _authController;
+        private readonly AuthApiService _authController;
 
         // Store main form or super admin form and their FormClosed handlers.
         private MainForm? _mainForm;
@@ -34,7 +34,7 @@ namespace CRMS_Peguit.winforms
 
         public LoginForm(string apiBaseUrl)
         {
-            _authController = new AuthController(apiBaseUrl);
+            _authController = new AuthApiService(apiBaseUrl);
             InitializeComponent();
             ApplyBranding();
             BindEvents();

@@ -1,6 +1,5 @@
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
-using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -12,7 +11,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
 {
     public partial class LeadsView : UserControl
     {
-        private readonly LeadController _controller;
+        private readonly LeadApiService _controller;
         private string _filterStage = "All";
         private Button? _btnExport;
         private Panel _pnlEmptyState = null!;
@@ -36,7 +35,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
         public LeadsView()
         {
             InitializeComponent();
-            _controller = new LeadController();
+            _controller = new LeadApiService();
 
             _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
             _searchDebounceTimer.Tick += async (_, _) =>
