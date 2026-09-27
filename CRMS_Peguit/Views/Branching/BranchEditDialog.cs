@@ -22,15 +22,14 @@ namespace CRMS_Peguit.winforms.Views.Branching
             BranchResult = existing ?? new Branch();
 
             Text = existing == null || existing.BranchId == 0 ? "Add New Branch (Tenant C)" : $"Edit Branch — {existing.BranchCode}";
-            Size = new Size(480, 430);
+            Size = new Size(500, 480);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             BackColor = Theme.Surface;
 
-            var pnl = new Panel { Dock = DockStyle.Fill, Padding = new Padding(24) };
-            Controls.Add(pnl);
+            var pnlContent = new Panel { Dock = DockStyle.Fill, Padding = new Padding(24), AutoScroll = true };
 
             var lblHeader = new Label
             {
@@ -40,7 +39,7 @@ namespace CRMS_Peguit.winforms.Views.Branching
                 Location = new Point(24, 18),
                 AutoSize = true
             };
-            pnl.Controls.Add(lblHeader);
+            pnlContent.Controls.Add(lblHeader);
 
             var lblSub = new Label
             {
@@ -50,35 +49,35 @@ namespace CRMS_Peguit.winforms.Views.Branching
                 Location = new Point(24, 44),
                 AutoSize = true
             };
-            pnl.Controls.Add(lblSub);
+            pnlContent.Controls.Add(lblSub);
 
             // Branch Code
             var lblCode = new Label { Text = "Branch Code (e.g. HQ-MNL):", Location = new Point(24, 80), AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold), ForeColor = Theme.TextPrimary };
             _txtCode = new TextBox { Text = BranchResult.BranchCode, Location = new Point(24, 102), Width = 415, Font = new Font("Segoe UI", 10f) };
             UiRadiusHelper.SetPadding(_txtCode, 6, 6);
-            pnl.Controls.Add(lblCode);
-            pnl.Controls.Add(_txtCode);
+            pnlContent.Controls.Add(lblCode);
+            pnlContent.Controls.Add(_txtCode);
 
             // Branch Name
             var lblName = new Label { Text = "Branch Name / Location:", Location = new Point(24, 140), AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold), ForeColor = Theme.TextPrimary };
             _txtName = new TextBox { Text = BranchResult.BranchName, Location = new Point(24, 162), Width = 415, Font = new Font("Segoe UI", 10f) };
             UiRadiusHelper.SetPadding(_txtName, 6, 6);
-            pnl.Controls.Add(lblName);
-            pnl.Controls.Add(_txtName);
+            pnlContent.Controls.Add(lblName);
+            pnlContent.Controls.Add(_txtName);
 
             // Address
             var lblAddr = new Label { Text = "Physical Office Address:", Location = new Point(24, 200), AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold), ForeColor = Theme.TextPrimary };
             _txtAddress = new TextBox { Text = BranchResult.Address, Location = new Point(24, 222), Width = 415, Font = new Font("Segoe UI", 10f) };
             UiRadiusHelper.SetPadding(_txtAddress, 6, 6);
-            pnl.Controls.Add(lblAddr);
-            pnl.Controls.Add(_txtAddress);
+            pnlContent.Controls.Add(lblAddr);
+            pnlContent.Controls.Add(_txtAddress);
 
             // Phone
             var lblPhone = new Label { Text = "Contact Phone / Trunkline:", Location = new Point(24, 260), AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold), ForeColor = Theme.TextPrimary };
             _txtPhone = new TextBox { Text = BranchResult.Phone, Location = new Point(24, 282), Width = 260, Font = new Font("Segoe UI", 10f) };
             UiRadiusHelper.SetPadding(_txtPhone, 6, 6);
-            pnl.Controls.Add(lblPhone);
-            pnl.Controls.Add(_txtPhone);
+            pnlContent.Controls.Add(lblPhone);
+            pnlContent.Controls.Add(_txtPhone);
 
             _chkActive = new CheckBox
             {
@@ -89,7 +88,7 @@ namespace CRMS_Peguit.winforms.Views.Branching
                 Font = new Font("Segoe UI", 9.5f),
                 ForeColor = Theme.TextPrimary
             };
-            pnl.Controls.Add(_chkActive);
+            pnlContent.Controls.Add(_chkActive);
 
             _lblError = new Label
             {
@@ -99,30 +98,40 @@ namespace CRMS_Peguit.winforms.Views.Branching
                 Location = new Point(24, 320),
                 AutoSize = true
             };
-            pnl.Controls.Add(_lblError);
+            pnlContent.Controls.Add(_lblError);
+
+            // Footer Panel
+            var pnlFooter = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 60,
+                BackColor = Theme.Surface
+            };
 
             // Buttons
             var btnCancel = new Button
             {
                 Text = "Cancel",
                 DialogResult = DialogResult.Cancel,
-                Location = new Point(230, 345),
-                Size = new Size(100, 35),
+                Location = new Point(250, 12),
+                Size = new Size(100, 36),
                 Font = new Font("Segoe UI", 9.5f),
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             UiRadiusHelper.StyleButton(btnCancel, 6);
-            pnl.Controls.Add(btnCancel);
+            pnlFooter.Controls.Add(btnCancel);
 
             var btnSave = new Button
             {
                 Text = "Save Branch",
-                Location = new Point(339, 345),
-                Size = new Size(100, 35),
+                Location = new Point(360, 12),
+                Size = new Size(100, 36),
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 BackColor = Theme.Primary,
                 ForeColor = Color.White,
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             UiRadiusHelper.StyleButton(btnSave, 6);
             btnSave.Click += (_, _) =>
@@ -149,7 +158,10 @@ namespace CRMS_Peguit.winforms.Views.Branching
                 DialogResult = DialogResult.OK;
                 Close();
             };
-            pnl.Controls.Add(btnSave);
+            pnlFooter.Controls.Add(btnSave);
+
+            Controls.Add(pnlContent);
+            Controls.Add(pnlFooter);
 
             AcceptButton = btnSave;
             CancelButton = btnCancel;

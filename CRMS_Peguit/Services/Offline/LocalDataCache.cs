@@ -281,7 +281,7 @@ namespace CRMS_Peguit.winforms.Services.Offline
                            Operation, PayloadJson, CreatedAt, Status, FailureReason,
                            ServerVersionTimestamp, ServerConflictPayload, AttemptCount, LastAttemptAt
                     FROM PendingSyncQueue
-                    WHERE TenantId = $tenantId AND Status IN ('Pending', 'Failed')
+                    WHERE TenantId = $tenantId AND Status IN ('Pending', 'Syncing', 'Failed')
                     ORDER BY QueueId ASC;";
                 cmd.Parameters.AddWithValue("$tenantId", tenantId);
 
@@ -442,6 +442,18 @@ namespace CRMS_Peguit.winforms.Services.Offline
                 using var conn = CreateOpenConnection();
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = "DELETE FROM PendingSyncQueue WHERE TenantId = $tenantId AND Status = 'Synced';";
+                cmd.Parameters.AddWithValue("$tenantId", tenantId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        public void ClearAllQueue(int tenantId)
+        {
+            lock (_dbLock)
+            {
+                using var conn = CreateOpenConnection();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "DELETE FROM PendingSyncQueue WHERE TenantId = $tenantId;";
                 cmd.Parameters.AddWithValue("$tenantId", tenantId);
                 cmd.ExecuteNonQuery();
             }

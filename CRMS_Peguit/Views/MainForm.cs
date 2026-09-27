@@ -493,8 +493,8 @@ namespace CRMS_Peguit.winforms
             mainPanel.BackColor = Theme.Background;
             BackColor = Theme.Background;
             lblHeaderUserName.ForeColor = Theme.TextPrimary;
-            lblHeaderAvatar.BackColor = AzureTints.SkylineBlue;
-            lblHeaderAvatar.ForeColor = AzureTints.PureWhite;
+            lblHeaderAvatar.BackColor = Theme.Primary;
+            lblHeaderAvatar.ForeColor = Color.White;
             notificationBell.Invalidate();
 
             // WCAG AA Compliant Section Headings (≥ 4.5:1 on dark sidebar)
@@ -678,7 +678,7 @@ namespace CRMS_Peguit.winforms
 
             // Actions: Gated to Tenant B and Tenant C
             btnCampaigns.Visible = CurrentSession.CanAccess("Campaigns") && CurrentSession.CanAccessActions;
-            btnClientRetention.Visible = CurrentSession.CanAccess("Campaigns") && CurrentSession.CanAccessActions;
+            btnClientRetention.Visible = CurrentSession.CanAccess("Campaigns") && CurrentSession.CanAccessActions && !RbacService.IsSuperAdmin;
             btnActivities.Visible = CurrentSession.CanAccess("Activities") && CurrentSession.CanAccessActions;
             btnFollowUps.Visible = CurrentSession.CanAccess("TasksReminders") && RbacService.IsAgent && CurrentSession.CanAccessActions;
 
@@ -819,7 +819,7 @@ namespace CRMS_Peguit.winforms
                 case "retention":
                 case "emailautomation":
                 case "automatedemail":
-                    if (!CurrentSession.CanAccess("Campaigns")) return;
+                    if (!CurrentSession.CanAccess("Campaigns") || RbacService.IsSuperAdmin) return;
                     SetActiveNavButton(btnClientRetention);
                     BtnClientRetentionClick(btnClientRetention, EventArgs.Empty);
                     break;
@@ -951,7 +951,7 @@ namespace CRMS_Peguit.winforms
 
         private void BtnClientRetentionClick(object? sender, EventArgs e)
         {
-            if (!CurrentSession.CanAccess("Campaigns")) return;
+            if (!CurrentSession.CanAccess("Campaigns") || RbacService.IsSuperAdmin) return;
             ShowViewCached("ClientRetention", () => new ClientRetentionView());
         }
 
@@ -1217,9 +1217,9 @@ namespace CRMS_Peguit.winforms
             _btnSyncIndicator = new Button
             {
                 Text = SyncService.Instance.IsOnline ? "🟢 Synced" : "🔴 Offline",
-                Size = new Size(125, 30),
+                Size = new Size(110, 30),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(lblTenantTierBadge.Left - 135, 14),
+                Location = new Point(lblTenantTierBadge.Left - 118, 14),
                 BackColor = Color.FromArgb(241, 245, 249),
                 ForeColor = Color.FromArgb(15, 23, 42),
                 FlatStyle = FlatStyle.Flat,
@@ -1378,9 +1378,10 @@ namespace CRMS_Peguit.winforms
                 _btnSyncIndicator.BackColor = Color.FromArgb(254, 242, 242);
                 _btnSyncIndicator.ForeColor = Color.FromArgb(185, 28, 28);
             }
-            else if (counts.Pending > 0 || counts.Syncing > 0)
+            else if (counts.Pending > 0 || counts.Syncing > 0 || SyncService.Instance.IsSyncing)
             {
-                _btnSyncIndicator.Text = $"⏳ Syncing ({counts.Pending})";
+                int activeCount = counts.Pending + counts.Syncing;
+                _btnSyncIndicator.Text = activeCount > 0 ? $"⏳ Syncing ({activeCount})" : "⏳ Syncing...";
                 _btnSyncIndicator.BackColor = Color.FromArgb(239, 246, 255);
                 _btnSyncIndicator.ForeColor = Color.FromArgb(37, 99, 235);
             }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 
@@ -15,7 +15,13 @@ namespace CRMS_Peguit.winforms.Models.Services
         Clock,
         Refresh,
         AlertTriangle,
-        Currency
+        Currency,
+        Dashboard,
+        Shield,
+        CreditCard,
+        Settings,
+        Database,
+        FileText
     }
 
     /// <summary>
@@ -83,6 +89,30 @@ namespace CRMS_Peguit.winforms.Models.Services
 
                 case KpiIconType.Currency:
                     DrawCurrencyIcon(g, pen, brush, x, y, w, h);
+                    break;
+
+                case KpiIconType.Dashboard:
+                    DrawDashboardIcon(g, pen, brush, x, y, w, h);
+                    break;
+
+                case KpiIconType.Shield:
+                    DrawShieldIcon(g, pen, brush, x, y, w, h);
+                    break;
+
+                case KpiIconType.CreditCard:
+                    DrawCreditCardIcon(g, pen, brush, x, y, w, h);
+                    break;
+
+                case KpiIconType.Settings:
+                    DrawSettingsIcon(g, pen, brush, x, y, w, h);
+                    break;
+
+                case KpiIconType.Database:
+                    DrawDatabaseIcon(g, pen, brush, x, y, w, h);
+                    break;
+
+                case KpiIconType.FileText:
+                    DrawFileTextIcon(g, pen, brush, x, y, w, h);
                     break;
             }
 
@@ -355,6 +385,147 @@ namespace CRMS_Peguit.winforms.Models.Services
             // Bottom baseline
             using var subtlePen = new Pen(Color.FromArgb(120, pen.Color), pen.Width * 0.8f);
             g.DrawLine(subtlePen, x1, y1 + h * 0.08f, x4, y1 + h * 0.08f);
+        }
+
+        private static void DrawDashboardIcon(Graphics g, Pen pen, Brush brush, float x, float y, float w, float h)
+        {
+            float pad = w * 0.12f;
+            float gap = w * 0.12f;
+            float cw = (w - pad * 2 - gap) / 2f;
+            float ch = (h - pad * 2 - gap) / 2f;
+            float x1 = x + pad;
+            float x2 = x1 + cw + gap;
+            float y1 = y + pad;
+            float y2 = y1 + ch + gap;
+
+            g.DrawRectangle(pen, x1, y1, cw, ch);
+            g.DrawRectangle(pen, x2, y1, cw, ch);
+            g.DrawRectangle(pen, x1, y2, cw, ch);
+            g.DrawRectangle(pen, x2, y2, cw, ch);
+        }
+
+        private static void DrawShieldIcon(Graphics g, Pen pen, Brush brush, float x, float y, float w, float h)
+        {
+            using var path = new GraphicsPath();
+            float topY = y + h * 0.15f;
+            float midY = y + h * 0.52f;
+            float botY = y + h * 0.88f;
+            float leftX = x + w * 0.20f;
+            float rightX = x + w * 0.80f;
+            float midX = x + w * 0.50f;
+
+            path.AddLine(midX, topY, rightX, topY);
+            path.AddLine(rightX, topY, rightX, midY);
+            path.AddBezier(rightX, midY, rightX, botY * 0.88f, midX + w * 0.12f, botY, midX, botY);
+            path.AddBezier(midX, botY, midX - w * 0.12f, botY, leftX, botY * 0.88f, leftX, midY);
+            path.AddLine(leftX, midY, leftX, topY);
+            path.CloseFigure();
+
+            g.DrawPath(pen, path);
+
+            // Small center keyhole dot or vertical accent
+            g.DrawLine(pen, midX, topY + h * 0.22f, midX, topY + h * 0.44f);
+        }
+
+        private static void DrawCreditCardIcon(Graphics g, Pen pen, Brush brush, float x, float y, float w, float h)
+        {
+            float cx = x + w * 0.12f;
+            float cy = y + h * 0.22f;
+            float cw = w * 0.76f;
+            float ch = h * 0.56f;
+
+            g.DrawRectangle(pen, cx, cy, cw, ch);
+            g.DrawLine(pen, cx, cy + ch * 0.32f, cx + cw, cy + ch * 0.32f);
+
+            // Small chip / detail mark
+            float chipX = cx + cw * 0.14f;
+            float chipY = cy + ch * 0.60f;
+            g.DrawLine(pen, chipX, chipY, chipX + cw * 0.22f, chipY);
+        }
+
+        private static void DrawSettingsIcon(Graphics g, Pen pen, Brush brush, float x, float y, float w, float h)
+        {
+            float cx = x + w * 0.5f;
+            float cy = y + h * 0.5f;
+            float rInner = w * 0.16f;
+            float rTeethBase = w * 0.28f;
+            float rTeethTip = w * 0.40f;
+
+            // Center hole
+            g.DrawEllipse(pen, cx - rInner, cy - rInner, rInner * 2, rInner * 2);
+
+            // 6 Teeth around gear
+            for (int i = 0; i < 6; i++)
+            {
+                double angle = i * Math.PI / 3.0;
+                float x1 = cx + (float)(Math.Cos(angle) * rTeethBase);
+                float y1 = cy + (float)(Math.Sin(angle) * rTeethBase);
+                float x2 = cx + (float)(Math.Cos(angle) * rTeethTip);
+                float y2 = cy + (float)(Math.Sin(angle) * rTeethTip);
+                g.DrawLine(pen, x1, y1, x2, y2);
+            }
+
+            // Outer ring
+            g.DrawEllipse(pen, cx - rTeethBase, cy - rTeethBase, rTeethBase * 2, rTeethBase * 2);
+        }
+
+        private static void DrawDatabaseIcon(Graphics g, Pen pen, Brush brush, float x, float y, float w, float h)
+        {
+            float dx = x + w * 0.18f;
+            float dw = w * 0.64f;
+            float rh = h * 0.18f;
+
+            // Top cylinder cap
+            g.DrawEllipse(pen, dx, y + h * 0.14f, dw, rh);
+
+            // Middle tier arc
+            using (var arc1 = new GraphicsPath())
+            {
+                arc1.AddArc(dx, y + h * 0.38f, dw, rh, 0, 180);
+                g.DrawPath(pen, arc1);
+            }
+
+            // Bottom tier arc
+            using (var arc2 = new GraphicsPath())
+            {
+                arc2.AddArc(dx, y + h * 0.62f, dw, rh, 0, 180);
+                g.DrawPath(pen, arc2);
+            }
+
+            // Left & right boundary lines
+            float topY = y + h * 0.14f + rh / 2f;
+            float botY = y + h * 0.62f + rh / 2f;
+            g.DrawLine(pen, dx, topY, dx, botY);
+            g.DrawLine(pen, dx + dw, topY, dx + dw, botY);
+        }
+
+        private static void DrawFileTextIcon(Graphics g, Pen pen, Brush brush, float x, float y, float w, float h)
+        {
+            float fx = x + w * 0.22f;
+            float fy = y + h * 0.14f;
+            float fw = w * 0.56f;
+            float fh = h * 0.72f;
+            float fold = w * 0.18f;
+
+            using (var path = new GraphicsPath())
+            {
+                path.AddLine(fx, fy, fx + fw - fold, fy);
+                path.AddLine(fx + fw - fold, fy, fx + fw, fy + fold);
+                path.AddLine(fx + fw, fy + fold, fx + fw, fy + fh);
+                path.AddLine(fx + fw, fy + fh, fx, fy + fh);
+                path.CloseFigure();
+                g.DrawPath(pen, path);
+            }
+
+            // Fold corner line
+            g.DrawLine(pen, fx + fw - fold, fy, fx + fw - fold, fy + fold);
+            g.DrawLine(pen, fx + fw - fold, fy + fold, fx + fw, fy + fold);
+
+            // 2 Text lines
+            float lineY1 = fy + fh * 0.48f;
+            float lineY2 = fy + fh * 0.68f;
+            g.DrawLine(pen, fx + fw * 0.22f, lineY1, fx + fw * 0.78f, lineY1);
+            g.DrawLine(pen, fx + fw * 0.22f, lineY2, fx + fw * 0.62f, lineY2);
         }
     }
 }

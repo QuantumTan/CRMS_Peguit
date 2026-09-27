@@ -69,6 +69,12 @@ namespace CRMS_Peguit.winforms.Models.Services
             if (string.Equals(trimmed, "FOLLOWUP", StringComparison.OrdinalIgnoreCase))
                 return "Follow Up";
 
+            if (string.Equals(trimmed, "EXPIRINGSOON", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(trimmed, "EXPIRING_SOON", StringComparison.OrdinalIgnoreCase))
+                return "Expiring Soon";
+            if (string.Equals(trimmed, "EXPIRED", StringComparison.OrdinalIgnoreCase))
+                return "Expired";
+
             // Split on underscore, space, or hyphen
             var tokens = trimmed.Replace('_', ' ').Replace('-', ' ')
                 .Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -104,14 +110,16 @@ namespace CRMS_Peguit.winforms.Models.Services
                 "ACTIVE" or "AVAILABLE" or "CONVERTED" or "APPROVED" or "COMPLETED" or "WON" or "SOLD"
                 or "RESOLVED" or "CLOSED" or "CLOSEDWON" or "ONLINE" or "SECURE" or "YES" => (GreenBg, GreenFg, GreenBorder),
 
-                // Amber (Pending / In-Progress / Awaiting Action)
+                // Amber (Pending / In-Progress / Awaiting Action / Expiring Soon)
                 "CONTACTED" or "QUALIFIED" or "PENDING" or "PENDINGREVIEW" or "UNDERREVIEW" or "INPROGRESS"
                 or "OFFER" or "CONTRACT" or "CONTRACTSIGNED" or "RESERVED" or "RESERVATION" or "UNDERCONTRACT"
-                or "FOLLOWUP" or "TODAY" or "MEDIUM" or "NORMAL" or "AWAITING" => (AmberBg, AmberFg, AmberBorder),
+                or "FOLLOWUP" or "TODAY" or "MEDIUM" or "NORMAL" or "AWAITING"
+                or "EXPIRING" or "EXPIRINGSOON" => (AmberBg, AmberFg, AmberBorder),
 
-                // Red (Negative / Blocked / SLA Breach / Urgent)
+                // Red (Negative / Blocked / SLA Breach / Urgent / Expired)
                 "INACTIVE" or "LOST" or "CLOSEDLOST" or "OVERDUE" or "URGENT" or "CRITICAL" or "HIGH"
-                or "REJECTED" or "CANCELLED" or "CANCELED" or "FAILED" or "NO" or "BREACHED" => (RedBg, RedFg, RedBorder),
+                or "REJECTED" or "CANCELLED" or "CANCELED" or "FAILED" or "NO" or "BREACHED"
+                or "EXPIRED" => (RedBg, RedFg, RedBorder),
 
                 // Blue / Info
                 "OPEN" or "PROSPECT" or "UPCOMING" => (BlueBg, BlueFg, BlueBorder),

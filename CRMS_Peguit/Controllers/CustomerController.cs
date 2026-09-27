@@ -53,8 +53,8 @@ namespace CRMS_Peguit.winforms.Controllers
                 }
 
                 var list = query
-                    .OrderBy(x => x.Person.LastName)
-                    .ThenBy(x => x.Person.FirstName)
+                    .OrderBy(x => x.LastName)
+                    .ThenBy(x => x.FirstName)
                     .ToList();
 
                 if (list.Count > 0)
@@ -81,7 +81,6 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 using var db = LocalDb.CreateContext(TenantId);
                 var query = db.Customers
-                    .Include(c => c.Person)
                     .Include(c => c.AssignedAgent)
                     .Include(c => c.CreatedByUser)
                     .AsNoTracking()
@@ -123,12 +122,12 @@ namespace CRMS_Peguit.winforms.Controllers
                 {
                     string s = search.Trim();
                     query = query.Where(c =>
-                        c.Person.FirstName.Contains(s) ||
-                        (c.Person.MiddleName != null && c.Person.MiddleName.Contains(s)) ||
-                        c.Person.LastName.Contains(s) ||
-                        (c.Person.Suffix != null && c.Person.Suffix.Contains(s)) ||
-                        (c.Person.Email != null && c.Person.Email.Contains(s)) ||
-                        (c.Person.Phone != null && c.Person.Phone.Contains(s)));
+                        c.FirstName.Contains(s) ||
+                        (c.MiddleName != null && c.MiddleName.Contains(s)) ||
+                        c.LastName.Contains(s) ||
+                        (c.Suffix != null && c.Suffix.Contains(s)) ||
+                        (c.Email != null && c.Email.Contains(s)) ||
+                        (c.Phone != null && c.Phone.Contains(s)));
                 }
 
                 int totalCount = await query.CountAsync();
@@ -137,8 +136,8 @@ namespace CRMS_Peguit.winforms.Controllers
                 int validPageSize = Math.Max(1, pageSize);
 
                 var items = await query
-                    .OrderBy(x => x.Person.LastName)
-                    .ThenBy(x => x.Person.FirstName)
+                    .OrderBy(x => x.LastName)
+                    .ThenBy(x => x.FirstName)
                     .Skip((validPage - 1) * validPageSize)
                     .Take(validPageSize)
                     .ToListAsync();
@@ -159,11 +158,11 @@ namespace CRMS_Peguit.winforms.Controllers
                 if (!string.IsNullOrWhiteSpace(search))
                 {
                     string s = search.Trim().ToLowerInvariant();
-                    cached = cached.Where(c => (c.Person != null && (
-                        c.Person.FirstName.ToLowerInvariant().Contains(s) ||
-                        c.Person.LastName.ToLowerInvariant().Contains(s) ||
-                        (c.Person.Email != null && c.Person.Email.ToLowerInvariant().Contains(s)) ||
-                        (c.Person.Phone != null && c.Person.Phone.Contains(s)))) ||
+                    cached = cached.Where(c =>
+                        c.FirstName.ToLowerInvariant().Contains(s) ||
+                        c.LastName.ToLowerInvariant().Contains(s) ||
+                        (c.Email != null && c.Email.ToLowerInvariant().Contains(s)) ||
+                        (c.Phone != null && c.Phone.Contains(s)) ||
                         c.Type.ToLowerInvariant().Contains(s)).ToList();
                 }
 
@@ -178,7 +177,6 @@ namespace CRMS_Peguit.winforms.Controllers
             try
             {
                 var item = _db.Customers
-                    .Include(c => c.Person)
                     .AsNoTracking()
                     .SingleOrDefault(x => x.CustomerId == id);
 
@@ -199,17 +197,9 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public Customer Add(Customer customer)
         {
-            if (customer.PersonId <= 0 && customer.Person == null)
+            if (!ValidationHelper.IsValidEmail(customer.Email, out var emailError))
             {
-                customer.Person = new Person
-                {
-                    FirstName = customer.FirstName,
-                    MiddleName = customer.MiddleName,
-                    LastName = customer.LastName,
-                    Suffix = customer.Suffix,
-                    Email = customer.Email,
-                    Phone = customer.Phone
-                };
+                throw new ArgumentException(emailError ?? "Email is required.");
             }
             customer.CreatedAt = DateTime.UtcNow;
             customer.CreatedByUserId = CurrentSession.UserId > 0 ? CurrentSession.UserId : 1;
@@ -244,9 +234,10 @@ namespace CRMS_Peguit.winforms.Controllers
                 _notifCtrl.CreateNotification(TenantId, customer.AssignedAgentId.Value, NotificationType.CustomerAssigned, "Customer Assigned to You", $"You have been assigned Customer '{customer.FullName}'.", "Customer", customer.CustomerId);
             }
 
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            SyncService.Instance.EnqueueOfflineCreate("Customer", customer, TenantId, CurrentSession.UserId, customer.CustomerId.ToString());
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
             {
-                SyncService.Instance.EnqueueOfflineCreate("Customer", customer, TenantId, CurrentSession.UserId);
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
             }
 
             return customer;
@@ -254,13 +245,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public void Update(Customer customer)
         {
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            if (!ValidationHelper.IsValidEmail(customer.Email, out var emailError))
             {
-                SyncService.Instance.EnqueueOfflineUpdate("Customer", customer.CustomerId, customer, TenantId, CurrentSession.UserId, customer.CreatedAt);
+                throw new ArgumentException(emailError ?? "Email is required.");
             }
 
             var item = _db.Customers
-                .Include(c => c.Person)
                 .SingleOrDefault(x => x.CustomerId == customer.CustomerId);
             if (item is null) return;
 
@@ -302,6 +292,12 @@ namespace CRMS_Peguit.winforms.Controllers
             try { LocalDataCache.Instance.SaveCustomersMirror(TenantId, new[] { item }); } catch { }
 
             LogActivity("Customer Updated", null, item.CustomerId, $"Customer '{item.FullName}' was updated.");
+
+            SyncService.Instance.EnqueueOfflineUpdate("Customer", item.CustomerId, item, TenantId, CurrentSession.UserId, item.CreatedAt);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
         }
 
         public void SoftDelete(Customer customer)
@@ -315,6 +311,12 @@ namespace CRMS_Peguit.winforms.Controllers
             _db.SaveChanges();
             try { LocalDataCache.Instance.SaveCustomersMirror(TenantId, new[] { item }); } catch { }
             LogActivity("Customer Archived", null, item.CustomerId, $"Customer '{item.FullName}' was archived.");
+
+            SyncService.Instance.EnqueueOfflineDelete("Customer", item.CustomerId, TenantId, CurrentSession.UserId);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
         }
 
         public void Restore(Customer customer)
@@ -329,6 +331,12 @@ namespace CRMS_Peguit.winforms.Controllers
             _db.SaveChanges();
             try { LocalDataCache.Instance.SaveCustomersMirror(TenantId, new[] { item }); } catch { }
             LogActivity("Customer Restored", null, item.CustomerId, $"Customer '{item.FullName}' was restored from archive.");
+
+            SyncService.Instance.EnqueueOfflineUpdate("Customer", item.CustomerId, item, TenantId, CurrentSession.UserId, DateTime.UtcNow);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
         }
 
         public List<Customer> GetArchived()
@@ -337,7 +345,6 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 return _db.Customers
                     .AsNoTracking()
-                    .Include(c => c.Person)
                     .Where(c => c.IsDeleted)
                     .OrderByDescending(c => c.DeletedAt)
                     .ToList();
@@ -360,7 +367,6 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 _cachedAgentDict = _db.Users
                     .AsNoTracking()
-                    .Include(u => u.Person)
                     .ToDictionary(u => u.UserId, u => u.FullName);
             }
             catch
@@ -489,8 +495,8 @@ namespace CRMS_Peguit.winforms.Controllers
             return _db.Users
                 .AsNoTracking()
                 .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status.ToLower() != "inactive")
-                .OrderBy(u => u.Person.LastName)
-                .ThenBy(u => u.Person.FirstName)
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
                 .AsEnumerable()
                 .Select(u => new AgentPickerItem(u.UserId, u.FullName, u.Email))
                 .ToList();
@@ -573,7 +579,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 if (!_db.Users.Any(u => u.UserId == agentId))
                 {
                     var userByEmail = CurrentSession.CurrentUser != null && !string.IsNullOrEmpty(CurrentSession.CurrentUser.Email)
-                        ? _db.Users.FirstOrDefault(u => u.Person != null && u.Person.Email != null && u.Person.Email.ToLower() == CurrentSession.CurrentUser.Email.ToLower())
+                        ? _db.Users.FirstOrDefault(u => u.Email != null && u.Email.ToLower() == CurrentSession.CurrentUser.Email.ToLower())
                         : null;
 
                     if (userByEmail != null)
@@ -635,9 +641,8 @@ namespace CRMS_Peguit.winforms.Controllers
                 return false;
             }
 
-            if (!string.IsNullOrWhiteSpace(email) && !ContactEmailService.IsValidEmail(email.Trim()))
+            if (!ValidationHelper.IsValidEmail(email, out errorMessage))
             {
-                errorMessage = "Enter a valid email address.";
                 return false;
             }
 

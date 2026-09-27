@@ -41,13 +41,13 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             Dock = DockStyle.Fill;
             BackColor = Theme.Background;
 
-            // 1. Page Header (Height = 76)
+            // 1. Page Header (Height = 96)
             var pnlPageHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 76,
+                Height = 96,
                 BackColor = Theme.Surface,
-                Padding = new Padding(28, 14, 28, 0)
+                Padding = new Padding(28, 18, 28, 0)
             };
             pnlPageHeader.Paint += (s, e) =>
             {
@@ -61,7 +61,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = UiStyleConstants.PageTitleFont,
                 ForeColor = Theme.TextPrimary,
                 AutoSize = true,
-                Location = new Point(28, 14)
+                Location = new Point(28, 18)
             };
             var lblSub = new Label
             {
@@ -69,7 +69,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = UiStyleConstants.SubtitleFont,
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
-                Location = new Point(28, 42)
+                Location = new Point(28, 56)
             };
             pnlPageHeader.Controls.Add(lblSub);
             pnlPageHeader.Controls.Add(lblTitle);
@@ -99,6 +99,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
+                AutoEllipsis = true,
+                MaximumSize = new Size(Math.Max(100, pnlToolbar.Width - 520), 24),
                 Location = new Point(356, 17)
             };
             pnlToolbar.Controls.Add(_lblCount);
@@ -117,7 +119,10 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _btnEdit.Click += BtnEdit_Click;
             _btnEdit.Location = new Point(pnlToolbar.Width - 154, 10);
             pnlToolbar.SizeChanged += (_, _) =>
+            {
                 _btnEdit.Location = new Point(pnlToolbar.Width - 154, 10);
+                _lblCount.MaximumSize = new Size(Math.Max(100, pnlToolbar.Width - 520), 24);
+            };
             pnlToolbar.Controls.Add(_btnEdit);
 
             // 3. Audit trail notice callout (Height = 42)
@@ -178,7 +183,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 AutoGenerateColumns = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
             };
-            UiGridHelper.ApplyModernGridStyle(_grid, rowHeight: 52);
+            UiGridHelper.ApplyModernGridStyle(_grid, rowHeight: 54);
 
             _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "SettingId", DataPropertyName = "SettingId", Visible = false });
 
@@ -215,6 +220,12 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 MinimumWidth = 140
             });
 
+            _grid.Columns.Add(new ActionsColumn
+            {
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+                Width = 64
+            });
+
             _grid.CellFormatting += (s, e) =>
             {
                 if (e.RowIndex < 0 || e.Value == null) return;
@@ -233,6 +244,52 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             };
 
             _grid.CellDoubleClick += (_, e) => { if (e.RowIndex >= 0) BtnEdit_Click(null, EventArgs.Empty); };
+
+            _grid.CellClick += (s, e) =>
+            {
+                if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+                string colName = _grid.Columns[e.ColumnIndex].Name;
+                if (colName == "Actions" || _grid.Columns[e.ColumnIndex] is ActionsColumn)
+                {
+                    if (_grid.Rows[e.RowIndex].DataBoundItem is not { } boundItem) return;
+                    dynamic row = boundItem;
+                    string key = (string)row.SettingKey;
+                    string val = (string)row.SettingValue;
+
+                    var cellRect = _grid.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, false);
+                    var menu = new ContextMenuStrip();
+
+                    var editItem = new ToolStripMenuItem("✏  Edit Value...");
+                    editItem.Click += (_, _) => BtnEdit_Click(null, EventArgs.Empty);
+                    menu.Items.Add(editItem);
+
+                    menu.Items.Add(new ToolStripSeparator());
+
+                    var copyKeyItem = new ToolStripMenuItem("📋  Copy Setting Key");
+                    copyKeyItem.Click += (_, _) =>
+                    {
+                        if (!string.IsNullOrEmpty(key))
+                        {
+                            Clipboard.SetText(key);
+                            MessageBox.Show($"Copied key '{key}' to clipboard.", "Copied", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                    };
+                    menu.Items.Add(copyKeyItem);
+
+                    var copyValItem = new ToolStripMenuItem("📋  Copy Value");
+                    copyValItem.Click += (_, _) =>
+                    {
+                        if (!string.IsNullOrEmpty(val))
+                        {
+                            Clipboard.SetText(val);
+                            MessageBox.Show($"Copied value to clipboard.", "Copied", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                    };
+                    menu.Items.Add(copyValItem);
+
+                    menu.Show(_grid, new Point(Math.Max(0, cellRect.Right - 200), cellRect.Bottom));
+                }
+            };
 
             pnlCard.Controls.Add(_grid);
             pnlWrapper.Controls.Add(pnlCard);

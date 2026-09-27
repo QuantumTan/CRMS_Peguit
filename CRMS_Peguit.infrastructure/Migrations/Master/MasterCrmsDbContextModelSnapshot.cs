@@ -157,6 +157,105 @@ namespace CRMS_Peguit.infrastructure.Migrations.Master
                     b.ToTable("GlobalSettings");
                 });
 
+            modelBuilder.Entity("CRMS_Peguit.domain.entities.PaymentRecord", b =>
+                {
+                    b.Property<int>("PaymentRecordId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("PaymentRecordId"));
+
+                    b.Property<decimal>("AmountPaid")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("PaymentDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PaymentReference")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("RecordedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SubscriptionId")
+                        .HasColumnType("int");
+
+                    b.HasKey("PaymentRecordId");
+
+                    b.HasIndex("PaymentDate");
+
+                    b.HasIndex("PaymentReference");
+
+                    b.HasIndex("RecordedByUserId");
+
+                    b.HasIndex("SubscriptionId");
+
+                    b.ToTable("PaymentRecords");
+                });
+
+            modelBuilder.Entity("CRMS_Peguit.domain.entities.PlatformAuditLog", b =>
+                {
+                    b.Property<int>("AuditLogId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AuditLogId"));
+
+                    b.Property<string>("ActionType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Detail")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("PerformedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("PerformedBySuperAdminId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("TargetCompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TargetCompanyName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("AuditLogId");
+
+                    b.HasIndex("ActionType");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("PerformedBySuperAdminId");
+
+                    b.HasIndex("TargetCompanyId");
+
+                    b.ToTable("PlatformAuditLogs");
+                });
+
             modelBuilder.Entity("CRMS_Peguit.domain.entities.Subscription", b =>
                 {
                     b.Property<int>("SubscriptionId")
@@ -269,6 +368,36 @@ namespace CRMS_Peguit.infrastructure.Migrations.Master
                     b.Navigation("UpdatedBySuperAdmin");
                 });
 
+            modelBuilder.Entity("CRMS_Peguit.domain.entities.PaymentRecord", b =>
+                {
+                    b.HasOne("CRMS_Peguit.domain.entities.SuperAdmin", "RecordedBySuperAdmin")
+                        .WithMany()
+                        .HasForeignKey("RecordedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CRMS_Peguit.domain.entities.Subscription", "Subscription")
+                        .WithMany("PaymentRecords")
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RecordedBySuperAdmin");
+
+                    b.Navigation("Subscription");
+                });
+
+            modelBuilder.Entity("CRMS_Peguit.domain.entities.PlatformAuditLog", b =>
+                {
+                    b.HasOne("CRMS_Peguit.domain.entities.SuperAdmin", "PerformedBySuperAdmin")
+                        .WithMany()
+                        .HasForeignKey("PerformedBySuperAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PerformedBySuperAdmin");
+                });
+
             modelBuilder.Entity("CRMS_Peguit.domain.entities.Subscription", b =>
                 {
                     b.HasOne("CRMS_Peguit.domain.entities.Company", "Company")
@@ -285,6 +414,11 @@ namespace CRMS_Peguit.infrastructure.Migrations.Master
                     b.Navigation("Devices");
 
                     b.Navigation("Subscriptions");
+                });
+
+            modelBuilder.Entity("CRMS_Peguit.domain.entities.Subscription", b =>
+                {
+                    b.Navigation("PaymentRecords");
                 });
 #pragma warning restore 612, 618
         }

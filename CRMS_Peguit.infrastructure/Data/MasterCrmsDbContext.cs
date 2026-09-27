@@ -11,6 +11,8 @@ namespace CRMS_Peguit.infrastructure.data
         public DbSet<Subscription> Subscriptions => Set<Subscription>();
         public DbSet<SuperAdmin> SuperAdmins => Set<SuperAdmin>();
         public DbSet<GlobalSetting> GlobalSettings => Set<GlobalSetting>();
+        public DbSet<PlatformAuditLog> PlatformAuditLogs => Set<PlatformAuditLog>();
+        public DbSet<PaymentRecord> PaymentRecords => Set<PaymentRecord>();
 
         public MasterCrmsDbContext(
             DbContextOptions<MasterCrmsDbContext> options
@@ -95,6 +97,41 @@ namespace CRMS_Peguit.infrastructure.data
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
+            builder.Entity<PaymentRecord>(entity =>
+            {
+                entity.HasKey(x => x.PaymentRecordId);
+
+                entity.Property(x => x.AmountPaid)
+                    .HasColumnType("decimal(18,2)")
+                    .IsRequired();
+
+                entity.Property(x => x.PaymentMethod)
+                    .HasConversion<string>()
+                    .HasMaxLength(50)
+                    .IsRequired();
+
+                entity.Property(x => x.PaymentReference)
+                    .HasMaxLength(200)
+                    .IsRequired();
+
+                entity.Property(x => x.Notes)
+                    .HasMaxLength(1000);
+
+                entity.HasOne(x => x.Subscription)
+                    .WithMany(s => s.PaymentRecords)
+                    .HasForeignKey(x => x.SubscriptionId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(x => x.RecordedBySuperAdmin)
+                    .WithMany()
+                    .HasForeignKey(x => x.RecordedByUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(x => x.SubscriptionId);
+                entity.HasIndex(x => x.PaymentDate);
+                entity.HasIndex(x => x.PaymentReference);
+            });
+
             builder.Entity<SuperAdmin>(entity =>
             {
                 entity.HasKey(x => x.SuperAdminId);
@@ -118,6 +155,24 @@ namespace CRMS_Peguit.infrastructure.data
                     .WithMany()
                     .HasForeignKey(x => x.UpdatedBySuperAdminId)
                     .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            builder.Entity<PlatformAuditLog>(entity =>
+            {
+                entity.HasKey(x => x.AuditLogId);
+                entity.Property(x => x.PerformedByName).HasMaxLength(200).IsRequired();
+                entity.Property(x => x.ActionType).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.Detail).HasMaxLength(2000).IsRequired();
+                entity.Property(x => x.TargetCompanyName).HasMaxLength(200);
+
+                entity.HasOne(x => x.PerformedBySuperAdmin)
+                    .WithMany()
+                    .HasForeignKey(x => x.PerformedBySuperAdminId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(x => x.ActionType);
+                entity.HasIndex(x => x.CreatedAt);
+                entity.HasIndex(x => x.TargetCompanyId);
             });
         }
     }

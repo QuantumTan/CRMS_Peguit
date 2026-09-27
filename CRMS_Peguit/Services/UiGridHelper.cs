@@ -21,6 +21,8 @@ namespace CRMS_Peguit.winforms.Models.Services
         public static readonly Color HeaderText = Color.FromArgb(100, 116, 139);   // #64748B
         public static readonly Color GridBorder = Color.FromArgb(241, 245, 249);   // #F1F5F9
 
+        public static void ApplyNexaGridStyle(DataGridView grid, int rowHeight = 52) => ApplyModernGridStyle(grid, rowHeight);
+
         public static void ApplyModernGridStyle(DataGridView grid, int rowHeight = 52)
         {
             if (grid is null) return;
@@ -35,7 +37,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             grid.MultiSelect = false;
             grid.ShowCellToolTips = true;
-            grid.RowTemplate.Height = rowHeight;
+            grid.RowTemplate.Height = Math.Max(rowHeight, 54);
             grid.ColumnHeadersHeight = 46;
             grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
 
@@ -45,24 +47,26 @@ namespace CRMS_Peguit.winforms.Models.Services
             grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = HeaderBg;
             grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = HeaderText;
             grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
-            grid.ColumnHeadersDefaultCellStyle.Padding = new Padding(12, 0, 12, 0);
+            grid.ColumnHeadersDefaultCellStyle.Padding = new Padding(12, 8, 12, 8);
             grid.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
 
-            // Default Row Styling (Vertically Centered)
+            // Default Row Styling (Vertically Centered with min 12px vertical padding)
             grid.DefaultCellStyle.BackColor = RowNormal;
             grid.DefaultCellStyle.ForeColor = TextDark;
             grid.DefaultCellStyle.SelectionBackColor = SelectionBg;
             grid.DefaultCellStyle.SelectionForeColor = TextDark;
             grid.DefaultCellStyle.Font = new Font("Segoe UI", 9.5f);
-            grid.DefaultCellStyle.Padding = new Padding(12, 0, 12, 0);
+            grid.DefaultCellStyle.Padding = new Padding(12, 12, 12, 12);
             grid.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
 
-            // Alternating Row Styling (Zebra Striping, Vertically Centered)
+            // Alternating Row Styling (Zebra Striping, Vertically Centered with min 12px vertical padding)
             grid.AlternatingRowsDefaultCellStyle.BackColor = RowAlternate;
             grid.AlternatingRowsDefaultCellStyle.ForeColor = TextDark;
             grid.AlternatingRowsDefaultCellStyle.SelectionBackColor = SelectionBg;
             grid.AlternatingRowsDefaultCellStyle.SelectionForeColor = TextDark;
             grid.AlternatingRowsDefaultCellStyle.Font = new Font("Segoe UI", 9.5f);
+            grid.AlternatingRowsDefaultCellStyle.Padding = new Padding(12, 12, 12, 12);
+            grid.AlternatingRowsDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
 
             // Smooth Row Hover Tracking
             int hoverRow = -1;

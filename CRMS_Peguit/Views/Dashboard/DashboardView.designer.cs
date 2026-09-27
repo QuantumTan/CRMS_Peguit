@@ -420,6 +420,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.AutoScroll = true;
             this.BackColor = System.Drawing.Color.FromArgb(244, 247, 251);
             this.Controls.Add(this.pnlContentSplit);
             this.Controls.Add(this.pnlKpiContainer);

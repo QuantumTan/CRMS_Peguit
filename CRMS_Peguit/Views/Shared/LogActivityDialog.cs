@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -43,7 +43,9 @@ namespace CRMS_Peguit.winforms.Views.Shared
             MinimizeBox = false;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(514, 510);
+            ClientSize = new Size(520, 520);
+            AutoScroll = false;
+            MinimumSize = new Size(520, 500);
             BackColor = Color.White;
 
             // Load records assigned to current agent
@@ -81,13 +83,22 @@ namespace CRMS_Peguit.winforms.Views.Shared
             pnlHeader.Controls.Add(lblHeaderTitle);
             pnlHeader.Controls.Add(lblHeaderSub);
 
+            // Content Panel (Scrollable)
+            var pnlContent = new Panel
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                BackColor = Color.White,
+                Padding = new Padding(24, 16, 24, 16)
+            };
+
             // --- Row 1: Contact Type & Record Picker ---
             var lblType = new Label
             {
                 Text = "LOG FOR",
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(100, 116, 139),
-                Location = new Point(24, 78),
+                Location = new Point(24, 16),
                 AutoSize = true
             };
 
@@ -95,7 +106,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 9.5f),
-                Location = new Point(24, 98),
+                Location = new Point(24, 36),
                 Size = new Size(130, 28)
             };
             _cmbRelatedType.Items.AddRange(new object[] { "Customer", "Lead" });
@@ -107,7 +118,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
                 Text = "SELECT CONTACT",
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(100, 116, 139),
-                Location = new Point(164, 78),
+                Location = new Point(164, 16),
                 AutoSize = true
             };
 
@@ -115,7 +126,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 9.5f),
-                Location = new Point(164, 98),
+                Location = new Point(164, 36),
                 Size = new Size(322, 28)
             };
 
@@ -132,7 +143,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
                 Text = "ACTIVITY TYPE",
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(100, 116, 139),
-                Location = new Point(24, 138),
+                Location = new Point(24, 76),
                 AutoSize = true
             };
 
@@ -140,7 +151,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 9.5f),
-                Location = new Point(24, 158),
+                Location = new Point(24, 96),
                 Size = new Size(210, 28)
             };
             _cmbActivityType.Items.AddRange(new object[] { "Call", "Email", "Meeting", "Note" });
@@ -152,7 +163,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
                 Text = "CALL RESULT / DISPOSITION",
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(100, 116, 139),
-                Location = new Point(248, 138),
+                Location = new Point(248, 76),
                 AutoSize = true
             };
 
@@ -160,7 +171,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 9.5f),
-                Location = new Point(248, 158),
+                Location = new Point(248, 96),
                 Size = new Size(238, 28)
             };
             _cmbOutcome.Items.Add(new ComboBoxItem<CallOutcome>(CallOutcome.Connected, "Connected"));
@@ -176,14 +187,14 @@ namespace CRMS_Peguit.winforms.Views.Shared
                 Text = "DURATION (MINUTES)",
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(100, 116, 139),
-                Location = new Point(24, 198),
+                Location = new Point(24, 136),
                 AutoSize = true
             };
 
             _numDuration = new NumericUpDown
             {
                 Font = new Font("Segoe UI", 9.5f),
-                Location = new Point(24, 218),
+                Location = new Point(24, 156),
                 Size = new Size(130, 28),
                 Minimum = 0,
                 Maximum = 600,
@@ -195,7 +206,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
                 Text = "DATE & TIME (EDITABLE FOR BACKDATING)",
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(100, 116, 139),
-                Location = new Point(164, 198),
+                Location = new Point(164, 136),
                 AutoSize = true
             };
 
@@ -203,7 +214,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
             {
                 Format = DateTimePickerFormat.Short,
                 Font = new Font("Segoe UI", 9.5f),
-                Location = new Point(164, 218),
+                Location = new Point(164, 156),
                 Size = new Size(170, 28),
                 Value = DateTime.Now.Date
             };
@@ -213,7 +224,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
                 Format = DateTimePickerFormat.Time,
                 ShowUpDown = true,
                 Font = new Font("Segoe UI", 9.5f),
-                Location = new Point(342, 218),
+                Location = new Point(342, 156),
                 Size = new Size(144, 28),
                 Value = DateTime.Now
             };
@@ -224,7 +235,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
                 Text = "ACTIVITY DETAILS & NOTES",
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(100, 116, 139),
-                Location = new Point(24, 258),
+                Location = new Point(24, 196),
                 AutoSize = true
             };
 
@@ -233,7 +244,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
                 Font = new Font("Segoe UI", 9.5f),
-                Location = new Point(24, 278),
+                Location = new Point(24, 216),
                 Size = new Size(462, 110)
             };
 
@@ -242,36 +253,63 @@ namespace CRMS_Peguit.winforms.Views.Shared
             {
                 ForeColor = Color.FromArgb(220, 38, 38),
                 Font = new Font("Segoe UI", 8.5f),
-                Location = new Point(24, 400),
+                Location = new Point(24, 336),
                 Size = new Size(462, 20),
                 Visible = false
             };
 
-            // Bottom Buttons
+            pnlContent.Controls.Add(lblType);
+            pnlContent.Controls.Add(_cmbRelatedType);
+            pnlContent.Controls.Add(lblRecord);
+            pnlContent.Controls.Add(_cmbRecord);
+            pnlContent.Controls.Add(lblActType);
+            pnlContent.Controls.Add(_cmbActivityType);
+            pnlContent.Controls.Add(_lblOutcome);
+            pnlContent.Controls.Add(_cmbOutcome);
+            pnlContent.Controls.Add(_lblDuration);
+            pnlContent.Controls.Add(_numDuration);
+            pnlContent.Controls.Add(_lblDateTime);
+            pnlContent.Controls.Add(_dtpDate);
+            pnlContent.Controls.Add(_dtpTime);
+            pnlContent.Controls.Add(lblNotes);
+            pnlContent.Controls.Add(_txtNotes);
+            pnlContent.Controls.Add(_lblError);
+
+            // Footer Panel (Docked Bottom)
+            var pnlFooter = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 60,
+                BackColor = Color.FromArgb(248, 250, 252),
+                Padding = new Padding(20, 10, 20, 10)
+            };
+
             _btnCancel = new Button
             {
                 Text = "Cancel",
                 DialogResult = DialogResult.Cancel,
-                Location = new Point(276, 430),
+                Location = new Point(280, 12),
                 Size = new Size(100, 36),
                 Font = new Font("Segoe UI", 9.5f),
                 BackColor = Color.White,
                 ForeColor = Color.FromArgb(71, 85, 105),
                 FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             _btnCancel.FlatAppearance.BorderColor = Color.FromArgb(203, 213, 225);
 
             _btnSave = new Button
             {
                 Text = "Save Activity",
-                Location = new Point(386, 430),
+                Location = new Point(390, 12),
                 Size = new Size(100, 36),
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 BackColor = Color.FromArgb(15, 91, 158),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             _btnSave.FlatAppearance.BorderSize = 0;
             _btnSave.Click += BtnSaveClick;
@@ -279,25 +317,12 @@ namespace CRMS_Peguit.winforms.Views.Shared
             UiRadiusHelper.StyleButton(_btnSave, 8);
             UiRadiusHelper.StyleButton(_btnCancel, 8);
 
+            pnlFooter.Controls.Add(_btnCancel);
+            pnlFooter.Controls.Add(_btnSave);
+
+            Controls.Add(pnlContent);
+            Controls.Add(pnlFooter);
             Controls.Add(pnlHeader);
-            Controls.Add(lblType);
-            Controls.Add(_cmbRelatedType);
-            Controls.Add(lblRecord);
-            Controls.Add(_cmbRecord);
-            Controls.Add(lblActType);
-            Controls.Add(_cmbActivityType);
-            Controls.Add(_lblOutcome);
-            Controls.Add(_cmbOutcome);
-            Controls.Add(_lblDuration);
-            Controls.Add(_numDuration);
-            Controls.Add(_lblDateTime);
-            Controls.Add(_dtpDate);
-            Controls.Add(_dtpTime);
-            Controls.Add(lblNotes);
-            Controls.Add(_txtNotes);
-            Controls.Add(_lblError);
-            Controls.Add(_btnCancel);
-            Controls.Add(_btnSave);
 
             PopulateRecords();
             UpdateDynamicFieldVisibility();
@@ -321,18 +346,18 @@ namespace CRMS_Peguit.winforms.Views.Shared
             // If no duration, shift DateTime picker left to fill the row
             if (hasDuration)
             {
-                _lblDateTime.Location = new Point(164, 198);
-                _dtpDate.Location = new Point(164, 218);
+                _lblDateTime.Location = new Point(164, 136);
+                _dtpDate.Location = new Point(164, 156);
                 _dtpDate.Size = new Size(170, 28);
-                _dtpTime.Location = new Point(342, 218);
+                _dtpTime.Location = new Point(342, 156);
                 _dtpTime.Size = new Size(144, 28);
             }
             else
             {
-                _lblDateTime.Location = new Point(24, 198);
-                _dtpDate.Location = new Point(24, 218);
+                _lblDateTime.Location = new Point(24, 136);
+                _dtpDate.Location = new Point(24, 156);
                 _dtpDate.Size = new Size(240, 28);
-                _dtpTime.Location = new Point(272, 218);
+                _dtpTime.Location = new Point(272, 156);
                 _dtpTime.Size = new Size(214, 28);
             }
         }

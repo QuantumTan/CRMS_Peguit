@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Auth;
 
 // =============================================================================
 // SUPER ADMIN CONTROLLER — DATA BOUNDARY ATTESTATION
@@ -127,6 +128,29 @@ namespace CRMS_Peguit.winforms.Controllers
         // data-boundary violation and is structurally absent from this file.
         private static RealEstateDbContext CreateManagementTenantDb() =>
             LocalDb.CreateContext(ManagementTenantId);
+
+        private static async Task WriteAuditLogAsync(string actionType, string detail, int? companyId = null, string? companyName = null)
+        {
+            try
+            {
+                using var masterDb = CreateMasterDb();
+                masterDb.PlatformAuditLogs.Add(new PlatformAuditLog
+                {
+                    PerformedBySuperAdminId = CurrentSession.UserId > 0 ? CurrentSession.UserId : 1,
+                    PerformedByName = CurrentSession.CurrentUser?.FullName ?? "Super Admin",
+                    ActionType = actionType,
+                    Detail = detail,
+                    TargetCompanyId = companyId,
+                    TargetCompanyName = companyName,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await masterDb.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[WriteAuditLogAsync] Error: {ex.Message}");
+            }
+        }
 
         // ==================================================================
         // USE CASE 1 — PLATFORM SNAPSHOT (Dashboard)
@@ -260,7 +284,6 @@ namespace CRMS_Peguit.winforms.Controllers
                     // Only Users, Persons, Roles are accessed — no CRM data
                     using var tenantDb = LocalDb.CreateContext(tid);
                     var adminUsers = await tenantDb.Users
-                        .Include(u => u.Person)
                         .Include(u => u.Role)
                         .Where(u => u.Role.RoleName == "Admin" ||
                                     u.Role.RoleName == "SuperAdmin" ||
@@ -274,9 +297,7 @@ namespace CRMS_Peguit.winforms.Controllers
                     {
                         string safeName = !string.IsNullOrWhiteSpace(u.FullName)
                             ? u.FullName
-                            : (!string.IsNullOrWhiteSpace(u.Person?.FirstName)
-                                ? $"{u.Person.FirstName} {u.Person.LastName}".Trim()
-                                : (!string.IsNullOrWhiteSpace(u.Email) ? u.Email : $"Admin #{u.UserId}"));
+                            : (!string.IsNullOrWhiteSpace(u.Email) ? u.Email : $"Admin #{u.UserId}");
 
                         result.Add(new AdminDto
                         {
@@ -312,11 +333,11 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 using var db = LocalDb.CreateContext(tenantId);
 
-                // Check email uniqueness (Users + Persons only)
-                var existingPerson = await db.Persons
+                // Check email uniqueness (Users only)
+                var existingUser = await db.Users
                     .AsNoTracking()
-                    .AnyAsync(p => p.Email == email);
-                if (existingPerson)
+                    .AnyAsync(u => u.Email == email);
+                if (existingUser)
                     return (false, "An account with this email already exists in this tenant.");
 
                 // Find Admin role
@@ -328,18 +349,11 @@ namespace CRMS_Peguit.winforms.Controllers
                 if (role == null)
                     return (false, $"Role '{roleName}' not found in tenant {tenantId}.");
 
-                var person = new Person
+                var user = new User
                 {
                     FirstName = firstName,
                     LastName = lastName,
-                    Email = email
-                };
-                db.Persons.Add(person);
-                await db.SaveChangesAsync();
-
-                var user = new User
-                {
-                    PersonId = person.PersonId,
+                    Email = email,
                     RoleId = role.RoleId,
                     PasswordHash = HashPassword(password),
                     Status = "Active",
@@ -347,6 +361,10 @@ namespace CRMS_Peguit.winforms.Controllers
                 };
                 db.Users.Add(user);
                 await db.SaveChangesAsync();
+
+                await WriteAuditLogAsync("AdministratorCreated",
+                    $"Created administrator '{email}' (Role: {role.RoleName}) in Tenant #{tenantId}",
+                    tenantId);
 
                 return (true, string.Empty);
             }
@@ -372,6 +390,11 @@ namespace CRMS_Peguit.winforms.Controllers
 
                 user.Status = "Inactive";
                 await db.SaveChangesAsync();
+
+                await WriteAuditLogAsync("AdministratorDeactivated",
+                    $"Deactivated administrator user ID #{userId} in Tenant #{tenantId}",
+                    tenantId);
+
                 return true;
             }
             catch (Exception ex)
@@ -395,6 +418,11 @@ namespace CRMS_Peguit.winforms.Controllers
 
                 user.Status = "Active";
                 await db.SaveChangesAsync();
+
+                await WriteAuditLogAsync("AdministratorActivated",
+                    $"Activated administrator user ID #{userId} in Tenant #{tenantId}",
+                    tenantId);
+
                 return true;
             }
             catch (Exception ex)
@@ -466,7 +494,6 @@ namespace CRMS_Peguit.winforms.Controllers
                 // Only SystemSettings + Users (for updatedBy name) — no CRM data
                 var settings = await db.SystemSettings
                     .Include(s => s.UpdatedByUser)
-                        .ThenInclude(u => u.Person)
                     .AsNoTracking()
                     .OrderBy(s => s.SettingKey)
                     .ToListAsync();
@@ -523,6 +550,10 @@ namespace CRMS_Peguit.winforms.Controllers
                 setting.UpdatedByUserId = updatedByUserId;
                 setting.UpdatedAt = DateTime.UtcNow;
                 await db.SaveChangesAsync();
+
+                await WriteAuditLogAsync("SystemSettingChanged",
+                    $"Platform setting '{setting.SettingKey}' value changed to '{newValue}'");
+
                 return true;
             }
             catch (Exception ex)
@@ -552,7 +583,6 @@ namespace CRMS_Peguit.winforms.Controllers
                 // Only BackupLogs + Users (performer name) — no CRM data
                 var logs = await db.BackupLogs
                     .Include(b => b.PerformedByUser)
-                        .ThenInclude(u => u.Person)
                     .AsNoTracking()
                     .OrderByDescending(b => b.BackupDate)
                     .ToListAsync();
@@ -643,6 +673,9 @@ namespace CRMS_Peguit.winforms.Controllers
                 db.BackupLogs.Add(log);
                 await db.SaveChangesAsync();
 
+                await WriteAuditLogAsync("BackupCreated",
+                    $"Platform backup snapshot taken: {fileLocation} (Backup ID: #{log.BackupId})");
+
                 return (true, new BackupLogDto
                 {
                     BackupId = log.BackupId,
@@ -671,7 +704,6 @@ namespace CRMS_Peguit.winforms.Controllers
                 using var db = CreateManagementTenantDb();
                 var log = await db.BackupLogs
                     .Include(b => b.PerformedByUser)
-                        .ThenInclude(u => u.Person)
                     .AsNoTracking()
                     .FirstOrDefaultAsync(b => b.BackupId == backupId);
 
@@ -714,6 +746,10 @@ namespace CRMS_Peguit.winforms.Controllers
                 };
                 db.BackupLogs.Add(restoreLog);
                 await db.SaveChangesAsync();
+
+                await WriteAuditLogAsync("BackupRestored",
+                    $"Database restore action triggered from backup point ID #{backupId}");
+
                 return true;
             }
             catch (Exception ex)

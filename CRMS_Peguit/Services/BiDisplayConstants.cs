@@ -253,6 +253,39 @@ namespace CRMS_Peguit.winforms.Models.Services
             // Give balanced horizontal padding and enough top headroom for data labels
             double topHeadroom = maxY > 0 ? maxY * 1.25 : 10;
             plot.Plot.Axes.SetLimits(-0.5, xs.Length - 0.5, 0, topHeadroom);
+
+            // Smooth entrance growth animation (~320ms EaseOutCubic)
+            var targetYs = (double[])ys.Clone();
+            for (int i = 0; i < ys.Length; i++) ys[i] = 0;
+
+            var startTime = DateTime.UtcNow;
+            var animTimer = new System.Windows.Forms.Timer { Interval = 16 };
+            animTimer.Tick += (s, e) =>
+            {
+                if (plot.IsDisposed)
+                {
+                    animTimer.Stop();
+                    animTimer.Dispose();
+                    return;
+                }
+                double elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
+                double progress = Math.Min(1.0, elapsed / 320.0);
+                double ease = 1.0 - Math.Pow(1.0 - progress, 3);
+
+                for (int i = 0; i < ys.Length; i++)
+                {
+                    ys[i] = targetYs[i] * ease;
+                }
+
+                if (progress >= 1.0)
+                {
+                    for (int i = 0; i < ys.Length; i++) ys[i] = targetYs[i];
+                    animTimer.Stop();
+                    animTimer.Dispose();
+                }
+                plot.Refresh();
+            };
+            animTimer.Start();
             plot.Refresh();
         }
 
@@ -359,6 +392,39 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
 
             plot.Plot.Axes.SetLimits(-xLim, xLim, -yLim, yLim);
+
+            // Smooth entrance sweep animation (~320ms EaseOutCubic)
+            var animSlices = slices.Select(s => (s, target: s.Value)).ToList();
+            foreach (var s in slices) s.Value = s.Value * 0.01;
+
+            var startTime = DateTime.UtcNow;
+            var animTimer = new System.Windows.Forms.Timer { Interval = 16 };
+            animTimer.Tick += (s, e) =>
+            {
+                if (plot.IsDisposed)
+                {
+                    animTimer.Stop();
+                    animTimer.Dispose();
+                    return;
+                }
+                double elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
+                double progress = Math.Min(1.0, elapsed / 320.0);
+                double ease = 1.0 - Math.Pow(1.0 - progress, 3);
+
+                foreach (var (sl, target) in animSlices)
+                {
+                    sl.Value = Math.Max(0.001, target * ease);
+                }
+
+                if (progress >= 1.0)
+                {
+                    foreach (var (sl, target) in animSlices) sl.Value = target;
+                    animTimer.Stop();
+                    animTimer.Dispose();
+                }
+                plot.Refresh();
+            };
+            animTimer.Start();
             plot.Refresh();
         }
 

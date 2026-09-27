@@ -104,25 +104,46 @@ namespace CRMS_Peguit.winforms.Auth
         public AuthResult TryLocalDbLogin(string email, string password)
         {
             var lowerEmail = email.Trim().ToLowerInvariant();
-            if (lowerEmail == "superadmin@crms.com" || lowerEmail == "superadmin@test.com" || lowerEmail == "admin@master.com")
+
+            // Check Master database for real SuperAdmin user
+            try
             {
-                if (password == "SuperAdmin123!" || password == "Admin123!")
+                using var masterDb = LocalDb.CreateMasterContext();
+                var sa = masterDb.SuperAdmins
+                    .AsNoTracking()
+                    .FirstOrDefault(s => s.Email != null && s.Email.ToLower() == lowerEmail && s.IsActive);
+
+                if (sa != null)
                 {
-                    CurrentSession.Start(
-                        9999,
-                        1,
-                        "Super Admin",
-                        lowerEmail,
-                        "SuperAdmin",
-                        jwtToken: null,
-                        isOffline: false,
-                        tier: domain.entities.TenantTier.Master,
-                        tenantName: "Master Platform Administration");
-                    return new AuthResult { Success = true, WasOffline = false };
+                    if (!string.IsNullOrWhiteSpace(sa.PasswordHash) && PasswordHasher.Verify(password, sa.PasswordHash))
+                    {
+                        string fullName = $"{sa.FirstName} {sa.LastName}".Trim();
+                        if (string.IsNullOrWhiteSpace(fullName)) fullName = "Super Admin";
+
+                        _localCache.SaveSuccessfulLogin(0, sa.SuperAdminId, fullName, sa.Email, sa.PasswordHash, "SuperAdmin");
+
+                        CurrentSession.Start(
+                            sa.SuperAdminId,
+                            0,
+                            fullName,
+                            sa.Email,
+                            "SuperAdmin",
+                            jwtToken: null,
+                            isOffline: false,
+                            tier: domain.entities.TenantTier.Master,
+                            tenantName: "Master Platform Administration");
+                        return new AuthResult { Success = true, WasOffline = false };
+                    }
+                    else
+                    {
+                        return new AuthResult { Success = false, ErrorMessage = "Invalid email or password." };
+                    }
                 }
             }
-
-            bool isCommonPassword = password == "Admin123!" || password == "Manager123!" || password == "Agent123!" || password == "Password123!" || password == "TenantA123!" || password == "TenantB123!" || password == "TenantC123!";
+            catch
+            {
+                // Fallback to tenant DB search
+            }
 
             // Determine prioritized tenant search order based on email domain or prefixes
             int[] tenantIds;
@@ -156,16 +177,45 @@ namespace CRMS_Peguit.winforms.Auth
                 {
                     using var db = LocalDb.CreateContext(tid);
                     var user = db.Users
-                        .Include(u => u.Person)
                         .Include(u => u.Role)
                         .AsNoTracking()
-                        .FirstOrDefault(u => u.Person != null && u.Person.Email != null && u.Person.Email.ToLower() == lowerEmail);
+                        .FirstOrDefault(u => u.Email != null && u.Email.ToLower() == lowerEmail);
 
                     if (user != null)
                     {
-                        bool verify = PasswordHasher.Verify(password, user.PasswordHash) || (isCommonPassword && !string.IsNullOrWhiteSpace(user.PasswordHash));
+                        bool verify = PasswordHasher.Verify(password, user.PasswordHash);
                         if (verify)
                         {
+                            // Enforce tenant organization suspension check
+                            try
+                            {
+                                using var masterDb = LocalDb.CreateMasterContext();
+                                var company = masterDb.Companies.AsNoTracking().FirstOrDefault(c => c.CompanyId == tid);
+                                if (company != null && !company.IsActive)
+                                {
+                                    return new AuthResult
+                                    {
+                                        Success = false,
+                                        ErrorMessage = $"Access Suspended: '{company.CompanyName}' has been suspended by platform administration."
+                                    };
+                                }
+                            }
+                            catch
+                            {
+                                // Master DB access fallback
+                            }
+
+                            // Enforce individual user status check
+                            if (!string.IsNullOrWhiteSpace(user.Status) &&
+                                !string.Equals(user.Status, "Active", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return new AuthResult
+                                {
+                                    Success = false,
+                                    ErrorMessage = $"Your user account is currently {user.Status.ToLowerInvariant()}. Please contact your administrator."
+                                };
+                            }
+
                             var role = user.Role ?? db.Roles.AsNoTracking().FirstOrDefault(r => r.RoleId == user.RoleId);
                             string roleName = role?.RoleName ?? "Agent";
                             int tenantId = tid;
@@ -328,7 +378,7 @@ namespace CRMS_Peguit.winforms.Auth
                 }
 
                 // 3. Check if user exists by Email
-                var userByEmail = db.Users.FirstOrDefault(u => u.Person != null && u.Person.Email != null && u.Person.Email.ToLower() == email.Trim().ToLower());
+                var userByEmail = db.Users.FirstOrDefault(u => u.Email != null && u.Email.ToLower() == email.Trim().ToLower());
                 if (userByEmail != null)
                 {
                     if (!string.IsNullOrWhiteSpace(passwordHash))
@@ -347,18 +397,9 @@ namespace CRMS_Peguit.winforms.Auth
                 db.Database.ExecuteSqlRaw(@"
                     IF NOT EXISTS (SELECT 1 FROM Users WHERE UserId = {0})
                     BEGIN
-                        DECLARE @PersonId INT;
-                        SELECT TOP 1 @PersonId = PersonId FROM Persons WHERE Email = {3};
-                        IF @PersonId IS NULL
-                        BEGIN
-                            INSERT INTO Persons (FirstName, LastName, Email, CreatedAt)
-                            VALUES ({1}, {2}, {3}, GETUTCDATE());
-                            SET @PersonId = SCOPE_IDENTITY();
-                        END
-
                         SET IDENTITY_INSERT Users ON;
-                        INSERT INTO Users (UserId, PersonId, PasswordHash, RoleId, Status, CreatedAt)
-                        VALUES ({0}, @PersonId, {4}, {5}, 'active', GETUTCDATE());
+                        INSERT INTO Users (UserId, FirstName, LastName, Email, PasswordHash, RoleId, Status, CreatedAt)
+                        VALUES ({0}, {1}, {2}, {3}, {4}, {5}, 'active', GETUTCDATE());
                         SET IDENTITY_INSERT Users OFF;
                     END",
                     userId, firstName, lastName, email.Trim(), passwordHash ?? "", role.RoleId);

@@ -98,5 +98,28 @@ namespace CRMS_Peguit.winforms.Services
             errorMessage = null;
             return true;
         }
+
+        /// <summary>
+        /// Validates that an email is provided and matches standard email format.
+        /// Email is strictly required.
+        /// </summary>
+        public static bool IsValidEmail(string? email, out string? errorMessage)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                errorMessage = "Email address is required.";
+                return false;
+            }
+
+            string trimmed = email.Trim();
+            if (!Regex.IsMatch(trimmed, @"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.IgnoreCase))
+            {
+                errorMessage = "Please enter a valid email address (e.g. user@example.com).";
+                return false;
+            }
+
+            errorMessage = null;
+            return true;
+        }
     }
 }

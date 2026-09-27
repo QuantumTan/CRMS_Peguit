@@ -1,13 +1,10 @@
 using BCrypt.Net;
 using System;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace CRMS_Peguit.infrastructure.Security
 {
-    // Real authentication uses BCrypt (salted, slow-by-design) instead of the
-    // plain SHA-256 in NEXA.Model.User, which stays only as an OOP/encapsulation
-    // demonstration and is not used for real login.
-    //
-    // NuGet: Install-Package BCrypt.Net-Next
     public static class PasswordHasher
     {
         public static string Hash(string plainTextPassword)
@@ -27,7 +24,7 @@ namespace CRMS_Peguit.infrastructure.Security
 
             try
             {
-                // Check if the hash starts with valid BCrypt identifiers: $2a$, $2b$, $2y$, $2x$
+                // Primary path: Verify BCrypt hash ($2a$, $2b$, $2y$, $2x$)
                 if (trimmedHash.Length >= 4 &&
                     trimmedHash[0] == '$' &&
                     trimmedHash[1] == '2' &&
@@ -37,13 +34,30 @@ namespace CRMS_Peguit.infrastructure.Security
                     return BCrypt.Net.BCrypt.Verify(plainTextPassword, trimmedHash);
                 }
 
-                // If storedHash is not a BCrypt hash, check for direct equality (e.g. plain text in dev/seed)
-                return plainTextPassword == trimmedHash;
+                // Support unsalted SHA-256 legacy verification for transparent upgrade on login
+                using (var sha = SHA256.Create())
+                {
+                    var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(plainTextPassword));
+                    var shaBase64 = Convert.ToBase64String(bytes);
+                    if (trimmedHash == shaBase64)
+                        return true;
+                }
+
+                // Plaintext is not permitted in production paths; only allowed in Development
+                var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+                bool isDevelopment = string.IsNullOrWhiteSpace(env) || env.Equals("Development", StringComparison.OrdinalIgnoreCase);
+                if (isDevelopment && plainTextPassword == trimmedHash)
+                {
+                    return true;
+                }
+
+                return false;
             }
             catch (SaltParseException)
             {
-                // Graceful fallback for non-BCrypt format or legacy plain text
-                return plainTextPassword == trimmedHash;
+                var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+                bool isDevelopment = string.IsNullOrWhiteSpace(env) || env.Equals("Development", StringComparison.OrdinalIgnoreCase);
+                return isDevelopment && plainTextPassword == trimmedHash;
             }
             catch (Exception)
             {

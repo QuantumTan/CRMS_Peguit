@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
@@ -36,8 +37,9 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         // Subscriptions Controls
         private TextBox _txtSearch = null!;
         private DataGridView _grid = null!;
+        private Button _btnRecordPayment = null!;
+        private Button _btnPaymentHistory = null!;
         private Button _btnChangeTier = null!;
-        private Button _btnRenew = null!;
 
         public AdminPanelMasterView()
         {
@@ -56,35 +58,35 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 110,
+                Height = 126,
                 BackColor = Theme.Surface,
-                Padding = new Padding(24, 16, 24, 0)
+                Padding = new Padding(28, 16, 28, 0)
             };
 
             var lblTitle = new Label
             {
                 Text = "👑 Master Admin Panel",
-                Font = new Font("Segoe UI", 18f, FontStyle.Bold),
+                Font = UiStyleConstants.PageTitleFont,
                 ForeColor = Theme.TextPrimary,
                 AutoSize = true,
-                Location = new Point(24, 16)
+                Location = new Point(28, 16)
             };
             _pnlHeader.Controls.Add(lblTitle);
 
             var lblSubtitle = new Label
             {
                 Text = "Platform Oversight — Cross-Tenant Business Intelligence & Subscription Tier Management",
-                Font = new Font("Segoe UI", 10f),
+                Font = UiStyleConstants.SubtitleFont,
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
-                Location = new Point(24, 46)
+                Location = new Point(28, 52)
             };
             _pnlHeader.Controls.Add(lblSubtitle);
 
             // Tab Buttons
             var pnlTabs = new Panel
             {
-                Location = new Point(24, 75),
+                Location = new Point(28, 84),
                 Size = new Size(500, 35)
             };
 
@@ -346,38 +348,64 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 pillX += btnPill.Width + 6;
             }
 
-            // Action Buttons
+            // Action Buttons Container
+            var pnlSubsActions = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.RightToLeft,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Height = 36,
+                Width = 480,
+                Location = new Point(pnlToolbar.Width - 480, 4),
+                BackColor = Color.Transparent
+            };
+            pnlToolbar.SizeChanged += (_, _) =>
+            {
+                pnlSubsActions.Location = new Point(pnlToolbar.Width - 480, 4);
+            };
+
             _btnChangeTier = new Button
             {
                 Text = "⚡ Change Tier / Plan",
                 Size = new Size(150, 32),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(_pnlSubsContent.Width - 365, 5),
-                BackColor = Theme.Primary,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                Cursor = Cursors.Hand
-            };
-            UiRadiusHelper.StyleButton(_btnChangeTier, 6);
-            _btnChangeTier.Click += BtnChangeTier_Click;
-            pnlToolbar.Controls.Add(_btnChangeTier);
-
-            _btnRenew = new Button
-            {
-                Text = "↻ Renew (+1 Year)",
-                Size = new Size(140, 32),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(_pnlSubsContent.Width - 205, 5),
                 BackColor = Theme.Surface,
                 ForeColor = Theme.TextPrimary,
                 Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                Margin = new Padding(4, 0, 0, 0)
             };
-            UiRadiusHelper.StyleButton(_btnRenew, 6);
-            _btnRenew.Click += BtnRenew_Click;
-            pnlToolbar.Controls.Add(_btnRenew);
+            UiRadiusHelper.StyleButton(_btnChangeTier, 6);
+            _btnChangeTier.Click += BtnChangeTier_Click;
 
-            _pnlSubsContent.Controls.Add(pnlToolbar);
+            _btnPaymentHistory = new Button
+            {
+                Text = "📋 Payment History",
+                Size = new Size(150, 32),
+                BackColor = Theme.Surface,
+                ForeColor = Theme.TextPrimary,
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Margin = new Padding(4, 0, 0, 0)
+            };
+            UiRadiusHelper.StyleButton(_btnPaymentHistory, 6);
+            _btnPaymentHistory.Click += BtnPaymentHistory_Click;
+
+            _btnRecordPayment = new Button
+            {
+                Text = "💳 Record Payment",
+                Size = new Size(150, 32),
+                BackColor = Theme.Primary,
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Margin = new Padding(4, 0, 0, 0)
+            };
+            UiRadiusHelper.StyleButton(_btnRecordPayment, 6);
+            _btnRecordPayment.Click += BtnRecordPayment_Click;
+
+            pnlSubsActions.Controls.Add(_btnChangeTier);
+            pnlSubsActions.Controls.Add(_btnPaymentHistory);
+            pnlSubsActions.Controls.Add(_btnRecordPayment);
+            pnlToolbar.Controls.Add(pnlSubsActions);
 
             // DataGridView Card Container
             var pnlGridCard = new Panel
@@ -409,6 +437,9 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Monthly Billing", DataPropertyName = "BillingAmountFormatted", FillWeight = 16 });
             _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Status", DataPropertyName = "Status", FillWeight = 12 });
             _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "End Date", DataPropertyName = "EndDateFormatted", FillWeight = 16 });
+            UiGridHelper.AddActionsColumn(_grid, 60);
+
+            _grid.CellContentClick += Grid_CellContentClick;
 
             _grid.CellFormatting += (s, e) =>
             {
@@ -427,16 +458,17 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                     if (_grid.Columns[e.ColumnIndex].HeaderText == "Status" && e.Value != null)
                     {
                         var val = e.Value.ToString() ?? "";
-                        if (val.Equals("Active", StringComparison.OrdinalIgnoreCase)) e.CellStyle.ForeColor = Theme.StatusSuccess;
-                        else if (val.Equals("Expiring", StringComparison.OrdinalIgnoreCase)) e.CellStyle.ForeColor = Theme.StatusPending;
-                        else e.CellStyle.ForeColor = Theme.StatusAlert;
+                        e.CellStyle.ForeColor = StatusColorHelper.GetTextColor(val);
                         e.CellStyle.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
                     }
                 }
             };
 
             pnlGridCard.Controls.Add(_grid);
+
+            // Correct docking order: Fill added first, Top added second
             _pnlSubsContent.Controls.Add(pnlGridCard);
+            _pnlSubsContent.Controls.Add(pnlToolbar);
 
             Controls.Add(_pnlSubsContent);
         }
@@ -632,13 +664,119 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 x.CompanyName,
                 x.PlanName,
                 BillingAmountFormatted = $"₱{x.BillingAmount:N2}",
-                x.Status,
+                Status = Subscription.CalculateStatus(x.EndDate),
                 EndDateFormatted = x.EndDate?.ToString("MMM dd, yyyy") ?? "Lifetime"
             }).ToList();
 
             _grid.DataSource = displayList;
             if (_grid.Columns["SubscriptionId"] is { } subCol) subCol.Visible = false;
             if (_grid.Columns["CompanyId"] is { } compCol) compCol.Visible = false;
+        }
+
+        private void Grid_CellContentClick(object? sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            if (_grid.Columns[e.ColumnIndex] is not ActionsColumn && _grid.Columns[e.ColumnIndex].Name != "Actions") return;
+
+            if (_grid.Rows[e.RowIndex].DataBoundItem is not { } boundItem) return;
+            dynamic row = boundItem;
+            int subId = (int)row.SubscriptionId;
+            int compId = (int)row.CompanyId;
+            var sub = _allSubscriptions.FirstOrDefault(s => s.SubscriptionId == subId || s.CompanyId == compId);
+            if (sub == null) return;
+
+            var menu = new ContextMenuStrip();
+
+            var recordPaymentItem = new ToolStripMenuItem("💳  Record Payment");
+            recordPaymentItem.Click += (_, _) =>
+            {
+                using var dlg = new RecordPaymentDialog(sub);
+                if (dlg.ShowDialog(this) == DialogResult.OK)
+                {
+                    LoadDataAsync();
+                }
+            };
+            menu.Items.Add(recordPaymentItem);
+
+            var historyItem = new ToolStripMenuItem("📋  Payment History");
+            historyItem.Click += (_, _) =>
+            {
+                using var dlg = new PaymentHistoryDialog(sub);
+                dlg.ShowDialog(this);
+                LoadDataAsync();
+            };
+            menu.Items.Add(historyItem);
+
+            menu.Items.Add(new ToolStripSeparator());
+
+            var changeTierItem = new ToolStripMenuItem("⚡  Change Tier / Plan");
+            changeTierItem.Click += (_, _) =>
+            {
+                using var dlg = new SubscriptionTierChangeDialog(sub.CompanyName, sub.PlanName, sub.Status, sub.BillingAmount);
+                if (dlg.ShowDialog(this) == DialogResult.OK)
+                {
+                    _ = UpdateTierAndReload(sub.SubscriptionId, sub.CompanyId, sub.CompanyName, dlg);
+                }
+            };
+            menu.Items.Add(changeTierItem);
+
+            var cellRect = _grid.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, false);
+            menu.Show(_grid, new Point(cellRect.Left, cellRect.Bottom));
+        }
+
+        private async Task UpdateTierAndReload(int subId, int compId, string compName, SubscriptionTierChangeDialog dlg)
+        {
+            bool ok = await _controller.UpdateSubscriptionAsync(subId, dlg.SelectedPlan, dlg.SelectedStatus, dlg.BillingAmount, DateTime.UtcNow.AddYears(1));
+            if (ok)
+            {
+                MessageBox.Show($"Tenant '{compName}' successfully updated to {dlg.SelectedPlan} ({dlg.SelectedStatus})!", "Plan Updated", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                LoadDataAsync();
+            }
+            else
+            {
+                await _controller.ChangeTenantTierAsync(compId, dlg.SelectedPlan);
+                LoadDataAsync();
+            }
+        }
+
+        private void BtnRecordPayment_Click(object? sender, EventArgs e)
+        {
+            if (_grid.CurrentRow?.DataBoundItem == null)
+            {
+                MessageBox.Show("Please select a tenant company from the grid to record payment.", "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            dynamic row = _grid.CurrentRow.DataBoundItem;
+            int subId = row.SubscriptionId;
+            int compId = row.CompanyId;
+            var sub = _allSubscriptions.FirstOrDefault(s => s.SubscriptionId == subId || s.CompanyId == compId);
+            if (sub == null) return;
+
+            using var dlg = new RecordPaymentDialog(sub);
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
+                LoadDataAsync();
+            }
+        }
+
+        private void BtnPaymentHistory_Click(object? sender, EventArgs e)
+        {
+            if (_grid.CurrentRow?.DataBoundItem == null)
+            {
+                MessageBox.Show("Please select a tenant company from the grid to view payment history.", "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            dynamic row = _grid.CurrentRow.DataBoundItem;
+            int subId = row.SubscriptionId;
+            int compId = row.CompanyId;
+            var sub = _allSubscriptions.FirstOrDefault(s => s.SubscriptionId == subId || s.CompanyId == compId);
+            if (sub == null) return;
+
+            using var dlg = new PaymentHistoryDialog(sub);
+            dlg.ShowDialog(this);
+            LoadDataAsync();
         }
 
         private async void BtnChangeTier_Click(object? sender, EventArgs e)

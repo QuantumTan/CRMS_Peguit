@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Views.SuperAdmin
 {
@@ -20,24 +21,21 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         public SubscriptionTierChangeDialog(string currentCompany, string currentPlan, string currentStatus, decimal currentAmount)
         {
             Text = $"Change Subscription — {currentCompany}";
-            Size = new Size(480, 420);
-            StartPosition = FormStartPosition.CenterParent;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            BackColor = Theme.Surface;
+            Size = new Size(520, 500);
+            UiRadiusHelper.StyleModal(this, 8);
 
             var pnlContainer = new Panel
             {
                 Dock = DockStyle.Fill,
-                Padding = new Padding(24)
+                Padding = new Padding(24),
+                BackColor = Color.White,
+                AutoScroll = true
             };
-            Controls.Add(pnlContainer);
 
             var lblHeader = new Label
             {
                 Text = "Manage Tenant Subscription Plan",
-                Font = new Font("Segoe UI", 13f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 13.5f, FontStyle.Bold),
                 ForeColor = Theme.TextPrimary,
                 AutoSize = true,
                 Location = new Point(24, 20)
@@ -68,10 +66,10 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _cmbTier = new ComboBox
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                Font = new Font("Segoe UI", 10f),
                 Location = new Point(24, 110),
-                Width = 415
+                Width = 432
             };
+            UiRadiusHelper.StyleStandardComboBox(_cmbTier);
             _cmbTier.Items.Add(Subscription.TierTenantA + " (Main Transaction + Data Collection)");
             _cmbTier.Items.Add(Subscription.TierTenantB + " (BI Analytics + Automated Actions)");
             _cmbTier.Items.Add(Subscription.TierTenantC + " (Branching + BI + Actions)");
@@ -87,8 +85,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Text = GetTierDescription(_cmbTier.SelectedIndex),
                 Font = new Font("Segoe UI", 9f, FontStyle.Italic),
                 ForeColor = Theme.Primary,
-                Location = new Point(24, 145),
-                Size = new Size(415, 38)
+                Location = new Point(24, 146),
+                Size = new Size(432, 40)
             };
             pnlContainer.Controls.Add(_lblDescription);
 
@@ -98,7 +96,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Text = "Subscription Status:",
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 ForeColor = Theme.TextPrimary,
-                Location = new Point(24, 190),
+                Location = new Point(24, 194),
                 AutoSize = true
             };
             pnlContainer.Controls.Add(lblStatus);
@@ -106,10 +104,10 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _cmbStatus = new ComboBox
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                Font = new Font("Segoe UI", 10f),
-                Location = new Point(24, 215),
-                Width = 415
+                Location = new Point(24, 218),
+                Width = 432
             };
+            UiRadiusHelper.StyleStandardComboBox(_cmbStatus);
             _cmbStatus.Items.AddRange(new object[] { "Active", "Expiring", "Expired", "Cancelled" });
             _cmbStatus.SelectedItem = currentStatus;
             if (_cmbStatus.SelectedIndex < 0) _cmbStatus.SelectedIndex = 0;
@@ -121,20 +119,20 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Text = "Monthly Billing Amount (₱):",
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 ForeColor = Theme.TextPrimary,
-                Location = new Point(24, 255),
+                Location = new Point(24, 258),
                 AutoSize = true
             };
             pnlContainer.Controls.Add(lblAmount);
 
             _numAmount = new NumericUpDown
             {
-                Font = new Font("Segoe UI", 10f),
-                Location = new Point(24, 280),
-                Width = 415,
+                Location = new Point(24, 282),
+                Width = 432,
                 DecimalPlaces = 2,
                 Maximum = 1000000m,
                 Value = currentAmount > 0 ? currentAmount : 2500m
             };
+            UiRadiusHelper.StyleStandardNumericUpDown(_numAmount);
             pnlContainer.Controls.Add(_numAmount);
 
             _cmbTier.SelectedIndexChanged += (_, _) =>
@@ -145,31 +143,35 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 else _numAmount.Value = 2500m;
             };
 
+            // Footer panel
+            var pnlFooter = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 60,
+                BackColor = Color.FromArgb(248, 250, 252)
+            };
+
             // Buttons
             var btnCancel = new Button
             {
                 Text = "Cancel",
                 DialogResult = DialogResult.Cancel,
-                Location = new Point(230, 325),
+                Location = new Point(242, 12),
                 Size = new Size(100, 36),
-                Font = new Font("Segoe UI", 9.5f),
-                Cursor = Cursors.Hand
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
-            UiRadiusHelper.StyleButton(btnCancel, 6);
-            pnlContainer.Controls.Add(btnCancel);
+            UiRadiusHelper.StyleSecondaryButton(btnCancel, 6);
+            pnlFooter.Controls.Add(btnCancel);
 
             var btnSave = new Button
             {
                 Text = "Save Plan",
                 DialogResult = DialogResult.OK,
-                Location = new Point(339, 325),
-                Size = new Size(100, 36),
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                BackColor = Theme.Primary,
-                ForeColor = Color.White,
-                Cursor = Cursors.Hand
+                Location = new Point(350, 12),
+                Size = new Size(106, 36),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
-            UiRadiusHelper.StyleButton(btnSave, 6);
+            UiRadiusHelper.StylePrimaryButton(btnSave, 6);
             btnSave.Click += (_, _) =>
             {
                 SelectedPlan = _cmbTier.SelectedIndex switch
@@ -181,7 +183,10 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 SelectedStatus = _cmbStatus.SelectedItem?.ToString() ?? "Active";
                 BillingAmount = _numAmount.Value;
             };
-            pnlContainer.Controls.Add(btnSave);
+            pnlFooter.Controls.Add(btnSave);
+
+            Controls.Add(pnlContainer);
+            Controls.Add(pnlFooter);
 
             AcceptButton = btnSave;
             CancelButton = btnCancel;

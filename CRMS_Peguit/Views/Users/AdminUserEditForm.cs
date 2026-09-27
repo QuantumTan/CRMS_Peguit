@@ -36,7 +36,7 @@ namespace CRMS_Peguit.winforms.Views.Users
                 txtPassword.Visible = false;
                 lblConfirm.Visible = false;
                 txtConfirmPassword.Visible = false;
-                this.ClientSize = new Size(400, CurrentSession.CanAccessBranching ? 510 : 450);
+                this.ClientSize = new Size(420, CurrentSession.CanAccessBranching ? 500 : 450);
 
                 txtFirstName.Text = _user!.FirstName;
                 txtMiddleName.Text = _user.MiddleName;
@@ -46,7 +46,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             }
             else
             {
-                this.ClientSize = new Size(400, CurrentSession.CanAccessBranching ? 590 : 540);
+                this.ClientSize = new Size(420, CurrentSession.CanAccessBranching ? 580 : 540);
             }
 
             if (CurrentSession.CanAccessBranching)
@@ -68,8 +68,8 @@ namespace CRMS_Peguit.winforms.Views.Users
                     Font = new Font("Segoe UI", 9f)
                 };
 
-                Controls.Add(_lblBranch);
-                Controls.Add(_cmbBranch);
+                pnlContent.Controls.Add(_lblBranch);
+                pnlContent.Controls.Add(_cmbBranch);
 
                 int offset = 54;
                 if (!isEdit)
@@ -79,8 +79,6 @@ namespace CRMS_Peguit.winforms.Views.Users
                     lblConfirm.Top += offset;
                     txtConfirmPassword.Top += offset;
                 }
-                btnSave.Top += offset;
-                btnCancel.Top += offset;
             }
 
             UiRadiusHelper.StyleButton(btnSave, 8);

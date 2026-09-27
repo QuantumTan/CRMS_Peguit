@@ -257,9 +257,101 @@ namespace CRMS_Peguit.winforms.Models.Services
             label.Invalidate();
         }
 
-        public static void ApplyModernGridStyle(DataGridView grid, int rowHeight = 40)
+        public static void ApplyModernGridStyle(DataGridView grid, int rowHeight = 54)
         {
             UiGridHelper.ApplyModernGridStyle(grid, rowHeight);
+        }
+
+        /// <summary>
+        /// Applies standardized modern styling to modal dialog windows:
+        /// White background, 8px rounded corners, disabled maximize/minimize, centered.
+        /// </summary>
+        public static void StyleModal(Form form, int radius = 8)
+        {
+            if (form is null) return;
+            form.BackColor = Color.White;
+            form.StartPosition = FormStartPosition.CenterParent;
+            form.FormBorderStyle = FormBorderStyle.FixedDialog;
+            form.MaximizeBox = false;
+            form.MinimizeBox = false;
+            form.ShowIcon = false;
+            // Note: Do NOT set form.Region on top-level windows with OS borders/titlebars.
+            // GDI+ regions clip OS title bars, bottom dialog action buttons, and disable Windows DWM anti-aliased shadows.
+            if (form.FormBorderStyle == FormBorderStyle.None)
+            {
+                ApplyRoundedCorners(form, radius);
+            }
+        }
+
+        /// <summary>
+        /// Styles an input field (TextBox) with standardized Segoe UI font,
+        /// white background, subtle border, and 10px inner horizontal margins.
+        /// </summary>
+        public static void StyleStandardInput(TextBox textBox, int leftPadding = 10, int rightPadding = 10)
+        {
+            if (textBox is null) return;
+            textBox.Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+            textBox.BackColor = Color.White;
+            textBox.ForeColor = Color.FromArgb(15, 23, 42);
+            textBox.BorderStyle = BorderStyle.FixedSingle;
+            SetPadding(textBox, leftPadding, rightPadding);
+        }
+
+        /// <summary>
+        /// Styles a ComboBox with standardized Segoe UI font and clean dropdown styling.
+        /// </summary>
+        public static void StyleStandardComboBox(ComboBox comboBox)
+        {
+            if (comboBox is null) return;
+            comboBox.Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+            comboBox.BackColor = Color.White;
+            comboBox.ForeColor = Color.FromArgb(15, 23, 42);
+            comboBox.FlatStyle = FlatStyle.System;
+        }
+
+        /// <summary>
+        /// Styles a primary modal action button (filled accent, bold white text, 8px radius).
+        /// </summary>
+        public static void StylePrimaryButton(Button button, int radius = 8)
+        {
+            if (button is null) return;
+            StyleButton(button, radius);
+            button.BackColor = Theme.Primary;
+            button.ForeColor = Color.White;
+            button.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+            button.Height = 36;
+        }
+
+        /// <summary>
+        /// Styles a secondary / cancel modal button (white background, subtle slate border, 8px radius).
+        /// </summary>
+        public static void StyleSecondaryButton(Button button, int radius = 8)
+        {
+            if (button is null) return;
+            StyleButton(button, radius);
+            button.BackColor = Color.White;
+            button.ForeColor = Color.FromArgb(51, 65, 85);
+            button.Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+            button.Height = 36;
+            button.Paint += (s, e) =>
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using var p = new Pen(Color.FromArgb(203, 213, 225), 1f);
+                using var path = CreateRoundedPath(new Rectangle(0, 0, button.Width - 1, button.Height - 1), radius);
+                e.Graphics.DrawPath(p, path);
+            };
+        }
+
+        /// <summary>
+        /// Styles a NumericUpDown with standardized Segoe UI font, white background, and subtle border.
+        /// </summary>
+        public static void StyleStandardNumericUpDown(NumericUpDown numericUpDown)
+        {
+            if (numericUpDown is null) return;
+            numericUpDown.Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+            numericUpDown.BackColor = Color.White;
+            numericUpDown.ForeColor = Color.FromArgb(15, 23, 42);
+            numericUpDown.BorderStyle = BorderStyle.FixedSingle;
         }
     }
 }

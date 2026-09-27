@@ -4,6 +4,7 @@ using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 using CRMS_Peguit.winforms.Services.Offline;
 using System;
 using System.Collections.Generic;
@@ -30,9 +31,9 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 using var db = LocalDb.CreateContext(tenantId: TenantId);
                 var query = db.Deals
-                    .Include(d => d.Customer).ThenInclude(c => c!.Person)
+                    .Include(d => d.Customer)
                     .Include(d => d.Property)
-                    .Include(d => d.Agent).ThenInclude(u => u!.Person)
+                    .Include(d => d.Agent)
                     .AsNoTracking();
 
                 if (!RbacService.HasFullOversight && RbacService.IsAgent)
@@ -74,9 +75,9 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 using var db = LocalDb.CreateContext(tenantId: TenantId);
                 var query = db.Deals
-                    .Include(d => d.Customer).ThenInclude(c => c!.Person)
+                    .Include(d => d.Customer)
                     .Include(d => d.Property)
-                    .Include(d => d.Agent).ThenInclude(u => u!.Person)
+                    .Include(d => d.Agent)
                     .AsNoTracking();
 
                 if (!RbacService.HasFullOversight && RbacService.IsAgent)
@@ -114,11 +115,11 @@ namespace CRMS_Peguit.winforms.Controllers
                 {
                     string s = search.Trim();
                     query = query.Where(d =>
-                        (d.Customer != null && (d.Customer.Person.FirstName.Contains(s) || d.Customer.Person.LastName.Contains(s))) ||
+                        (d.Customer != null && (d.Customer.FirstName.Contains(s) || d.Customer.LastName.Contains(s))) ||
                         (d.Property != null && d.Property.Address.Contains(s)) ||
                         d.Stage.Contains(s) ||
                         (d.PaymentScheme != null && d.PaymentScheme.Contains(s)) ||
-                        (d.Agent != null && (d.Agent.Person.FirstName.Contains(s) || d.Agent.Person.LastName.Contains(s))));
+                        (d.Agent != null && (d.Agent.FirstName.Contains(s) || d.Agent.LastName.Contains(s))));
                 }
 
                 int totalCount = await query.CountAsync();
@@ -259,9 +260,10 @@ namespace CRMS_Peguit.winforms.Controllers
             _db.SaveChanges();
             try { LocalDataCache.Instance.SaveDealsMirror(TenantId, new[] { deal }); } catch { }
 
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            SyncService.Instance.EnqueueOfflineCreate("Deal", deal, TenantId, CurrentSession.UserId, deal.DealId.ToString());
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
             {
-                SyncService.Instance.EnqueueOfflineCreate("Deal", deal, TenantId, CurrentSession.UserId);
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
             }
 
             return deal;
@@ -269,11 +271,6 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public void Update(Deal deal)
         {
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                SyncService.Instance.EnqueueOfflineUpdate("Deal", deal.DealId, deal, TenantId, CurrentSession.UserId, deal.CreatedAt);
-            }
-
             var item = _db.Deals.Include(d => d.Contingencies).Include(d => d.DealClauses).SingleOrDefault(x => x.DealId == deal.DealId);
             if (item is null) return;
 
@@ -326,7 +323,25 @@ namespace CRMS_Peguit.winforms.Controllers
                         $"Deal #{item.DealId} was successfully Closed for ₱{item.Value:N2}.",
                         "Deal",
                         item.DealId);
+
+                    int custId = item.CustomerId;
+                    int tenant = TenantId;
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            using var dbContext = LocalDb.CreateContext(tenant);
+                            await RetentionCalculationService.RecalculateCustomerAsync(dbContext, custId);
+                        }
+                        catch { }
+                    });
                 }
+            }
+
+            SyncService.Instance.EnqueueOfflineUpdate("Deal", item.DealId, item, TenantId, CurrentSession.UserId, item.CreatedAt);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
             }
         }
 
@@ -371,10 +386,9 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             using var db = LocalDb.CreateContext(tenantId: TenantId);
             return db.Customers
-                .Include(x => x.Person)
                 .AsNoTracking()
-                .OrderBy(x => x.Person.LastName)
-                .ThenBy(x => x.Person.FirstName)
+                .OrderBy(x => x.LastName)
+                .ThenBy(x => x.FirstName)
                 .ToDictionary(
                     x => x.CustomerId,
                     x => x.FullName
@@ -397,10 +411,9 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             using var db = LocalDb.CreateContext(tenantId: TenantId);
             return db.Users
-                .Include(x => x.Person)
                 .AsNoTracking()
-                .OrderBy(x => x.Person.FirstName)
-                .ThenBy(x => x.Person.LastName)
+                .OrderBy(x => x.FirstName)
+                .ThenBy(x => x.LastName)
                 .ToDictionary(
                     x => x.UserId,
                     x => x.FullName
@@ -412,12 +425,11 @@ namespace CRMS_Peguit.winforms.Controllers
             var buyerTypes = new[] { "buyer", "both" };
 
             return _db.Customers
-                .Include(c => c.Person)
                 .AsNoTracking()
                 .Where(c => (buyerTypes.Contains(c.Type.ToLower()) && c.Status.ToLower() != "inactive") ||
                             (includeCustomerId.HasValue && c.CustomerId == includeCustomerId.Value))
-                .OrderBy(c => c.Person.LastName)
-                .ThenBy(c => c.Person.FirstName)
+                .OrderBy(c => c.LastName)
+                .ThenBy(c => c.FirstName)
                 .ToList()
                 .Select(c => new KeyValuePair<int, string>(c.CustomerId, c.FullName))
                 .ToList();
@@ -435,10 +447,9 @@ namespace CRMS_Peguit.winforms.Controllers
         public List<KeyValuePair<int, string>> GetAgentPickerList()
         {
             return _db.Users
-                .Include(u => u.Person)
                 .AsNoTracking()
                 .Where(u => u.Status != "inactive")
-                .OrderBy(u => u.Person.LastName)
+                .OrderBy(u => u.LastName)
                 .ToList()
                 .Select(u => new KeyValuePair<int, string>(u.UserId, u.FullName))
                 .ToList();

@@ -25,6 +25,8 @@ namespace CRMS_Peguit.winforms.Views.Customers
 
         private System.Windows.Forms.Button btnSave = null!;
         private System.Windows.Forms.Button btnCancel = null!;
+        private System.Windows.Forms.Panel pnlFooter = null!;
+        private System.Windows.Forms.Panel pnlContent = null!;
 
         protected override void Dispose(bool disposing)
         {
@@ -57,6 +59,10 @@ namespace CRMS_Peguit.winforms.Views.Customers
             this.cmbStatus = new System.Windows.Forms.ComboBox();
             this.btnSave = new System.Windows.Forms.Button();
             this.btnCancel = new System.Windows.Forms.Button();
+            this.pnlFooter = new System.Windows.Forms.Panel();
+            this.pnlContent = new System.Windows.Forms.Panel();
+            this.pnlFooter.SuspendLayout();
+            this.pnlContent.SuspendLayout();
             this.SuspendLayout();
             // 
             // lblFirstName
@@ -238,8 +244,37 @@ namespace CRMS_Peguit.winforms.Views.Customers
             this.cmbStatus.TabIndex = 15;
             // 
             // 
+            // 
+            // pnlContent
+            // 
+            this.pnlContent.AutoScroll = true;
+            this.pnlContent.BackColor = System.Drawing.Color.FromArgb(243, 247, 250);
+            this.pnlContent.Controls.Add(this.lblFirstName);
+            this.pnlContent.Controls.Add(this.txtFirstName);
+            this.pnlContent.Controls.Add(this.lblMiddleName);
+            this.pnlContent.Controls.Add(this.txtMiddleName);
+            this.pnlContent.Controls.Add(this.lblLastName);
+            this.pnlContent.Controls.Add(this.txtLastName);
+            this.pnlContent.Controls.Add(this.lblSuffix);
+            this.pnlContent.Controls.Add(this.cmbSuffix);
+            this.pnlContent.Controls.Add(this.lblEmail);
+            this.pnlContent.Controls.Add(this.txtEmail);
+            this.pnlContent.Controls.Add(this.lblPhone);
+            this.pnlContent.Controls.Add(this.txtPhone);
+            this.pnlContent.Controls.Add(this.lblType);
+            this.pnlContent.Controls.Add(this.cmbType);
+            this.pnlContent.Controls.Add(this.lblStatus);
+            this.pnlContent.Controls.Add(this.cmbStatus);
+            this.pnlContent.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.pnlContent.Location = new System.Drawing.Point(0, 0);
+            this.pnlContent.Name = "pnlContent";
+            this.pnlContent.Padding = new System.Windows.Forms.Padding(20);
+            this.pnlContent.Size = new System.Drawing.Size(520, 420);
+            this.pnlContent.TabIndex = 0;
+            // 
             // btnCancel
             // 
+            this.btnCancel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnCancel.BackColor = System.Drawing.Color.White;
             this.btnCancel.Cursor = System.Windows.Forms.Cursors.Hand;
             this.btnCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
@@ -247,64 +282,65 @@ namespace CRMS_Peguit.winforms.Views.Customers
             this.btnCancel.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnCancel.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
             this.btnCancel.ForeColor = System.Drawing.Color.FromArgb(8, 52, 87);
-            this.btnCancel.Location = new System.Drawing.Point(300, 390);
+            this.btnCancel.Location = new System.Drawing.Point(305, 11);
             this.btnCancel.Name = "btnCancel";
-            this.btnCancel.Size = new System.Drawing.Size(85, 38);
+            this.btnCancel.Size = new System.Drawing.Size(90, 38);
             this.btnCancel.TabIndex = 16;
             this.btnCancel.Text = "Cancel";
             this.btnCancel.UseVisualStyleBackColor = false;
             // 
             // btnSave
             // 
+            this.btnSave.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnSave.BackColor = System.Drawing.Color.FromArgb(37, 103, 156);
             this.btnSave.Cursor = System.Windows.Forms.Cursors.Hand;
             this.btnSave.FlatAppearance.BorderSize = 0;
             this.btnSave.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnSave.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
             this.btnSave.ForeColor = System.Drawing.Color.White;
-            this.btnSave.Location = new System.Drawing.Point(395, 390);
+            this.btnSave.Location = new System.Drawing.Point(405, 11);
             this.btnSave.Name = "btnSave";
-            this.btnSave.Size = new System.Drawing.Size(85, 38);
+            this.btnSave.Size = new System.Drawing.Size(95, 38);
             this.btnSave.TabIndex = 17;
             this.btnSave.Text = "Save";
             this.btnSave.UseVisualStyleBackColor = false;
+            // 
+            // pnlFooter
+            // 
+            this.pnlFooter.BackColor = System.Drawing.Color.FromArgb(243, 247, 250);
+            this.pnlFooter.Controls.Add(this.btnCancel);
+            this.pnlFooter.Controls.Add(this.btnSave);
+            this.pnlFooter.Dock = System.Windows.Forms.DockStyle.Bottom;
+            this.pnlFooter.Location = new System.Drawing.Point(0, 420);
+            this.pnlFooter.Name = "pnlFooter";
+            this.pnlFooter.Padding = new System.Windows.Forms.Padding(20, 10, 20, 10);
+            this.pnlFooter.Size = new System.Drawing.Size(520, 60);
+            this.pnlFooter.TabIndex = 1;
             // 
             // CustomerInputForm
             // 
             this.AcceptButton = this.btnSave;
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.AutoScroll = false;
             this.BackColor = System.Drawing.Color.FromArgb(243, 247, 250);
             this.CancelButton = this.btnCancel;
-            this.ClientSize = new System.Drawing.Size(504, 461);
-            this.Controls.Add(this.lblFirstName);
-            this.Controls.Add(this.txtFirstName);
-            this.Controls.Add(this.lblMiddleName);
-            this.Controls.Add(this.txtMiddleName);
-            this.Controls.Add(this.lblLastName);
-            this.Controls.Add(this.txtLastName);
-            this.Controls.Add(this.lblSuffix);
-            this.Controls.Add(this.cmbSuffix);
-            this.Controls.Add(this.lblEmail);
-            this.Controls.Add(this.txtEmail);
-            this.Controls.Add(this.lblPhone);
-            this.Controls.Add(this.txtPhone);
-            this.Controls.Add(this.lblType);
-            this.Controls.Add(this.cmbType);
-            this.Controls.Add(this.lblStatus);
-            this.Controls.Add(this.cmbStatus);
-            this.Controls.Add(this.btnCancel);
-            this.Controls.Add(this.btnSave);
+            this.ClientSize = new System.Drawing.Size(520, 480);
+            this.Controls.Add(this.pnlContent);
+            this.Controls.Add(this.pnlFooter);
             this.Font = new System.Drawing.Font("Segoe UI", 10F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
+            this.MinimumSize = new System.Drawing.Size(520, 480);
             this.Name = "CustomerInputForm";
             this.ShowInTaskbar = false;
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "Customer Details";
+            this.pnlContent.ResumeLayout(false);
+            this.pnlContent.PerformLayout();
+            this.pnlFooter.ResumeLayout(false);
             this.ResumeLayout(false);
-            this.PerformLayout();
         }
 
         #endregion

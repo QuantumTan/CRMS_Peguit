@@ -79,6 +79,7 @@ namespace CRMS_Peguit.winforms.Views.Sync
                 Text = "Decide Later",
                 Size = new Size(110, 38),
                 Location = new Point(20, 14),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
                 BackColor = Color.FromArgb(241, 245, 249),
                 ForeColor = Color.FromArgb(71, 85, 105),
                 FlatStyle = FlatStyle.Flat,
@@ -92,6 +93,7 @@ namespace CRMS_Peguit.winforms.Views.Sync
                 Text = "Discard Offline (Keep Server)",
                 Size = new Size(220, 38),
                 Location = new Point(370, 14),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 BackColor = Color.FromArgb(15, 23, 42),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
@@ -106,6 +108,7 @@ namespace CRMS_Peguit.winforms.Views.Sync
                 Text = "Apply Offline (Overwrite Server)",
                 Size = new Size(230, 38),
                 Location = new Point(600, 14),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 BackColor = Color.FromArgb(37, 99, 235), // Blue-600
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,

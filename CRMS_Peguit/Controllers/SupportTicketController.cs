@@ -7,6 +7,7 @@ using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 using CRMS_Peguit.winforms.Services.Offline;
 using Microsoft.EntityFrameworkCore;
 
@@ -34,9 +35,9 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 using var db = LocalDb.CreateContext(TenantId);
                 var query = db.SupportTickets
-                    .Include(t => t.Customer).ThenInclude(c => c.Person)
-                    .Include(t => t.RaisedByUser).ThenInclude(u => u.Person)
-                    .Include(t => t.AssignedToUser).ThenInclude(u => u!.Person)
+                    .Include(t => t.Customer)
+                    .Include(t => t.RaisedByUser)
+                    .Include(t => t.AssignedToUser)
                     .AsNoTracking();
 
                 // Row-level ownership check:
@@ -83,10 +84,10 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 using var db = LocalDb.CreateContext(TenantId);
                 var query = db.SupportTickets
-                    .Include(t => t.Customer).ThenInclude(c => c.Person)
+                    .Include(t => t.Customer)
                     .Include(t => t.Customer).ThenInclude(c => c.AssignedAgent)
-                    .Include(t => t.RaisedByUser).ThenInclude(u => u.Person)
-                    .Include(t => t.AssignedToUser).ThenInclude(u => u!.Person)
+                    .Include(t => t.RaisedByUser)
+                    .Include(t => t.AssignedToUser)
                     .AsNoTracking()
                     .Where(t => !t.IsDeleted);
 
@@ -137,8 +138,8 @@ namespace CRMS_Peguit.winforms.Controllers
                         (t.Description != null && t.Description.Contains(s)) ||
                         t.Category.Contains(s) ||
                         t.Status.Contains(s) ||
-                        (t.Customer != null && (t.Customer.Person.FirstName.Contains(s) || t.Customer.Person.LastName.Contains(s))) ||
-                        (t.AssignedToUser != null && (t.AssignedToUser.Person.FirstName.Contains(s) || t.AssignedToUser.Person.LastName.Contains(s))));
+                        (t.Customer != null && (t.Customer.FirstName.Contains(s) || t.Customer.LastName.Contains(s))) ||
+                        (t.AssignedToUser != null && (t.AssignedToUser.FirstName.Contains(s) || t.AssignedToUser.LastName.Contains(s))));
                 }
 
                 int totalCount = await query.CountAsync();
@@ -164,10 +165,10 @@ namespace CRMS_Peguit.winforms.Controllers
         public SupportTicket? GetById(int id)
         {
             var item = _db.SupportTickets
-                .Include(t => t.Customer).ThenInclude(c => c.Person)
-                .Include(t => t.RaisedByUser).ThenInclude(u => u.Person)
-                .Include(t => t.AssignedToUser).ThenInclude(u => u!.Person)
-                .Include(t => t.Comments).ThenInclude(c => c.AuthorUser).ThenInclude(u => u.Person)
+                .Include(t => t.Customer)
+                .Include(t => t.RaisedByUser)
+                .Include(t => t.AssignedToUser)
+                .Include(t => t.Comments).ThenInclude(c => c.AuthorUser)
                 .AsNoTracking()
                 .SingleOrDefault(t => t.TicketId == id);
 
@@ -254,9 +255,10 @@ namespace CRMS_Peguit.winforms.Controllers
             ticket.TicketNumber = $"TCK-{ticket.TicketId:D5}";
             _db.SaveChanges();
 
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            SyncService.Instance.EnqueueOfflineCreate("SupportTicket", ticket, TenantId, CurrentSession.UserId, ticket.TicketId.ToString());
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
             {
-                SyncService.Instance.EnqueueOfflineCreate("SupportTicket", ticket, TenantId, CurrentSession.UserId);
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
             }
 
             // Add creation audit entry in comment thread
@@ -359,6 +361,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
             _db.SaveChanges();
 
+            SyncService.Instance.EnqueueOfflineUpdate("SupportTicket", ticket.TicketId, ticket, TenantId, actorUserId, DateTime.UtcNow);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
+
             if (ticket.AssignedToUserId.HasValue && ticket.AssignedToUserId.Value > 0 && ticket.AssignedToUserId.Value != actorUserId)
             {
                 _notifCtrl.CreateNotification(
@@ -419,6 +427,12 @@ namespace CRMS_Peguit.winforms.Controllers
             _db.TicketComments.Add(logEntry);
 
             _db.SaveChanges();
+
+            SyncService.Instance.EnqueueOfflineUpdate("SupportTicket", ticket.TicketId, ticket, TenantId, actorUserId, DateTime.UtcNow);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
         }
 
         // =========================================================================
@@ -470,6 +484,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
             _db.SaveChanges();
 
+            SyncService.Instance.EnqueueOfflineUpdate("SupportTicket", ticket.TicketId, ticket, TenantId, actorUserId, DateTime.UtcNow);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
+
             // Agent receives: A Support Ticket is assigned or reassigned to them
             if (validNewAgentId.HasValue && validNewAgentId.Value > 0)
             {
@@ -490,7 +510,6 @@ namespace CRMS_Peguit.winforms.Controllers
         public List<TicketComment> GetComments(int ticketId)
         {
             return _db.TicketComments
-                .Include(c => c.AuthorUser).ThenInclude(u => u.Person)
                 .Include(c => c.AuthorUser).ThenInclude(u => u.Role)
                 .Where(c => c.TicketId == ticketId)
                 .OrderBy(c => c.CreatedAt)
@@ -616,6 +635,12 @@ namespace CRMS_Peguit.winforms.Controllers
             _db.TicketComments.Add(logEntry);
 
             _db.SaveChanges();
+
+            SyncService.Instance.EnqueueOfflineDelete("SupportTicket", ticket.TicketId, TenantId, actorUserId);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
         }
 
         // =========================================================================
@@ -642,7 +667,6 @@ namespace CRMS_Peguit.winforms.Controllers
                 using var db = LocalDb.CreateContext(TenantId);
                 _cachedAgentDict = db.Users
                     .AsNoTracking()
-                    .Include(u => u.Person)
                     .ToDictionary(u => u.UserId, u => u.FullName);
             }
             catch
@@ -662,10 +686,9 @@ namespace CRMS_Peguit.winforms.Controllers
         public List<Customer> GetCustomers()
         {
             return _db.Customers
-                .Include(c => c.Person)
                 .AsNoTracking()
-                .OrderBy(c => c.Person.LastName)
-                .ThenBy(c => c.Person.FirstName)
+                .OrderBy(c => c.LastName)
+                .ThenBy(c => c.FirstName)
                 .ToList();
         }
 
@@ -680,8 +703,8 @@ namespace CRMS_Peguit.winforms.Controllers
             return _db.Users
                 .AsNoTracking()
                 .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status.ToLower() != "inactive")
-                .OrderBy(u => u.Person.LastName)
-                .ThenBy(u => u.Person.FirstName)
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
                 .AsEnumerable()
                 .Select(u => new AgentPickerItem(u.UserId, u.FullName, u.Email))
                 .ToList();
@@ -716,7 +739,7 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 var rawTickets = _db.SupportTickets
                     .AsNoTracking()
-                    .Include(t => t.Customer).ThenInclude(c => c!.Person)
+                    .Include(t => t.Customer)
                     .Where(t => !t.IsDeleted && t.Status != "Resolved" && t.Status != "Closed")
                     .OrderBy(t => t.CreatedAt)
                     .Take(maxCount)

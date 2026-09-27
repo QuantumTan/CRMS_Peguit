@@ -33,7 +33,8 @@ namespace CRMS_Peguit.winforms.Views.Sync
         private void InitializeComponent()
         {
             this.Text = "NEXA — Local-to-Cloud Data Synchronization Status";
-            this.Size = new Size(1000, 680);
+            this.Size = new Size(1040, 680);
+            this.MinimumSize = new Size(960, 560);
             this.StartPosition = FormStartPosition.CenterParent;
             this.BackColor = Color.FromArgb(248, 250, 252);
             this.Font = new Font("Segoe UI", 9.5F, FontStyle.Regular);
@@ -100,12 +101,13 @@ namespace CRMS_Peguit.winforms.Views.Sync
             {
                 Text = "⚡ Sync Now",
                 Size = new Size(110, 36),
-                Location = new Point(660, 56),
+                Location = new Point(640, 56),
                 BackColor = Color.FromArgb(37, 99, 235),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold),
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             _btnSyncNow.FlatAppearance.BorderSize = 0;
 
@@ -113,12 +115,13 @@ namespace CRMS_Peguit.winforms.Views.Sync
             {
                 Text = "🔁 Retry Failed",
                 Size = new Size(110, 36),
-                Location = new Point(778, 56),
+                Location = new Point(760, 56),
                 BackColor = Color.FromArgb(241, 245, 249),
                 ForeColor = Color.FromArgb(15, 23, 42),
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 9F, FontStyle.Regular),
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             _btnRetryAll.FlatAppearance.BorderSize = 0;
 
@@ -126,16 +129,25 @@ namespace CRMS_Peguit.winforms.Views.Sync
             {
                 Text = "🧹 Clear Synced",
                 Size = new Size(110, 36),
-                Location = new Point(896, 56),
+                Location = new Point(880, 56),
                 BackColor = Color.FromArgb(241, 245, 249),
                 ForeColor = Color.FromArgb(100, 116, 139),
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 9F, FontStyle.Regular),
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             _btnClearSynced.FlatAppearance.BorderSize = 0;
 
             pnlTop.Controls.AddRange(new Control[] { lblTitle, _lblStatusBadge, pnlMetrics, _btnSyncNow, _btnRetryAll, _btnClearSynced });
+
+            pnlTop.Resize += (_, _) =>
+            {
+                int rightEdge = pnlTop.Width - 24;
+                _btnClearSynced.Location = new Point(rightEdge - _btnClearSynced.Width, 56);
+                _btnRetryAll.Location = new Point(_btnClearSynced.Left - _btnRetryAll.Width - 10, 56);
+                _btnSyncNow.Location = new Point(_btnRetryAll.Left - _btnSyncNow.Width - 10, 56);
+            };
 
             // ==========================================================
             // FILTER BAR
@@ -362,7 +374,7 @@ namespace CRMS_Peguit.winforms.Views.Sync
                 _btnSyncNow.Text = "Syncing...";
                 try
                 {
-                    await SyncService.Instance.SyncAsync();
+                    await SyncService.Instance.SyncAsync(waitIfBusy: true, isFullSync: true);
                 }
                 finally
                 {

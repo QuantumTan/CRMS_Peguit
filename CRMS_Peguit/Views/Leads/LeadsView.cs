@@ -14,6 +14,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
     {
         private readonly LeadController _controller;
         private string _filterStage = "All";
+        private ScreenFilterCoordinator _filterCoord = null!;
         private Button? _btnExport;
         private Panel _pnlEmptyState = null!;
         private int _hoverRowIndex = -1;
@@ -78,11 +79,12 @@ namespace CRMS_Peguit.winforms.Views.Leads
             _kpiQualified = new KpiCard("QUALIFIED", "qualified", Color.FromArgb(16, 185, 129), KpiIconType.Target, "High interest") { Dock = DockStyle.Fill, Margin = new Padding(4, 0, 4, 0), ClickMode = KpiClickMode.InPlaceFilter };
             _kpiConverted = new KpiCard("CONVERTED", "converted", Color.FromArgb(168, 85, 247), KpiIconType.Users, "Became clients") { Dock = DockStyle.Fill, Margin = new Padding(6, 0, 0, 0), ClickMode = KpiClickMode.InPlaceFilter };
 
-            _kpiTotal.Click += (_, _) => SetFilter("All");
-            _kpiNew.Click += (_, _) => SetFilter("New");
-            _kpiContacted.Click += (_, _) => SetFilter("Contacted");
-            _kpiQualified.Click += (_, _) => SetFilter("Qualified");
-            _kpiConverted.Click += (_, _) => SetFilter("Converted");
+            _filterCoord = new ScreenFilterCoordinator();
+            _filterCoord.Register(_kpiTotal, _kpiNew, _kpiContacted, _kpiQualified, _kpiConverted);
+            _filterCoord.FilterChanged += (src, key) =>
+            {
+                SetFilter(key ?? "All");
+            };
 
             _pnlKpiContainer.Controls.Add(_kpiTotal, 0, 0);
             _pnlKpiContainer.Controls.Add(_kpiNew, 1, 0);
@@ -162,11 +164,11 @@ namespace CRMS_Peguit.winforms.Views.Leads
                 _btnExport.BringToFront();
             }
 
-            btnFilterAll.Click += (_, _) => SetFilter("All");
-            btnFilterNew.Click += (_, _) => SetFilter("New");
-            btnFilterContacted.Click += (_, _) => SetFilter("Contacted");
-            btnFilterQualified.Click += (_, _) => SetFilter("Qualified");
-            btnFilterConverted.Click += (_, _) => SetFilter("Converted");
+            btnFilterAll.Click += (s, _) => _filterCoord.SetActive(s!, "All");
+            btnFilterNew.Click += (s, _) => _filterCoord.SetActive(s!, "New");
+            btnFilterContacted.Click += (s, _) => _filterCoord.SetActive(s!, "Contacted");
+            btnFilterQualified.Click += (s, _) => _filterCoord.SetActive(s!, "Qualified");
+            btnFilterConverted.Click += (s, _) => _filterCoord.SetActive(s!, "Converted");
 
             // Modern Grid Styling (52px row height for uniform CRM table presentation)
             UiGridHelper.ApplyModernGridStyle(grid, 52);
@@ -233,12 +235,6 @@ namespace CRMS_Peguit.winforms.Views.Leads
             _kpiContacted.SetValue(counts.Contacted);
             _kpiQualified.SetValue(counts.Qualified);
             _kpiConverted.SetValue(counts.Converted);
-
-            _kpiTotal.SetSelected(string.Equals(_filterStage, "All", StringComparison.OrdinalIgnoreCase));
-            _kpiNew.SetSelected(string.Equals(_filterStage, "New", StringComparison.OrdinalIgnoreCase));
-            _kpiContacted.SetSelected(string.Equals(_filterStage, "Contacted", StringComparison.OrdinalIgnoreCase));
-            _kpiQualified.SetSelected(string.Equals(_filterStage, "Qualified", StringComparison.OrdinalIgnoreCase));
-            _kpiConverted.SetSelected(string.Equals(_filterStage, "Converted", StringComparison.OrdinalIgnoreCase));
 
             var pills = new[]
             {

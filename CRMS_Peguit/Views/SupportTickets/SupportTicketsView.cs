@@ -25,6 +25,7 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
         private Dictionary<int, string> _agentDict = new();
         private readonly System.Windows.Forms.Timer _searchDebounceTimer;
         private bool _isLoading = false;
+        private ScreenFilterCoordinator _filterCoord = null!;
 
         public SupportTicketsView()
         {
@@ -121,24 +122,21 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
                 _btnExport.BringToFront();
             }
 
-            // Case 1: InPlaceFilter mode on all KPI cards
-            kpiTotal.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiOpen.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiInProgress.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiOverdue.ClickMode = KpiClickMode.InPlaceFilter;
-
-            // Wire KPI card click-to-filter interaction
-            kpiTotal.Click += (_, _) => SetFilter("All");
-            kpiOpen.Click += (_, _) => SetFilter("Open");
-            kpiInProgress.Click += (_, _) => SetFilter("In Progress");
-            kpiOverdue.Click += (_, _) => SetFilter("Overdue");
+            _filterCoord = new ScreenFilterCoordinator();
+            kpiTotal.FilterKey = "All";
+            kpiOpen.FilterKey = "Open";
+            kpiInProgress.FilterKey = "In Progress";
+            kpiOverdue.FilterKey = "Overdue";
+            
+            _filterCoord.Register(kpiTotal, kpiOpen, kpiInProgress, kpiOverdue);
+            _filterCoord.FilterChanged += (_, filterKey) => SetFilter(filterKey ?? "All");
 
             // Filter pills
-            btnFilterAll.Click += (_, _) => SetFilter("All");
-            btnFilterOpen.Click += (_, _) => SetFilter("Open");
-            btnFilterInProgress.Click += (_, _) => SetFilter("In Progress");
-            btnFilterResolved.Click += (_, _) => SetFilter("Resolved");
-            btnFilterOverdue.Click += (_, _) => SetFilter("Overdue");
+            btnFilterAll.Click += (_, _) => _filterCoord.SetActive(btnFilterAll, "All");
+            btnFilterOpen.Click += (_, _) => _filterCoord.SetActive(btnFilterOpen, "Open");
+            btnFilterInProgress.Click += (_, _) => _filterCoord.SetActive(btnFilterInProgress, "In Progress");
+            btnFilterResolved.Click += (_, _) => _filterCoord.SetActive(btnFilterResolved, "Resolved");
+            btnFilterOverdue.Click += (_, _) => _filterCoord.SetActive(btnFilterOverdue, "Overdue");
 
             // Modern Grid Styling & Search Padding
             UiGridHelper.ApplyModernGridStyle(grid, 52);

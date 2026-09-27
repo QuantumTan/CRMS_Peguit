@@ -4,46 +4,13 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using CRMS_Peguit.domain.entities;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Auth;
 
 namespace CRMS_Peguit.winforms.Controllers
 {
-    /// <summary>
-    /// Platform-level BI summary — aggregate counts from MasterCrmsDbContext ONLY.
-    /// SECURITY: This DTO intentionally contains NO fields sourced from Customer, Lead, Deal,
-    /// Property, Activity, SupportTicket, TaskReminder, or Notification tables.
-    /// All fields are derived exclusively from Companies and Subscriptions in the master DB.
-    /// TotalPlatformDeals / TotalPlatformDealVolume / TotalPlatformCustomers / TotalPlatformLeads
-    /// were REMOVED (they required querying tenant RealEstateDbContext — outside Super Admin scope).
-    /// </summary>
-    public class PlatformBiSummaryDto
-    {
-        public int TotalTenants { get; set; }
-        public int ActiveSubscriptions { get; set; }
-        public int ExpiringSubscriptions { get; set; }
-        public int ExpiredSubscriptions { get; set; }
-        public decimal TotalMrr { get; set; }
-
-        public int TenantACount { get; set; }
-        public int TenantBCount { get; set; }
-        public int TenantCCount { get; set; }
-    }
-
-    public class TenantSubscriptionDto
-    {
-        public int SubscriptionId { get; set; }
-        public int CompanyId { get; set; }
-        public string CompanyCode { get; set; } = string.Empty;
-        public string CompanyName { get; set; } = string.Empty;
-        public string PlanName { get; set; } = string.Empty;
-        public TenantTier Tier { get; set; }
-        public DateTime StartDate { get; set; }
-        public DateTime? EndDate { get; set; }
-        public decimal BillingAmount { get; set; }
-        public string Status { get; set; } = string.Empty;
-    }
-
     public class SuperAdminSubscriptionController
     {
         private MasterCrmsDbContext CreateMasterDb()
@@ -67,12 +34,11 @@ namespace CRMS_Peguit.winforms.Controllers
 
                 var allSubs = companies.SelectMany(c => c.Subscriptions).ToList();
                 var now = DateTime.UtcNow;
-                var monthEnd = now.AddDays(30);
 
-                summary.ActiveSubscriptions = allSubs.Count(s => s.Status.Equals("Active", StringComparison.OrdinalIgnoreCase));
-                summary.ExpiringSubscriptions = allSubs.Count(s => s.Status.Equals("Active", StringComparison.OrdinalIgnoreCase) && s.EndDate.HasValue && s.EndDate.Value <= monthEnd && s.EndDate.Value >= now);
-                summary.ExpiredSubscriptions = allSubs.Count(s => s.Status.Equals("Expired", StringComparison.OrdinalIgnoreCase) || (s.EndDate.HasValue && s.EndDate.Value < now));
-                summary.TotalMrr = allSubs.Where(s => s.Status.Equals("Active", StringComparison.OrdinalIgnoreCase)).Sum(s => s.BillingAmount);
+                summary.ActiveSubscriptions = allSubs.Count(s => Subscription.CalculateStatus(s.EndDate, now) == "Active");
+                summary.ExpiringSubscriptions = allSubs.Count(s => Subscription.CalculateStatus(s.EndDate, now) == "Expiring Soon");
+                summary.ExpiredSubscriptions = allSubs.Count(s => Subscription.CalculateStatus(s.EndDate, now) == "Expired");
+                summary.TotalMrr = allSubs.Where(s => Subscription.CalculateStatus(s.EndDate, now) == "Active").Sum(s => s.BillingAmount);
 
                 summary.TenantACount = allSubs.Count(s => s.PlanName.Contains("Tenant A", StringComparison.OrdinalIgnoreCase));
                 summary.TenantBCount = allSubs.Count(s => s.PlanName.Contains("Tenant B", StringComparison.OrdinalIgnoreCase));
@@ -136,7 +102,7 @@ namespace CRMS_Peguit.winforms.Controllers
                                 StartDate = sub.StartDate,
                                 EndDate = sub.EndDate,
                                 BillingAmount = sub.BillingAmount,
-                                Status = sub.Status
+                                Status = Subscription.CalculateStatus(sub.EndDate)
                             });
                         }
                     }
@@ -191,19 +157,50 @@ namespace CRMS_Peguit.winforms.Controllers
             return list;
         }
 
+        private static async Task WriteAuditLogAsync(MasterCrmsDbContext masterDb, string actionType, string detail, int? companyId = null, string? companyName = null)
+        {
+            try
+            {
+                masterDb.PlatformAuditLogs.Add(new PlatformAuditLog
+                {
+                    PerformedBySuperAdminId = CurrentSession.UserId > 0 ? CurrentSession.UserId : 1,
+                    PerformedByName = CurrentSession.CurrentUser?.FullName ?? "Super Admin",
+                    ActionType = actionType,
+                    Detail = detail,
+                    TargetCompanyId = companyId,
+                    TargetCompanyName = companyName,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await masterDb.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[WriteAuditLogAsync] Error: {ex.Message}");
+            }
+        }
+
         public async Task<bool> UpdateSubscriptionAsync(int subscriptionId, string newPlanName, string newStatus, decimal billingAmount, DateTime? endDate)
         {
             try
             {
                 using var masterDb = CreateMasterDb();
-                var sub = await masterDb.Subscriptions.FirstOrDefaultAsync(s => s.SubscriptionId == subscriptionId);
+                var sub = await masterDb.Subscriptions
+                    .Include(s => s.Company)
+                    .FirstOrDefaultAsync(s => s.SubscriptionId == subscriptionId);
                 if (sub != null)
                 {
+                    string oldPlan = sub.PlanName;
+                    string oldStatus = sub.Status;
                     sub.PlanName = newPlanName;
                     sub.Status = newStatus;
                     sub.BillingAmount = billingAmount;
                     sub.EndDate = endDate;
                     await masterDb.SaveChangesAsync();
+
+                    await WriteAuditLogAsync(masterDb, "SubscriptionChanged",
+                        $"Subscription #{subscriptionId} ({sub.Company?.CompanyName ?? "Tenant"}): Plan '{oldPlan}' → '{newPlanName}', Status '{oldStatus}' → '{newStatus}', Amount ₱{billingAmount:N2}",
+                        sub.CompanyId, sub.Company?.CompanyName);
+
                     return true;
                 }
             }
@@ -219,6 +216,7 @@ namespace CRMS_Peguit.winforms.Controllers
             try
             {
                 using var masterDb = CreateMasterDb();
+                var company = await masterDb.Companies.FindAsync(companyId);
                 var sub = await masterDb.Subscriptions
                     .Where(s => s.CompanyId == companyId)
                     .OrderByDescending(s => s.StartDate)
@@ -226,8 +224,14 @@ namespace CRMS_Peguit.winforms.Controllers
 
                 if (sub != null)
                 {
+                    string oldPlan = sub.PlanName;
                     sub.PlanName = newPlanName;
                     await masterDb.SaveChangesAsync();
+
+                    await WriteAuditLogAsync(masterDb, "SubscriptionChanged",
+                        $"Tenant '{company?.CompanyName ?? $"ID {companyId}"}' tier plan changed from '{oldPlan}' to '{newPlanName}'",
+                        companyId, company?.CompanyName);
+
                     return true;
                 }
                 else
@@ -243,6 +247,11 @@ namespace CRMS_Peguit.winforms.Controllers
                     };
                     masterDb.Subscriptions.Add(newSub);
                     await masterDb.SaveChangesAsync();
+
+                    await WriteAuditLogAsync(masterDb, "SubscriptionChanged",
+                        $"Tenant '{company?.CompanyName ?? $"ID {companyId}"}' initial plan set to '{newPlanName}'",
+                        companyId, company?.CompanyName);
+
                     return true;
                 }
             }
@@ -251,6 +260,182 @@ namespace CRMS_Peguit.winforms.Controllers
                 System.Diagnostics.Debug.WriteLine($"[ChangeTenantTierAsync] Error: {ex.Message}");
                 return false;
             }
+        }
+
+        public async Task<(bool Success, string Message, PaymentRecordDto? Record)> RecordPaymentAsync(RecordPaymentRequest req)
+        {
+            if (req.SubscriptionId <= 0)
+                return (false, "Please select a valid subscription.", null);
+
+            if (req.AmountPaid <= 0)
+                return (false, "Amount paid must be greater than zero.", null);
+
+            if (string.IsNullOrWhiteSpace(req.PaymentReference))
+                return (false, "Payment Reference is required. Please provide a bank transaction ID, GCash reference number, or check number.", null);
+
+            try
+            {
+                using var masterDb = CreateMasterDb();
+                var sub = await masterDb.Subscriptions
+                    .Include(s => s.Company)
+                    .FirstOrDefaultAsync(s => s.SubscriptionId == req.SubscriptionId);
+
+                if (sub == null)
+                    return (false, "Subscription record not found.", null);
+
+                // Core Extension Math:
+                // If renewing before expiry (current EndDate > paymentDate), extend from current EndDate.
+                // If renewing after lapse (current EndDate <= paymentDate), extend from paymentDate.
+                var (newEndDate, newStatus) = Subscription.CalculateExtension(sub.EndDate, req.PaymentDate, sub.PlanName);
+
+                sub.EndDate = newEndDate;
+                sub.Status = newStatus;
+
+                int superAdminId = CurrentSession.UserId > 0 ? CurrentSession.UserId : 1;
+                string superAdminName = CurrentSession.CurrentUser?.FullName ?? "Platform Super Admin";
+
+                var record = new PaymentRecord
+                {
+                    SubscriptionId = sub.SubscriptionId,
+                    AmountPaid = req.AmountPaid,
+                    PaymentMethod = req.PaymentMethod,
+                    PaymentReference = req.PaymentReference.Trim(),
+                    PaymentDate = req.PaymentDate,
+                    RecordedByUserId = superAdminId,
+                    Notes = req.Notes?.Trim(),
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                masterDb.PaymentRecords.Add(record);
+                await masterDb.SaveChangesAsync();
+
+                string methodDisplay = record.PaymentMethod switch
+                {
+                    PaymentMethod.BankTransfer => "Bank Transfer",
+                    PaymentMethod.GCash => "GCash",
+                    PaymentMethod.Check => "Check",
+                    PaymentMethod.Cash => "Cash",
+                    _ => "Other"
+                };
+
+                // Platform Audit Log write (who recorded it, which tenant, amount, method, reference)
+                string auditDetail = $"Payment of ₱{req.AmountPaid:N2} via {methodDisplay} (Ref: {req.PaymentReference.Trim()}) recorded for '{sub.Company?.CompanyName ?? "Tenant"}'. Paid Through extended to {newEndDate:MMM dd, yyyy} (Status: {newStatus}).";
+                await WriteAuditLogAsync(masterDb, "PaymentRecorded", auditDetail, sub.CompanyId, sub.Company?.CompanyName);
+
+                var dto = new PaymentRecordDto
+                {
+                    PaymentRecordId = record.PaymentRecordId,
+                    SubscriptionId = record.SubscriptionId,
+                    CompanyId = sub.CompanyId,
+                    CompanyName = sub.Company?.CompanyName ?? string.Empty,
+                    CompanyCode = sub.Company?.CompanyCode ?? string.Empty,
+                    AmountPaid = record.AmountPaid,
+                    PaymentMethod = record.PaymentMethod,
+                    PaymentReference = record.PaymentReference,
+                    PaymentDate = record.PaymentDate,
+                    RecordedByUserId = record.RecordedByUserId,
+                    RecordedByName = superAdminName,
+                    Notes = record.Notes,
+                    CreatedAt = record.CreatedAt
+                };
+
+                return (true, "Payment recorded successfully.", dto);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[RecordPaymentAsync] Error: {ex.Message}");
+                return (false, $"Failed to record payment: {ex.Message}", null);
+            }
+        }
+
+        public async Task<List<PaymentRecordDto>> GetPaymentRecordsAsync(int subscriptionId)
+        {
+            var list = new List<PaymentRecordDto>();
+            try
+            {
+                using var masterDb = CreateMasterDb();
+                var records = await masterDb.PaymentRecords
+                    .Include(p => p.Subscription)
+                        .ThenInclude(s => s!.Company)
+                    .Include(p => p.RecordedBySuperAdmin)
+                    .Where(p => p.SubscriptionId == subscriptionId)
+                    .OrderByDescending(p => p.PaymentDate)
+                    .ThenByDescending(p => p.PaymentRecordId)
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                foreach (var r in records)
+                {
+                    list.Add(new PaymentRecordDto
+                    {
+                        PaymentRecordId = r.PaymentRecordId,
+                        SubscriptionId = r.SubscriptionId,
+                        CompanyId = r.Subscription?.CompanyId ?? 0,
+                        CompanyName = r.Subscription?.Company?.CompanyName ?? string.Empty,
+                        CompanyCode = r.Subscription?.Company?.CompanyCode ?? string.Empty,
+                        AmountPaid = r.AmountPaid,
+                        PaymentMethod = r.PaymentMethod,
+                        PaymentReference = r.PaymentReference,
+                        PaymentDate = r.PaymentDate,
+                        RecordedByUserId = r.RecordedByUserId,
+                        RecordedByName = r.RecordedBySuperAdmin != null 
+                            ? $"{r.RecordedBySuperAdmin.FirstName} {r.RecordedBySuperAdmin.LastName}".Trim()
+                            : "Platform Super Admin",
+                        Notes = r.Notes,
+                        CreatedAt = r.CreatedAt
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GetPaymentRecordsAsync] Error: {ex.Message}");
+            }
+            return list;
+        }
+
+        public async Task<List<PaymentRecordDto>> GetCompanyPaymentHistoryAsync(int companyId)
+        {
+            var list = new List<PaymentRecordDto>();
+            try
+            {
+                using var masterDb = CreateMasterDb();
+                var records = await masterDb.PaymentRecords
+                    .Include(p => p.Subscription)
+                        .ThenInclude(s => s!.Company)
+                    .Include(p => p.RecordedBySuperAdmin)
+                    .Where(p => p.Subscription != null && p.Subscription.CompanyId == companyId)
+                    .OrderByDescending(p => p.PaymentDate)
+                    .ThenByDescending(p => p.PaymentRecordId)
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                foreach (var r in records)
+                {
+                    list.Add(new PaymentRecordDto
+                    {
+                        PaymentRecordId = r.PaymentRecordId,
+                        SubscriptionId = r.SubscriptionId,
+                        CompanyId = r.Subscription?.CompanyId ?? 0,
+                        CompanyName = r.Subscription?.Company?.CompanyName ?? string.Empty,
+                        CompanyCode = r.Subscription?.Company?.CompanyCode ?? string.Empty,
+                        AmountPaid = r.AmountPaid,
+                        PaymentMethod = r.PaymentMethod,
+                        PaymentReference = r.PaymentReference,
+                        PaymentDate = r.PaymentDate,
+                        RecordedByUserId = r.RecordedByUserId,
+                        RecordedByName = r.RecordedBySuperAdmin != null 
+                            ? $"{r.RecordedBySuperAdmin.FirstName} {r.RecordedBySuperAdmin.LastName}".Trim()
+                            : "Platform Super Admin",
+                        Notes = r.Notes,
+                        CreatedAt = r.CreatedAt
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GetCompanyPaymentHistoryAsync] Error: {ex.Message}");
+            }
+            return list;
         }
     }
 }

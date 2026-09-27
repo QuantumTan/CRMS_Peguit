@@ -33,9 +33,17 @@ namespace CRMS_Peguit.winforms.Controls
         private readonly Label _lblValue;
         private readonly Label _lblSubtitle;
         private readonly Label _lblNavHint;
+        private readonly Label _lblClearFilter;
+
+        /// <summary>
+        /// Fires when an in-place filter is applied or cleared via this KPI card.
+        /// Parameter is the FilterKey when applied, or null when cleared.
+        /// Mirrors ChartWrapperControl.InPlaceFilterChanged for unified coordinator wiring.
+        /// </summary>
+        public event Action<string?>? InPlaceFilterChanged;
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        public string FilterKey { get; }
+        public string FilterKey { get; set; } = string.Empty;
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool IsSelected { get; private set; }
@@ -67,6 +75,7 @@ namespace CRMS_Peguit.winforms.Controls
 
         private readonly ToolTip _toolTip = new ToolTip();
         private string _fullValueTooltip = string.Empty;
+        private readonly InteractionHelper.ClickTracker _clickTracker = new();
 
         // Visual layout metrics
         private const int CardRadius = 12;
@@ -76,7 +85,7 @@ namespace CRMS_Peguit.winforms.Controls
         private const int RightPadding = 16;
         private const int TopPadding = 14;
 
-        public KpiCard() : this("KPI", "all", AzureTints.SkylineBlue, KpiIconType.None, null, KpiClickMode.InPlaceFilter)
+        public KpiCard() : this("KPI", "all", Theme.Primary, KpiIconType.None, null, KpiClickMode.InPlaceFilter)
         {
         }
 
@@ -148,16 +157,49 @@ namespace CRMS_Peguit.winforms.Controls
                 TextAlign = ContentAlignment.MiddleRight
             };
 
+            // 5. Case 1 Clear Filter Affordance: Visible "✕ Clear" when actively filtering
+            // Standard: "A visible 'Clear filter' affordance appears near any Case 1 element
+            // with an active filter — never rely on 'click it again' as the only way to clear it."
+            _lblClearFilter = new Label
+            {
+                Text = "✕ Clear",
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(14, 165, 233), // Sky 500
+                BackColor = Color.Transparent,
+                AutoSize = true,
+                Cursor = Cursors.Hand,
+                Visible = false,
+                TextAlign = ContentAlignment.MiddleRight
+            };
+
             Controls.Add(_lblTitle);
             Controls.Add(_lblValue);
             Controls.Add(_lblSubtitle);
             Controls.Add(_lblNavHint);
+            Controls.Add(_lblClearFilter);
 
             // Forward child clicks to card
             _lblTitle.Click += (_, _) => OnClick(EventArgs.Empty);
             _lblValue.Click += (_, _) => OnClick(EventArgs.Empty);
             _lblSubtitle.Click += (_, _) => OnClick(EventArgs.Empty);
             _lblNavHint.Click += (_, _) => OnClick(EventArgs.Empty);
+
+            // Clear filter label has its own click behavior — clears filter directly
+            _lblClearFilter.Click += (_, _) =>
+            {
+                if (IsSelected && Mode == KpiClickMode.InPlaceFilter)
+                {
+                    SetSelected(false);
+                    InPlaceFilterChanged?.Invoke(null);
+                }
+            };
+
+            // Track MouseDown for IsCleanClick drag-threshold validation
+            MouseDown += (_, e) => _clickTracker.RecordMouseDown(e);
+            _lblTitle.MouseDown += (_, e) => _clickTracker.RecordMouseDown(e);
+            _lblValue.MouseDown += (_, e) => _clickTracker.RecordMouseDown(e);
+            _lblSubtitle.MouseDown += (_, e) => _clickTracker.RecordMouseDown(e);
+            _lblNavHint.MouseDown += (_, e) => _clickTracker.RecordMouseDown(e);
 
             // Forward hover states
             MouseEnter += (_, _) => SetHoverState(true);
@@ -170,6 +212,8 @@ namespace CRMS_Peguit.winforms.Controls
             _lblSubtitle.MouseLeave += (_, _) => SetHoverState(false);
             _lblNavHint.MouseEnter += (_, _) => SetHoverState(true);
             _lblNavHint.MouseLeave += (_, _) => SetHoverState(false);
+            _lblClearFilter.MouseEnter += (_, _) => SetHoverState(true);
+            _lblClearFilter.MouseLeave += (_, _) => SetHoverState(false);
 
             GotFocus += (_, _) => Invalidate();
             LostFocus += (_, _) => Invalidate();
@@ -212,11 +256,20 @@ namespace CRMS_Peguit.winforms.Controls
 
         protected override void OnClick(EventArgs e)
         {
+            // Drag-threshold guard: reject clicks that are really drags
+            if (!_clickTracker.Validate(PointToClient(Cursor.Position)))
+                return;
+
             base.OnClick(e);
+
             if (Mode == KpiClickMode.InPlaceFilter && AutoToggleOnFilterClick)
             {
                 SetSelected(!IsSelected);
+                // Fire InPlaceFilterChanged for coordinator integration
+                InPlaceFilterChanged?.Invoke(IsSelected ? FilterKey : null);
+                UpdateClearFilterVisibility();
             }
+
             _clickAction?.Invoke();
         }
 
@@ -291,7 +344,23 @@ namespace CRMS_Peguit.winforms.Controls
             if (IsSelected != selected)
             {
                 IsSelected = selected;
+                UpdateClearFilterVisibility();
                 Invalidate();
+            }
+        }
+
+        /// <summary>
+        /// Shows/hides the "✕ Clear" affordance label based on whether this card
+        /// is actively filtering in Case 1 mode. Standard: "A visible 'Clear filter'
+        /// affordance appears near any Case 1 element with an active filter."
+        /// </summary>
+        private void UpdateClearFilterVisibility()
+        {
+            bool showClear = IsSelected && Mode == KpiClickMode.InPlaceFilter;
+            if (_lblClearFilter.Visible != showClear)
+            {
+                _lblClearFilter.Visible = showClear;
+                LayoutCard();
             }
         }
 
@@ -359,9 +428,17 @@ namespace CRMS_Peguit.winforms.Controls
                 _lblNavHint.Location = new Point(Width - RightPadding - _lblNavHint.PreferredWidth, Height - _lblNavHint.PreferredHeight - 6);
             }
 
+            // Position Case 1 clear filter affordance on bottom-right if visible
+            if (_lblClearFilter.Visible)
+            {
+                _lblClearFilter.Location = new Point(Width - RightPadding - _lblClearFilter.PreferredWidth, Height - _lblClearFilter.PreferredHeight - 6);
+            }
+
             // Structured secondary metric / amount layout
             const int horizontalGap = 8;
-            int availableWidth = _lblNavHint.Visible ? _lblNavHint.Left - 4 : Width - RightPadding;
+            int availableWidth = _lblNavHint.Visible ? _lblNavHint.Left - 4
+                               : _lblClearFilter.Visible ? _lblClearFilter.Left - 4
+                               : Width - RightPadding;
 
             if (_lblValue.Right + horizontalGap + _lblSubtitle.PreferredWidth <= availableWidth)
             {

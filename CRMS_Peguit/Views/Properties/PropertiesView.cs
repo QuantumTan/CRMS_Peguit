@@ -105,6 +105,13 @@ namespace CRMS_Peguit.winforms.Views.Properties
                 _btnExport.BringToFront();
             }
 
+            _filterCoord = new ScreenFilterCoordinator();
+            _filterCoord.FilterChanged += async (_, key) => 
+            {
+                if (key != null && cmbFilter != null) cmbFilter.SelectedIndex = -1;
+                await ApplyFilter(key ?? "All");
+            };
+
             btnFilterAll.Click += (_, _) => SetFilter("All");
             btnFilterAvailable.Click += (_, _) => SetFilter("Available");
             btnFilterPending.Click += (_, _) => SetFilter("Pending");
@@ -131,16 +138,23 @@ namespace CRMS_Peguit.winforms.Views.Properties
             };
         }
 
+        private ScreenFilterCoordinator _filterCoord = null!;
+
         private async void SetFilter(string filter)
         {
             if (string.Equals(_filterStatus, filter, StringComparison.OrdinalIgnoreCase) && !string.Equals(filter, "All", StringComparison.OrdinalIgnoreCase))
             {
-                _filterStatus = "All";
+                _filterCoord.SetActive(this, null);
             }
             else
             {
-                _filterStatus = filter;
+                _filterCoord.SetActive(this, filter);
             }
+        }
+
+        private async Task ApplyFilter(string filter)
+        {
+            _filterStatus = filter;
             UpdateFilterPillStyles();
             await RefreshGridAsync(resetPage: true);
         }

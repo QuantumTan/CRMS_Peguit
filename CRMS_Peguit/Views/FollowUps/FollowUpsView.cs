@@ -21,6 +21,7 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
         private List<TaskReminder> _filteredReminders = new();
         private Panel _pnlEmptyState = null!;
         private PaginationControl _pagination = null!;
+        private ScreenFilterCoordinator _filterCoord = null!;
 
         public FollowUpsView()
         {
@@ -250,27 +251,20 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
                 ApplyFilterAndSearch();
             };
 
-            btnFilterOverdue.Click += (_, _) => ToggleOrSetFilter("Overdue");
-            btnFilterToday.Click += (_, _) => ToggleOrSetFilter("Today");
-            btnFilterUpcoming.Click += (_, _) => ToggleOrSetFilter("Upcoming");
-            btnFilterAll.Click += (_, _) => ToggleOrSetFilter("All");
-            btnFilterCompleted.Click += (_, _) => ToggleOrSetFilter("Completed");
+            _filterCoord = new ScreenFilterCoordinator();
+            kpiOverdue.FilterKey = "Overdue";
+            kpiToday.FilterKey = "Today";
+            kpiUpcoming.FilterKey = "Upcoming";
+            kpiCompleted.FilterKey = "Completed";
 
-            // KPI card click shortcuts
-            kpiOverdue.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiToday.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiUpcoming.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiCompleted.ClickMode = KpiClickMode.InPlaceFilter;
+            _filterCoord.Register(kpiOverdue, kpiToday, kpiUpcoming, kpiCompleted);
+            _filterCoord.FilterChanged += (_, filterKey) => ToggleOrSetFilter(filterKey ?? "All");
 
-            kpiOverdue.Cursor = Cursors.Hand;
-            kpiToday.Cursor = Cursors.Hand;
-            kpiUpcoming.Cursor = Cursors.Hand;
-            kpiCompleted.Cursor = Cursors.Hand;
-
-            kpiOverdue.Click += (_, _) => ToggleOrSetFilter("Overdue");
-            kpiToday.Click += (_, _) => ToggleOrSetFilter("Today");
-            kpiUpcoming.Click += (_, _) => ToggleOrSetFilter("Upcoming");
-            kpiCompleted.Click += (_, _) => ToggleOrSetFilter("Completed");
+            btnFilterOverdue.Click += (_, _) => _filterCoord.SetActive(btnFilterOverdue, "Overdue");
+            btnFilterToday.Click += (_, _) => _filterCoord.SetActive(btnFilterToday, "Today");
+            btnFilterUpcoming.Click += (_, _) => _filterCoord.SetActive(btnFilterUpcoming, "Upcoming");
+            btnFilterAll.Click += (_, _) => _filterCoord.SetActive(btnFilterAll, "All");
+            btnFilterCompleted.Click += (_, _) => _filterCoord.SetActive(btnFilterCompleted, "Completed");
 
             grid.CellPainting += GridCellPainting;
             grid.CellFormatting += GridCellFormatting;

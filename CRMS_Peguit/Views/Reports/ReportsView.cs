@@ -92,12 +92,12 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
             btnRunReport.BackColor = BiDisplayConstants.PrimaryAccent;
             btnRunReport.ForeColor = Theme.Surface;
-            btnExportCsv.BackColor = Theme.Surface;
-            btnExportCsv.ForeColor = Theme.TextPrimary;
+            btnExportExcel.BackColor = Theme.Surface;
+            btnExportExcel.ForeColor = Theme.TextPrimary;
             btnExportPdf.BackColor = Theme.Surface;
             btnExportPdf.ForeColor = Theme.TextPrimary;
 
-            btnExportCsv.Enabled = false;
+            btnExportExcel.Enabled = false;
             btnExportPdf.Enabled = false;
 
             // Remove docking and anchor constraints so absolute sizing in LayoutReportControls works unhindered
@@ -209,7 +209,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
             cboReportType.SelectedIndexChanged += (s, e) =>
             {
                 UpdateSecondaryFilter();
-                btnExportCsv.Text = "Export CSV";
+                btnExportExcel.Text = "Export Excel";
                 btnExportPdf.Text = "Export PDF";
             };
             cboDateRange.SelectedIndexChanged += (s, e) =>
@@ -221,7 +221,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
             };
 
             btnRunReport.Click += BtnRunReport_Click;
-            btnExportCsv.Click += BtnExportCsv_Click;
+            btnExportExcel.Click += BtnExportExcel_Click;
             btnExportPdf.Click += BtnExportPdf_Click;
 
             btnViewBoth.Click += (_, _) => SetViewMode(ViewDisplayMode.Both);
@@ -389,7 +389,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
             lblLoading.Visible = true;
             btnRunReport.Enabled = false;
-            btnExportCsv.Enabled = false;
+            btnExportExcel.Enabled = false;
             btnExportPdf.Enabled = false;
             lblReportHeader.Text = "Generating report and analytical charts...";
 
@@ -412,6 +412,10 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 };
 
                 object? data = null;
+
+                // Show animated loading skeleton placeholders on report charts
+                chartReport1.ShowLoadingSkeleton(ChartSkeletonType.Bars);
+                chartReport2.ShowLoadingSkeleton(ChartSkeletonType.Donut);
 
                 await Task.Run(() =>
                 {
@@ -439,16 +443,16 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 bool isFinancialReport = rpt.Contains("Commission");
                 if (isFinancialReport && !RbacService.CanExportFinancialSettlements)
                 {
-                    btnExportCsv.Enabled = false;
+                    btnExportExcel.Enabled = false;
                     btnExportPdf.Enabled = false;
-                    btnExportCsv.Text = "Export (Admin Only)";
+                    btnExportExcel.Text = "Export (Admin Only)";
                     btnExportPdf.Text = "Export (Admin Only)";
                 }
                 else
                 {
-                    btnExportCsv.Enabled = _currentData != null;
+                    btnExportExcel.Enabled = _currentData != null;
                     btnExportPdf.Enabled = _currentData != null;
-                    btnExportCsv.Text = "Export CSV";
+                    btnExportExcel.Text = "Export Excel";
                     btnExportPdf.Text = "Export PDF";
                 }
 
@@ -987,23 +991,6 @@ namespace CRMS_Peguit.winforms.Views.Reports
             };
         }
 
-        private void BtnExportCsv_Click(object? sender, EventArgs e)
-        {
-            if (_currentData == null || _currentHeader == null) return;
-            var rpt = cboReportType.SelectedItem?.ToString() ?? "";
-            if (rpt.Contains("Commission") && !RbacService.CanExportFinancialSettlements)
-            {
-                MessageBox.Show("Commission and financial settlement exports are restricted to Administrators.", "Access Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            using var sfd = new SaveFileDialog { Filter = "CSV Files|*.csv", FileName = $"{_currentHeader.ReportName.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd}.csv" };
-            if (sfd.ShowDialog() == DialogResult.OK)
-            {
-                ExportDynamic(sfd.FileName, true);
-                MessageBox.Show("Exported to CSV successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-        }
 
         private void BtnExportPdf_Click(object? sender, EventArgs e)
         {
@@ -1018,45 +1005,87 @@ namespace CRMS_Peguit.winforms.Views.Reports
             using var sfd = new SaveFileDialog { Filter = "PDF Files|*.pdf", FileName = $"{_currentHeader.ReportName.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd}.pdf" };
             if (sfd.ShowDialog() == DialogResult.OK)
             {
-                ExportDynamic(sfd.FileName, false);
-                MessageBox.Show("Exported to PDF successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                try
+                {
+                    ExportDynamic(sfd.FileName, "pdf");
+                    MessageBox.Show("Exported to PDF successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to export PDF: {ex.Message}", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
         }
 
-        private void ExportDynamic(string filePath, bool isCsv)
+        private void BtnExportExcel_Click(object? sender, EventArgs e)
+        {
+            if (_currentData == null || _currentHeader == null) return;
+            var rpt = cboReportType.SelectedItem?.ToString() ?? "";
+            if (rpt.Contains("Commission") && !RbacService.CanExportFinancialSettlements)
+            {
+                MessageBox.Show("Commission and financial settlement exports are restricted to Administrators.", "Access Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            using var sfd = new SaveFileDialog { Filter = "Excel Files|*.xlsx", FileName = $"{_currentHeader.ReportName.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd}.xlsx" };
+            if (sfd.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    ExportDynamic(sfd.FileName, "excel");
+                    MessageBox.Show("Exported to Excel successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to export Excel: {ex.Message}", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void ExportDynamic(string filePath, string format)
         {
             if (_controller == null || _currentData == null || _currentHeader == null) return;
             var rpt = cboReportType.SelectedItem?.ToString() ?? "";
 
+            string? activeFilter = null;
+            if (lblReportHeader.Text.Contains("Filtered by:"))
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(lblReportHeader.Text, @"Filtered by:\s*([^)]+)");
+                if (match.Success)
+                {
+                    activeFilter = match.Groups[1].Value.Trim();
+                }
+            }
+
             if (rpt.Contains("Sales"))
             {
-                if (isCsv) _controller.ExportToCsv((List<SalesReportRow>)_currentData, filePath, _currentHeader);
-                else _controller.ExportToPdf((List<SalesReportRow>)_currentData, filePath, _currentHeader);
+                if (format == "excel") _controller.ExportToExcel((List<SalesReportRow>)_currentData, filePath, _currentHeader, activeFilter);
+                else if (format == "pdf") _controller.ExportToPdf((List<SalesReportRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Commission"))
             {
-                if (isCsv) _controller.ExportToCsv((List<CommissionReportRow>)_currentData, filePath, _currentHeader);
-                else _controller.ExportToPdf((List<CommissionReportRow>)_currentData, filePath, _currentHeader);
+                if (format == "excel") _controller.ExportToExcel((List<CommissionReportRow>)_currentData, filePath, _currentHeader, activeFilter);
+                else if (format == "pdf") _controller.ExportToPdf((List<CommissionReportRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Property"))
             {
-                if (isCsv) _controller.ExportToCsv((List<PropertyInventoryReportRow>)_currentData, filePath, _currentHeader);
-                else _controller.ExportToPdf((List<PropertyInventoryReportRow>)_currentData, filePath, _currentHeader);
+                if (format == "excel") _controller.ExportToExcel((List<PropertyInventoryReportRow>)_currentData, filePath, _currentHeader, activeFilter);
+                else if (format == "pdf") _controller.ExportToPdf((List<PropertyInventoryReportRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Lead"))
             {
-                if (isCsv) _controller.ExportToCsv((List<LeadProgressRow>)_currentData, filePath, _currentHeader);
-                else _controller.ExportToPdf((List<LeadProgressRow>)_currentData, filePath, _currentHeader);
+                if (format == "excel") _controller.ExportToExcel((List<LeadProgressRow>)_currentData, filePath, _currentHeader, activeFilter);
+                else if (format == "pdf") _controller.ExportToPdf((List<LeadProgressRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Ticket"))
             {
-                if (isCsv) _controller.ExportToCsv((List<TicketResolutionRow>)_currentData, filePath, _currentHeader);
-                else _controller.ExportToPdf((List<TicketResolutionRow>)_currentData, filePath, _currentHeader);
+                if (format == "excel") _controller.ExportToExcel((List<TicketResolutionRow>)_currentData, filePath, _currentHeader, activeFilter);
+                else if (format == "pdf") _controller.ExportToPdf((List<TicketResolutionRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Agent"))
             {
-                if (isCsv) _controller.ExportToCsv((List<AgentActivityRow>)_currentData, filePath, _currentHeader);
-                else _controller.ExportToPdf((List<AgentActivityRow>)_currentData, filePath, _currentHeader);
+                if (format == "excel") _controller.ExportToExcel((List<AgentActivityRow>)_currentData, filePath, _currentHeader, activeFilter);
+                else if (format == "pdf") _controller.ExportToPdf((List<AgentActivityRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
         }
 

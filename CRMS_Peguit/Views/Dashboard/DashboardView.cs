@@ -164,7 +164,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             // Quick Actions: "+ New Lead", "+ New Customer", "+ Log Activity"
             pnlQuickActions.Controls.Clear();
 
-            var btnAddLead = CreateQuickActionButton("+ New Lead", AzureTints.SkylineBlue, Color.White, (_, _) =>
+            var btnAddLead = CreateQuickActionButton("+ New Lead", Theme.Primary, Color.White, (_, _) =>
             {
                 using var form = new LeadInputForm();
                 if (form.ShowDialog(this) == DialogResult.OK && form.Result != null)
@@ -1661,7 +1661,8 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             pnlKpiContainer.Size = new Size(totalWidth - leftMargin - rightMargin, 104);
 
             int splitTop = pnlKpiContainer.Bottom + 16;
-            int splitHeight = Math.Max(200, ClientSize.Height - splitTop - 24);
+            int minContentHeight = _currentRole == UserRole.Admin ? 300 : 460;
+            int splitHeight = Math.Max(minContentHeight, ClientSize.Height - splitTop - 24);
 
             if (_currentRole == UserRole.Admin)
             {
@@ -1687,6 +1688,8 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                 ResizeListItems(pnlLeftList);
                 ResizeListItems(pnlRightList);
             }
+
+            AutoScrollMinSize = new Size(0, splitTop + splitHeight + 20);
         }
 
         private void RequestNavigation(string module)

@@ -24,6 +24,7 @@ namespace CRMS_Peguit.winforms.Views.Activities
         private List<TimelineItemDto> _items = new();
         private Panel _pnlEmptyState = null!;
         private PaginationControl _pagination = null!;
+        private ScreenFilterCoordinator _filterCoord = null!;
 
         public ActivitiesView()
         {
@@ -243,21 +244,20 @@ namespace CRMS_Peguit.winforms.Views.Activities
         {
             btnAdd.Click += (_, _) => BtnAddClick();
 
-            kpiTotal.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiCalls.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiEmails.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiMeetings.ClickMode = KpiClickMode.InPlaceFilter;
+            _filterCoord = new ScreenFilterCoordinator();
+            kpiTotal.FilterKey = "All";
+            kpiCalls.FilterKey = "Calls";
+            kpiEmails.FilterKey = "Emails";
+            kpiMeetings.FilterKey = "Meetings";
 
-            btnFilterAll.Click += (_, _) => ToggleOrSetFilter("All");
-            btnFilterCalls.Click += (_, _) => ToggleOrSetFilter("Calls");
-            btnFilterEmails.Click += (_, _) => ToggleOrSetFilter("Emails");
-            btnFilterMeetings.Click += (_, _) => ToggleOrSetFilter("Meetings");
-            btnFilterSystem.Click += (_, _) => ToggleOrSetFilter("System Events");
+            _filterCoord.Register(kpiTotal, kpiCalls, kpiEmails, kpiMeetings);
+            _filterCoord.FilterChanged += (_, filterKey) => ToggleOrSetFilter(filterKey ?? "All");
 
-            kpiTotal.Click += (_, _) => ToggleOrSetFilter("All");
-            kpiCalls.Click += (_, _) => ToggleOrSetFilter("Calls");
-            kpiEmails.Click += (_, _) => ToggleOrSetFilter("Emails");
-            kpiMeetings.Click += (_, _) => ToggleOrSetFilter("Meetings");
+            btnFilterAll.Click += (_, _) => _filterCoord.SetActive(btnFilterAll, "All");
+            btnFilterCalls.Click += (_, _) => _filterCoord.SetActive(btnFilterCalls, "Calls");
+            btnFilterEmails.Click += (_, _) => _filterCoord.SetActive(btnFilterEmails, "Emails");
+            btnFilterMeetings.Click += (_, _) => _filterCoord.SetActive(btnFilterMeetings, "Meetings");
+            btnFilterSystem.Click += (_, _) => _filterCoord.SetActive(btnFilterSystem, "System Events");
 
             txtSearch.TextChanged += (_, _) =>
             {

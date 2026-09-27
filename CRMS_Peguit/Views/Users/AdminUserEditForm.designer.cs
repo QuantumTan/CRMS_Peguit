@@ -22,6 +22,8 @@ namespace CRMS_Peguit.winforms.Views.Users
         private System.Windows.Forms.TextBox txtConfirmPassword = null!;
         private System.Windows.Forms.Button btnSave = null!;
         private System.Windows.Forms.Button btnCancel = null!;
+        private System.Windows.Forms.Panel pnlFooter = null!;
+        private System.Windows.Forms.Panel pnlContent = null!;
 
         protected override void Dispose(bool disposing)
         {
@@ -54,6 +56,10 @@ namespace CRMS_Peguit.winforms.Views.Users
             this.txtConfirmPassword = new System.Windows.Forms.TextBox();
             this.btnSave = new System.Windows.Forms.Button();
             this.btnCancel = new System.Windows.Forms.Button();
+            this.pnlFooter = new System.Windows.Forms.Panel();
+            this.pnlContent = new System.Windows.Forms.Panel();
+            this.pnlFooter.SuspendLayout();
+            this.pnlContent.SuspendLayout();
             this.SuspendLayout();
             // 
             // lblFirst
@@ -69,7 +75,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             // 
             this.txtFirstName.Location = new System.Drawing.Point(20, 40);
             this.txtFirstName.Name = "txtFirstName";
-            this.txtFirstName.Size = new System.Drawing.Size(340, 23);
+            this.txtFirstName.Size = new System.Drawing.Size(360, 23);
             this.txtFirstName.TabIndex = 1;
             // 
             // lblMiddle
@@ -85,7 +91,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             // 
             this.txtMiddleName.Location = new System.Drawing.Point(20, 90);
             this.txtMiddleName.Name = "txtMiddleName";
-            this.txtMiddleName.Size = new System.Drawing.Size(340, 23);
+            this.txtMiddleName.Size = new System.Drawing.Size(360, 23);
             this.txtMiddleName.TabIndex = 3;
             // 
             // lblLast
@@ -101,7 +107,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             // 
             this.txtLastName.Location = new System.Drawing.Point(20, 140);
             this.txtLastName.Name = "txtLastName";
-            this.txtLastName.Size = new System.Drawing.Size(340, 23);
+            this.txtLastName.Size = new System.Drawing.Size(360, 23);
             this.txtLastName.TabIndex = 5;
             // 
             // lblSuffix
@@ -117,7 +123,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             // 
             this.txtSuffix.Location = new System.Drawing.Point(20, 190);
             this.txtSuffix.Name = "txtSuffix";
-            this.txtSuffix.Size = new System.Drawing.Size(340, 23);
+            this.txtSuffix.Size = new System.Drawing.Size(360, 23);
             this.txtSuffix.TabIndex = 7;
             // 
             // lblEmail
@@ -133,7 +139,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             // 
             this.txtEmail.Location = new System.Drawing.Point(20, 240);
             this.txtEmail.Name = "txtEmail";
-            this.txtEmail.Size = new System.Drawing.Size(340, 23);
+            this.txtEmail.Size = new System.Drawing.Size(360, 23);
             this.txtEmail.TabIndex = 9;
             // 
             // lblRole
@@ -151,7 +157,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             this.cmbRole.FormattingEnabled = true;
             this.cmbRole.Location = new System.Drawing.Point(20, 290);
             this.cmbRole.Name = "cmbRole";
-            this.cmbRole.Size = new System.Drawing.Size(340, 23);
+            this.cmbRole.Size = new System.Drawing.Size(360, 23);
             this.cmbRole.TabIndex = 11;
             // 
             // lblPassword
@@ -168,7 +174,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             this.txtPassword.Location = new System.Drawing.Point(20, 340);
             this.txtPassword.Name = "txtPassword";
             this.txtPassword.PasswordChar = '*';
-            this.txtPassword.Size = new System.Drawing.Size(340, 23);
+            this.txtPassword.Size = new System.Drawing.Size(360, 23);
             this.txtPassword.TabIndex = 13;
             // 
             // lblConfirm
@@ -185,27 +191,55 @@ namespace CRMS_Peguit.winforms.Views.Users
             this.txtConfirmPassword.Location = new System.Drawing.Point(20, 390);
             this.txtConfirmPassword.Name = "txtConfirmPassword";
             this.txtConfirmPassword.PasswordChar = '*';
-            this.txtConfirmPassword.Size = new System.Drawing.Size(340, 23);
+            this.txtConfirmPassword.Size = new System.Drawing.Size(360, 23);
             this.txtConfirmPassword.TabIndex = 15;
             // 
+            // pnlContent
+            // 
+            this.pnlContent.AutoScroll = true;
+            this.pnlContent.BackColor = System.Drawing.Color.White;
+            this.pnlContent.Controls.Add(this.lblFirst);
+            this.pnlContent.Controls.Add(this.txtFirstName);
+            this.pnlContent.Controls.Add(this.lblMiddle);
+            this.pnlContent.Controls.Add(this.txtMiddleName);
+            this.pnlContent.Controls.Add(this.lblLast);
+            this.pnlContent.Controls.Add(this.txtLastName);
+            this.pnlContent.Controls.Add(this.lblSuffix);
+            this.pnlContent.Controls.Add(this.txtSuffix);
+            this.pnlContent.Controls.Add(this.lblEmail);
+            this.pnlContent.Controls.Add(this.txtEmail);
+            this.pnlContent.Controls.Add(this.lblRole);
+            this.pnlContent.Controls.Add(this.cmbRole);
+            this.pnlContent.Controls.Add(this.lblPassword);
+            this.pnlContent.Controls.Add(this.txtPassword);
+            this.pnlContent.Controls.Add(this.lblConfirm);
+            this.pnlContent.Controls.Add(this.txtConfirmPassword);
+            this.pnlContent.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.pnlContent.Location = new System.Drawing.Point(0, 0);
+            this.pnlContent.Name = "pnlContent";
+            this.pnlContent.Padding = new System.Windows.Forms.Padding(20);
+            this.pnlContent.Size = new System.Drawing.Size(420, 460);
+            this.pnlContent.TabIndex = 0;
             // 
             // btnSave
             // 
+            this.btnSave.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnSave.BackColor = System.Drawing.Color.FromArgb(37, 103, 156);
             this.btnSave.Cursor = System.Windows.Forms.Cursors.Hand;
             this.btnSave.FlatAppearance.BorderSize = 0;
             this.btnSave.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnSave.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
             this.btnSave.ForeColor = System.Drawing.Color.White;
-            this.btnSave.Location = new System.Drawing.Point(260, 440);
+            this.btnSave.Location = new System.Drawing.Point(295, 12);
             this.btnSave.Name = "btnSave";
-            this.btnSave.Size = new System.Drawing.Size(100, 35);
+            this.btnSave.Size = new System.Drawing.Size(100, 36);
             this.btnSave.TabIndex = 16;
             this.btnSave.Text = "Save";
             this.btnSave.UseVisualStyleBackColor = false;
             // 
             // btnCancel
             // 
+            this.btnCancel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnCancel.BackColor = System.Drawing.Color.Gray;
             this.btnCancel.Cursor = System.Windows.Forms.Cursors.Hand;
             this.btnCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
@@ -213,48 +247,48 @@ namespace CRMS_Peguit.winforms.Views.Users
             this.btnCancel.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnCancel.Font = new System.Drawing.Font("Segoe UI", 10F);
             this.btnCancel.ForeColor = System.Drawing.Color.White;
-            this.btnCancel.Location = new System.Drawing.Point(150, 440);
+            this.btnCancel.Location = new System.Drawing.Point(185, 12);
             this.btnCancel.Name = "btnCancel";
-            this.btnCancel.Size = new System.Drawing.Size(100, 35);
+            this.btnCancel.Size = new System.Drawing.Size(100, 36);
             this.btnCancel.TabIndex = 17;
             this.btnCancel.Text = "Cancel";
             this.btnCancel.UseVisualStyleBackColor = false;
+            // 
+            // pnlFooter
+            // 
+            this.pnlFooter.BackColor = System.Drawing.Color.FromArgb(248, 250, 252);
+            this.pnlFooter.Controls.Add(this.btnCancel);
+            this.pnlFooter.Controls.Add(this.btnSave);
+            this.pnlFooter.Dock = System.Windows.Forms.DockStyle.Bottom;
+            this.pnlFooter.Location = new System.Drawing.Point(0, 460);
+            this.pnlFooter.Name = "pnlFooter";
+            this.pnlFooter.Padding = new System.Windows.Forms.Padding(20, 12, 20, 12);
+            this.pnlFooter.Size = new System.Drawing.Size(420, 60);
+            this.pnlFooter.TabIndex = 1;
             // 
             // AdminUserEditForm
             // 
             this.AcceptButton = this.btnSave;
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.AutoScroll = false;
             this.BackColor = System.Drawing.Color.White;
             this.CancelButton = this.btnCancel;
-            this.ClientSize = new System.Drawing.Size(400, 500);
-            this.Controls.Add(this.lblFirst);
-            this.Controls.Add(this.txtFirstName);
-            this.Controls.Add(this.lblMiddle);
-            this.Controls.Add(this.txtMiddleName);
-            this.Controls.Add(this.lblLast);
-            this.Controls.Add(this.txtLastName);
-            this.Controls.Add(this.lblSuffix);
-            this.Controls.Add(this.txtSuffix);
-            this.Controls.Add(this.lblEmail);
-            this.Controls.Add(this.txtEmail);
-            this.Controls.Add(this.lblRole);
-            this.Controls.Add(this.cmbRole);
-            this.Controls.Add(this.lblPassword);
-            this.Controls.Add(this.txtPassword);
-            this.Controls.Add(this.lblConfirm);
-            this.Controls.Add(this.txtConfirmPassword);
-            this.Controls.Add(this.btnCancel);
-            this.Controls.Add(this.btnSave);
+            this.ClientSize = new System.Drawing.Size(420, 520);
+            this.Controls.Add(this.pnlContent);
+            this.Controls.Add(this.pnlFooter);
             this.ForeColor = System.Drawing.Color.FromArgb(8, 52, 87);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
+            this.MinimumSize = new System.Drawing.Size(420, 460);
             this.Name = "AdminUserEditForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "User Form";
+            this.pnlContent.ResumeLayout(false);
+            this.pnlContent.PerformLayout();
+            this.pnlFooter.ResumeLayout(false);
             this.ResumeLayout(false);
-            this.PerformLayout();
         }
 
         #endregion
