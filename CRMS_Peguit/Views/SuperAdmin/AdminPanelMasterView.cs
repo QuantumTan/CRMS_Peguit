@@ -37,6 +37,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         // Subscriptions Controls
         private TextBox _txtSearch = null!;
         private DataGridView _grid = null!;
+        private GridSkeletonOverlay? _gridSkeleton;
         private Button _btnRecordPayment = null!;
         private Button _btnPaymentHistory = null!;
         private Button _btnChangeTier = null!;
@@ -465,6 +466,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             };
 
             pnlGridCard.Controls.Add(_grid);
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(_grid);
 
             // Correct docking order: Fill added first, Top added second
             _pnlSubsContent.Controls.Add(pnlGridCard);
@@ -484,6 +486,12 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
         private async void LoadDataAsync()
         {
+            _kpiTenants.ShowLoadingSkeleton();
+            _kpiActiveSubs.ShowLoadingSkeleton();
+            _kpiMrr.ShowLoadingSkeleton();
+            _kpiTransactions.ShowLoadingSkeleton();
+            _gridSkeleton?.ShowSkeleton();
+
             try
             {
                 // 1. Load Platform BI
@@ -504,6 +512,14 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             catch (Exception ex)
             {
                 MessageBox.Show($"Failed to load Master Admin data: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _kpiTenants.HideLoadingSkeleton();
+                _kpiActiveSubs.HideLoadingSkeleton();
+                _kpiMrr.HideLoadingSkeleton();
+                _kpiTransactions.HideLoadingSkeleton();
+                _gridSkeleton?.HideSkeleton();
             }
         }
 

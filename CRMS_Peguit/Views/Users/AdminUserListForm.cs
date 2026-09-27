@@ -17,6 +17,7 @@ namespace CRMS_Peguit.winforms.Views.Users
         private readonly UserController _controller;
         private Panel _pnlEmptyState = null!;
         private PaginationControl _pagination = null!;
+        private GridSkeletonOverlay? _gridSkeleton;
 
         public AdminUserListForm(string initialRoleFilter = "All Roles")
         {
@@ -75,6 +76,7 @@ namespace CRMS_Peguit.winforms.Views.Users
 
             // Modern Grid Styling & Search Padding
             UiGridHelper.ApplyModernGridStyle(grid, 52);
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(grid);
             UiRadiusHelper.SetPadding(txtSearch, 10, 10);
 
             grid.CellPainting += Grid_CellPainting;
@@ -150,6 +152,7 @@ namespace CRMS_Peguit.winforms.Views.Users
         private async Task RefreshGridAsync(bool resetPage = false)
         {
             if (this.IsDisposed) return;
+            _gridSkeleton?.ShowSkeleton();
 
             try
             {
@@ -259,6 +262,10 @@ namespace CRMS_Peguit.winforms.Views.Users
             catch (Exception ex)
             {
                 MessageBox.Show(ex.Message, "Error Loading Users", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _gridSkeleton?.HideSkeleton();
             }
         }
 

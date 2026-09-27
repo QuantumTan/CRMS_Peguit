@@ -22,11 +22,14 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
         private Panel _pnlEmptyState = null!;
         private PaginationControl _pagination = null!;
         private ScreenFilterCoordinator _filterCoord = null!;
+        private GridSkeletonOverlay _gridSkeleton = null!;
 
         public FollowUpsView()
         {
             InitializeComponent();
             _controller = new FollowUpController();
+
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(grid);
 
             InitGridColumns();
             InitPagination();
@@ -34,6 +37,13 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             ApplyStyling();
             BindEvents();
             UpdateFilterPillStyles();
+
+            kpiOverdue.ShowLoadingSkeleton();
+            kpiToday.ShowLoadingSkeleton();
+            kpiUpcoming.ShowLoadingSkeleton();
+            kpiCompleted.ShowLoadingSkeleton();
+            _gridSkeleton.ShowSkeleton();
+
             _ = RefreshDataAsync();
 
             this.Load += (_, _) => LayoutToolbar();
@@ -278,6 +288,18 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
 
         public async System.Threading.Tasks.Task RefreshDataAsync()
         {
+            bool isFullLoad = _allReminders.Count == 0 || kpiOverdue.IsLoading;
+            if (isFullLoad)
+            {
+                kpiOverdue.ShowLoadingSkeleton();
+                kpiToday.ShowLoadingSkeleton();
+                kpiUpcoming.ShowLoadingSkeleton();
+                kpiCompleted.ShowLoadingSkeleton();
+            }
+
+            _pnlEmptyState.Visible = false;
+            _gridSkeleton.ShowSkeleton();
+
             try
             {
                 var (reminders, counts) = await System.Threading.Tasks.Task.Run(() =>
@@ -309,6 +331,12 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[FollowUpsView] RefreshDataAsync error: {ex.Message}");
+                _pnlEmptyState.Visible = true;
+                grid.Visible = false;
+            }
+            finally
+            {
+                _gridSkeleton.HideSkeleton();
             }
         }
 
@@ -423,10 +451,12 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             if (total == 0)
             {
                 _pnlEmptyState.Visible = true;
+                grid.Visible = false;
                 return;
             }
 
             _pnlEmptyState.Visible = false;
+            grid.Visible = true;
 
             int effectivePage = _pagination?.CurrentPage ?? 1;
             var pageItems = _filteredReminders.Skip((effectivePage - 1) * pageSize).Take(pageSize).ToList();

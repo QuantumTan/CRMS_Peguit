@@ -22,8 +22,6 @@ namespace CRMS_Peguit.winforms.Controls
     public class ChartSkeletonOverlay : Control
     {
         private ChartSkeletonType _skeletonType = ChartSkeletonType.Bars;
-        private readonly System.Windows.Forms.Timer _shimmerTimer;
-        private float _shimmerPhase = 0f; // 0.0 to 1.0
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public ChartSkeletonType SkeletonType
@@ -45,29 +43,20 @@ namespace CRMS_Peguit.winforms.Controls
 
             BackColor = Color.White;
             Visible = false;
-
-            _shimmerTimer = new System.Windows.Forms.Timer { Interval = 35 }; // ~30 FPS shimmer
-            _shimmerTimer.Tick += (_, _) =>
-            {
-                _shimmerPhase += 0.035f;
-                if (_shimmerPhase > 1f) _shimmerPhase -= 1f;
-                Invalidate();
-            };
         }
 
         public void ShowSkeleton(ChartSkeletonType type)
         {
             _skeletonType = type;
-            _shimmerPhase = 0f;
             Visible = true;
             BringToFront();
-            _shimmerTimer.Start();
+            SkeletonPulseHelper.Register(this);
             Invalidate();
         }
 
         public void HideSkeleton()
         {
-            _shimmerTimer.Stop();
+            SkeletonPulseHelper.Unregister(this);
             Visible = false;
         }
 
@@ -81,16 +70,16 @@ namespace CRMS_Peguit.winforms.Controls
             int h = ClientSize.Height;
             if (w <= 10 || h <= 10) return;
 
-            // Compute moving shimmer highlight gradient
-            float shimmerCenter = _shimmerPhase * (w * 1.5f) - (w * 0.25f);
+            // Compute moving shimmer highlight gradient using synchronized SkeletonPulseHelper phase
+            float shimmerCenter = SkeletonPulseHelper.Phase * (w * 1.5f) - (w * 0.25f);
             int shimmerWidth = Math.Max(60, (int)(w * 0.35f));
             var shimmerRect = new Rectangle((int)shimmerCenter, 0, shimmerWidth, h);
 
-            Color baseColor = Color.FromArgb(241, 245, 249);      // Slate 100
-            Color shimmerColor = Color.FromArgb(226, 232, 240);   // Slate 200
+            Color baseColor = SkeletonPulseHelper.BaseColor;
+            Color shimmerColor = SkeletonPulseHelper.HighlightColor;
 
             using var baseBrush = new SolidBrush(baseColor);
-            using var borderPen = new Pen(Color.FromArgb(241, 245, 249), 1f);
+            using var borderPen = new Pen(SkeletonPulseHelper.BorderColor, 1f);
 
             switch (_skeletonType)
             {
@@ -218,8 +207,7 @@ namespace CRMS_Peguit.winforms.Controls
         {
             if (disposing)
             {
-                _shimmerTimer.Stop();
-                _shimmerTimer.Dispose();
+                SkeletonPulseHelper.Unregister(this);
             }
             base.Dispose(disposing);
         }

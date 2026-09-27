@@ -67,6 +67,32 @@ namespace CRMS_Peguit.winforms.Controls
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool AutoToggleOnFilterClick { get; set; } = false;
 
+        private bool _isLoading = false;
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public bool IsLoading => _isLoading;
+
+        public void SetLoading(bool loading)
+        {
+            if (_isLoading != loading)
+            {
+                _isLoading = loading;
+                _lblValue.Visible = !loading;
+                if (loading)
+                {
+                    SkeletonPulseHelper.Register(this);
+                }
+                else
+                {
+                    SkeletonPulseHelper.Unregister(this);
+                }
+                Invalidate();
+            }
+        }
+
+        public void ShowLoadingSkeleton() => SetLoading(true);
+        public void HideLoadingSkeleton() => SetLoading(false);
+
         private Color _accentColor;
         private Color _accentBgColor;
         private KpiIconType _iconType = KpiIconType.None;
@@ -292,6 +318,10 @@ namespace CRMS_Peguit.winforms.Controls
 
         public void SetValue(string value, string? fullTooltipValue = null)
         {
+            if (_isLoading)
+            {
+                SetLoading(false);
+            }
             _lblValue.Text = value ?? "0";
             _fullValueTooltip = fullTooltipValue ?? value ?? string.Empty;
             UpdateTooltips();
@@ -565,6 +595,33 @@ namespace CRMS_Peguit.winforms.Controls
 
                 UiIconHelper.DrawIcon(e.Graphics, _iconType, vectorRect, _accentColor);
             }
+
+            // 6. Loading Skeleton Headline Value
+            if (_isLoading)
+            {
+                int valX = LeftPadding;
+                int valY = _lblTitle.Bottom + 4;
+                int valW = Math.Max(70, Math.Min(110, Width - RightPadding - IconSize - LeftPadding - 12));
+                int valH = 22;
+                SkeletonPulseHelper.DrawSkeletonBar(e.Graphics, new Rectangle(valX, valY, valW, valH), 4, Width);
+
+                if (!_lblSubtitle.Visible || string.IsNullOrWhiteSpace(_lblSubtitle.Text))
+                {
+                    int subW = Math.Max(50, (int)(valW * 0.75f));
+                    int subY = valY + valH + 8;
+                    SkeletonPulseHelper.DrawSkeletonBar(e.Graphics, new Rectangle(valX, subY, subW, 10), 3, Width);
+                }
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                SkeletonPulseHelper.Unregister(this);
+                _toolTip.Dispose();
+            }
+            base.Dispose(disposing);
         }
 
         protected override void OnKeyDown(KeyEventArgs e)

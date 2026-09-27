@@ -18,8 +18,8 @@ namespace CRMS_Peguit.winforms.Controllers
         private readonly RealEstateDbContext _db;
         private readonly NotificationController _notifCtrl;
 
-        // FIXED: was hardcoded to 1 - now uses whoever is actually logged in.
-        private int TenantId => CurrentSession.TenantId;
+        // FIXED: was hardcoded to 1 - now uses whoever is actually logged in (safely defaults to 1).
+        private int TenantId => CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
 
         public CustomerController()
         {
@@ -344,15 +344,48 @@ namespace CRMS_Peguit.winforms.Controllers
             try
             {
                 return _db.Customers
+                    .IgnoreQueryFilters()
+                    .Include(c => c.CreatedByUser)
+                        .ThenInclude(u => u.Role)
                     .AsNoTracking()
-                    .Where(c => c.IsDeleted)
-                    .OrderByDescending(c => c.DeletedAt)
+                    .Where(c => c.CreatedByUser != null && c.CreatedByUser.Role != null && c.CreatedByUser.Role.TenantId == TenantId && c.IsDeleted)
+                    .OrderByDescending(c => c.DeletedAt ?? c.CreatedAt)
                     .ToList();
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[CustomerController.GetArchived] Error: {ex.Message}");
                 return new List<Customer>();
+            }
+        }
+
+        public void HardDelete(int customerId)
+        {
+            var item = _db.Customers
+                .IgnoreQueryFilters()
+                .SingleOrDefault(x => x.CustomerId == customerId);
+            if (item is null) return;
+
+            // Clean up dependent BuyerProfile if any
+            var bp = _db.BuyerProfiles.IgnoreQueryFilters().FirstOrDefault(b => b.CustomerId == customerId);
+            if (bp != null) _db.BuyerProfiles.Remove(bp);
+
+            // Clean up MarketUpdateLog if any
+            var marketLogs = _db.MarketUpdateLogs.IgnoreQueryFilters().Where(m => m.CustomerId == customerId).ToList();
+            if (marketLogs.Count > 0) _db.MarketUpdateLogs.RemoveRange(marketLogs);
+
+            // Detach leads converted from this customer
+            var leads = _db.Leads.IgnoreQueryFilters().Where(l => l.ConvertedCustomerId == customerId).ToList();
+            foreach (var l in leads) l.ConvertedCustomerId = null;
+
+            _db.Customers.Remove(item);
+            _db.SaveChanges();
+
+            LogActivity("Customer Permanently Deleted", null, null, $"Customer '{item.FullName}' was permanently deleted from recycle bin.");
+            SyncService.Instance.EnqueueOfflineDelete("Customer", customerId, TenantId, CurrentSession.UserId);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
             }
         }
 

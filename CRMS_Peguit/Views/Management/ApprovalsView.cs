@@ -25,6 +25,7 @@ namespace CRMS_Peguit.winforms.Views.Management
         private List<PendingApprovalItem> _allItems = new();
         private Label _lblEmptyState = null!;
         private PaginationControl _pagination = null!;
+        private GridSkeletonOverlay? _gridSkeleton;
 
         public ApprovalsView()
         {
@@ -76,6 +77,7 @@ namespace CRMS_Peguit.winforms.Views.Management
             UiRadiusHelper.ApplyPillShape(btnFilterLeads);
             UiRadiusHelper.ApplyPillShape(btnFilterCustomers);
             UiRadiusHelper.ApplyPillShape(btnFilterProperties);
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(grid);
         }
 
         private void BindEvents()
@@ -144,6 +146,7 @@ namespace CRMS_Peguit.winforms.Views.Management
 
         public async System.Threading.Tasks.Task RefreshGridAsync()
         {
+            _gridSkeleton?.ShowSkeleton();
             try
             {
                 var items = await System.Threading.Tasks.Task.Run(() => _approvalController.GetPendingApprovals());
@@ -165,6 +168,17 @@ namespace CRMS_Peguit.winforms.Views.Management
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[ApprovalsView] RefreshGridAsync error: {ex.Message}");
+            }
+            finally
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => _gridSkeleton?.HideSkeleton()));
+                }
+                else
+                {
+                    _gridSkeleton?.HideSkeleton();
+                }
             }
         }
 
@@ -223,6 +237,7 @@ namespace CRMS_Peguit.winforms.Views.Management
             {
                 grid.DataSource = null;
                 _lblEmptyState.Visible = true;
+                _lblEmptyState.BringToFront();
                 return;
             }
 

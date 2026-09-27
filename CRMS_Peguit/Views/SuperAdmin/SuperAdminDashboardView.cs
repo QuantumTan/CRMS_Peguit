@@ -39,6 +39,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         // Content panels
         private Panel _pnlTierDist = null!;
         private Panel _pnlActivity = null!;
+        private ListSkeletonOverlay? _activitySkeleton;
+        private ChartSkeletonOverlay? _tierSkeleton;
 
         // Public navigation events
         public event Action? NavigateToTenants;
@@ -213,6 +215,14 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             pnlTierHeader.Controls.Add(lblTierSub);
             _pnlTierDist.Controls.Add(pnlTierHeader);
 
+            _tierSkeleton = new ChartSkeletonOverlay
+            {
+                Location = new Point(22, 64),
+                Size = new Size(380, 280),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom
+            };
+            _pnlTierDist.Controls.Add(_tierSkeleton);
+
             _pnlTierDist.SizeChanged += (_, _) =>
             {
                 if (_lastSnapshot != null)
@@ -270,6 +280,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             pnlActivityHeader.Controls.Add(lnkViewAllAudit);
             _pnlActivity.Controls.Add(pnlActivityHeader);
 
+            _activitySkeleton = ListSkeletonOverlay.CreateForContainer(_pnlActivity);
+
             pnlContent.Controls.Add(_pnlTierDist, 0, 0);
             pnlContent.Controls.Add(_pnlActivity, 1, 0);
 
@@ -281,6 +293,13 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
         public async Task LoadDataAsync()
         {
+            _kpiTenants.ShowLoadingSkeleton();
+            _kpiActiveSubs.ShowLoadingSkeleton();
+            _kpiExpiring.ShowLoadingSkeleton();
+            _kpiBackup.ShowLoadingSkeleton();
+            _tierSkeleton?.ShowSkeleton(ChartSkeletonType.Bars);
+            _activitySkeleton?.ShowSkeleton(4);
+
             try
             {
                 var snap = await _controller.GetPlatformSnapshotAsync();
@@ -311,6 +330,15 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             {
                 MessageBox.Show($"Failed to load dashboard: {ex.Message}",
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _kpiTenants.HideLoadingSkeleton();
+                _kpiActiveSubs.HideLoadingSkeleton();
+                _kpiExpiring.HideLoadingSkeleton();
+                _kpiBackup.HideLoadingSkeleton();
+                _tierSkeleton?.HideSkeleton();
+                _activitySkeleton?.HideSkeleton();
             }
         }
 

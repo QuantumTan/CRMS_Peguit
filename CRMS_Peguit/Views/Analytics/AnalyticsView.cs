@@ -23,6 +23,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
         private List<AnalyticsDetailRow> _allDrillDownRows = new();
         private string? _activeFilterCategory = null;
         private string? _activeFilterKey = null;
+        private GridSkeletonOverlay _gridSkeleton = null!;
 
         public event Action<string>? NavigationRequested;
 
@@ -30,6 +31,8 @@ namespace CRMS_Peguit.winforms.Views.Analytics
         {
             InitializeComponent();
             _controller = new AnalyticsController();
+
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(gridAnalyticsDetails);
 
             ApplyStyling();
             BindEvents();
@@ -481,19 +484,30 @@ namespace CRMS_Peguit.winforms.Views.Analytics
 
         private async void ReloadSnapshot()
         {
+            lblLoading.Visible = false;
+            lblSubtitle.Visible = false;
+
+            // Show animated loading skeleton placeholders on all 6 KPI cards
+            kpiDealsClosed.ShowLoadingSkeleton();
+            kpiCommission.ShowLoadingSkeleton();
+            kpiActiveLeads.ShowLoadingSkeleton();
+            kpiConversionRate.ShowLoadingSkeleton();
+            kpiOpenTickets.ShowLoadingSkeleton();
+            kpiAvgDays.ShowLoadingSkeleton();
+
+            // Show animated loading skeleton placeholders on charts
+            chartDealsClosed.ShowLoadingSkeleton(ChartSkeletonType.Bars);
+            chartPipeline.ShowLoadingSkeleton(ChartSkeletonType.Bars);
+            chartWonVsLost.ShowLoadingSkeleton(ChartSkeletonType.Donut);
+            chartTickets.ShowLoadingSkeleton(ChartSkeletonType.Donut);
+            if (chartAgents.Visible) chartAgents.ShowLoadingSkeleton(ChartSkeletonType.Bars);
+            if (chartSources.Visible) chartSources.ShowLoadingSkeleton(ChartSkeletonType.Donut);
+
+            // Show animated loading skeleton placeholder on drill-down grid
+            _gridSkeleton.ShowSkeleton();
+
             try
             {
-                lblLoading.Visible = true;
-                lblSubtitle.Visible = false;
-
-                // Show animated loading skeleton placeholders on charts
-                chartDealsClosed.ShowLoadingSkeleton(ChartSkeletonType.Bars);
-                chartPipeline.ShowLoadingSkeleton(ChartSkeletonType.Bars);
-                chartWonVsLost.ShowLoadingSkeleton(ChartSkeletonType.Donut);
-                chartTickets.ShowLoadingSkeleton(ChartSkeletonType.Donut);
-                if (chartAgents.Visible) chartAgents.ShowLoadingSkeleton(ChartSkeletonType.Bars);
-                if (chartSources.Visible) chartSources.ShowLoadingSkeleton(ChartSkeletonType.Donut);
-
                 var range = GetSelectedDateRange();
                 AnalyticsSnapshot? snapshot = null;
                 List<AnalyticsDetailRow>? drillDown = null;
@@ -506,7 +520,6 @@ namespace CRMS_Peguit.winforms.Views.Analytics
 
                 if (IsDisposed) return;
 
-                lblLoading.Visible = false;
                 lblSubtitle.Visible = true;
                 _currentSnapshot = snapshot;
                 _allDrillDownRows = drillDown ?? new();
@@ -517,9 +530,12 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             }
             catch (Exception ex)
             {
-                lblLoading.Visible = false;
                 lblSubtitle.Visible = true;
                 System.Diagnostics.Debug.WriteLine($"[AnalyticsView.ReloadSnapshot] Error: {ex.Message}");
+            }
+            finally
+            {
+                _gridSkeleton.HideSkeleton();
             }
         }
 

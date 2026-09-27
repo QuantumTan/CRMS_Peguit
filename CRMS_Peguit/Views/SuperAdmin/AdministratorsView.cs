@@ -42,6 +42,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
         // ── Grid ─────────────────────────────────────────────────────────────
         private DataGridView _grid = null!;
+        private GridSkeletonOverlay? _gridSkeleton;
         private PaginationControl _pagination = null!;
 
         public AdministratorsView()
@@ -317,6 +318,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _grid.CellClick += Grid_CellClick;
 
             pnlTableCard.Controls.Add(_grid);
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(_grid);
             pnlTableCard.Controls.Add(_pagination);
             pnlTableCard.Controls.Add(pnlCardHeader);
             _pagination.BringToFront();
@@ -335,6 +337,12 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
         private async Task LoadDataAsync()
         {
+            _kpiTotal.ShowLoadingSkeleton();
+            _kpiActive.ShowLoadingSkeleton();
+            _kpiMfaEnabled.ShowLoadingSkeleton();
+            _kpiWithoutMfa.ShowLoadingSkeleton();
+            _gridSkeleton?.ShowSkeleton();
+
             try
             {
                 _allAdmins = await _controller.GetAdministratorsAsync();
@@ -345,6 +353,14 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             {
                 MessageBox.Show($"Failed to load administrators: {ex.Message}",
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _kpiTotal.HideLoadingSkeleton();
+                _kpiActive.HideLoadingSkeleton();
+                _kpiMfaEnabled.HideLoadingSkeleton();
+                _kpiWithoutMfa.HideLoadingSkeleton();
+                _gridSkeleton?.HideSkeleton();
             }
         }
 

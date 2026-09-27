@@ -71,6 +71,7 @@ namespace CRMS_Peguit.winforms.Tests
             await RunApprovalAndSelfApprovalPreventionTestsAsync();
             await RunAntiFatigueCooldownTestsAsync();
             RunUiInstantiationTests();
+            await RunEmailTemplateCreationAndArchivingTestsAsync();
 
             Console.WriteLine("================================================================================");
             Console.Write(" VERIFICATION SUMMARY: ");
@@ -635,6 +636,76 @@ namespace CRMS_Peguit.winforms.Tests
             }
             AssertTrue(cooldownDialogCreated,
                 "CooldownOverrideDialog instantiates cleanly with remaining days indicator");
+        }
+
+        #endregion
+
+        #region 6. Email Template Creation, Archiving & Active Isolation Tests
+
+        private static async Task RunEmailTemplateCreationAndArchivingTestsAsync()
+        {
+            Console.WriteLine("\n[SUITE 6] EMAIL TEMPLATE CREATION, ARCHIVING & ACTIVE ISOLATION");
+
+            int testTenantId = 1;
+
+            // Test 1: Agent is strictly blocked from creating master email templates
+            CurrentSession.Start(201, testTenantId, "Agent Smith", "agent@test.com", "Agent", null, false);
+            var testTpl = new EmailTemplate
+            {
+                TenantId = testTenantId,
+                Name = "Test Custom Retention Advisory Note",
+                Category = "Retention",
+                TargetAudience = "All",
+                Subject = "Quarterly Equity Advisory: {PropertyAddress}",
+                Body = "Dear {CustomerName},\r\n\r\nHere is your equity review.\r\n\r\nBest,\r\n{AgentName}",
+                CallToActionText = "Schedule Review"
+            };
+
+            bool agentCreated = EmailTemplateService.Instance.SaveTemplate(testTpl, testTenantId, out string agentErrMsg);
+            AssertTrue(!agentCreated && agentErrMsg.Contains("Access Denied"),
+                "RBAC Guard: Sales Agents are strictly blocked from creating master email templates",
+                $"Blocked with message: '{agentErrMsg}'");
+
+            // Test 2: Manager/Admin successfully creates a custom template
+            CurrentSession.Start(101, testTenantId, "Admin Boss", "admin@test.com", "Admin", null, false);
+            bool adminCreated = EmailTemplateService.Instance.SaveTemplate(testTpl, testTenantId, out string adminErrMsg);
+            AssertTrue(adminCreated && testTpl.TemplateId > 0 && testTpl.IsActive,
+                "Template Creation: Admin successfully creates and activates custom retention template",
+                $"TemplateId: {testTpl.TemplateId}, Name: '{testTpl.Name}'");
+
+            // Test 3: Active templates query includes the newly created template
+            var activeTemplates = EmailTemplateService.Instance.GetActiveTemplates(testTenantId);
+            bool foundInActive = activeTemplates.Any(t => t.TemplateId == testTpl.TemplateId);
+            AssertTrue(foundInActive,
+                "Template Active Query: Newly created template is returned in GetActiveTemplates");
+
+            // Test 4: Archiving template sets IsActive to false
+            bool archived = EmailTemplateService.Instance.ArchiveTemplate(testTpl.TemplateId, testTenantId, out string archiveErrMsg);
+            AssertTrue(archived,
+                "Template Archiving: Admin successfully archives template",
+                $"Archive result: {archived}");
+
+            // Test 5: Archived template is excluded from GetActiveTemplates
+            var activeAfterArchive = EmailTemplateService.Instance.GetActiveTemplates(testTenantId);
+            bool presentInActive = activeAfterArchive.Any(t => t.TemplateId == testTpl.TemplateId);
+            AssertTrue(!presentInActive,
+                "Active Isolation: Archived template is strictly excluded from active campaign and outreach queries");
+
+            // Test 6: Archived template is returned in GetArchivedTemplates
+            var archivedList = EmailTemplateService.Instance.GetArchivedTemplates(testTenantId);
+            bool presentInArchived = archivedList.Any(t => t.TemplateId == testTpl.TemplateId);
+            AssertTrue(presentInArchived,
+                "Archived Catalog: Archived template is returned in GetArchivedTemplates library view");
+
+            // Test 7: Unarchiving restores template to active status
+            bool unarchived = EmailTemplateService.Instance.UnarchiveTemplate(testTpl.TemplateId, testTenantId, out string unarchiveErrMsg);
+            var activeAfterRestore = EmailTemplateService.Instance.GetActiveTemplates(testTenantId);
+            bool restoredInActive = activeAfterRestore.Any(t => t.TemplateId == testTpl.TemplateId);
+            AssertTrue(unarchived && restoredInActive,
+                "Template Unarchiving: Template successfully restored to Active status and appears in active queries");
+
+            // Cleanup test template
+            EmailTemplateService.Instance.SoftDeleteTemplate(testTpl.TemplateId, testTenantId, out _);
         }
 
         #endregion

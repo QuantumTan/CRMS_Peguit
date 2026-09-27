@@ -3,4 +3,5 @@
   <Project Path="CRMS_Peguit.domain/CRMS_Peguit.domain.csproj" Id="e3fdca96-b508-474e-a9a9-5d9bfd40cda0" />
   <Project Path="CRMS_Peguit.infrastructure/CRMS_Peguit.infrastructure.csproj" Id="8a094aa1-0631-4647-9979-4ce18f51c42c" />
   <Project Path="CRMS_Peguit/CRMS_Peguit.winforms.csproj" />
+  <Project Path="CRMS_Peguit.Tests/CRMS_Peguit.Tests.csproj" />
 </Solution>

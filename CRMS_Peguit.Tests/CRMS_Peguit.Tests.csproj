@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CRMS_Peguit.domain\CRMS_Peguit.domain.csproj" />
+    <ProjectReference Include="..\CRMS_Peguit.infrastructure\CRMS_Peguit.infrastructure.csproj" />
+    <ProjectReference Include="..\CRMS_Peguit\CRMS_Peguit.winforms.csproj" />
+    <ProjectReference Include="..\CRMS_Peguit.api\CRMS_Peguit.api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

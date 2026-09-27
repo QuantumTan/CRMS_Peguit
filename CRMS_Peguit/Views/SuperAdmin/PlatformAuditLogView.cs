@@ -15,6 +15,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
     public class PlatformAuditLogView : UserControl
     {
         private DataGridView _grid = null!;
+        private GridSkeletonOverlay? _gridSkeleton;
         private Panel _topPanel = null!;
         private ComboBox _actionTypeFilter = null!;
         private DateTimePicker _fromDate = null!;
@@ -286,6 +287,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _grid.CellPainting += Grid_CellPainting;
 
             pnlTableCard.Controls.Add(_grid);
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(_grid);
             pnlTableCard.Controls.Add(_pagination);
             pnlTableCard.Controls.Add(pnlCardHeader);
             _pagination.BringToFront();
@@ -298,6 +300,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
         public async Task LoadDataAsync()
         {
+            _gridSkeleton?.ShowSkeleton();
             try
             {
                 string? actionType = _actionTypeFilter.SelectedItem?.ToString();
@@ -311,6 +314,10 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             catch (Exception ex)
             {
                 MessageBox.Show($"Failed to load audit logs: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _gridSkeleton?.HideSkeleton();
             }
         }
 

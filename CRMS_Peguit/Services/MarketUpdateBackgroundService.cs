@@ -648,7 +648,7 @@ namespace CRMS_Peguit.winforms.Services
             };
         }
 
-        private static (string Subject, string Body) FormatPlainTextMessage(AutomatedEmailSettings settings, Deal? deal, ValuationMetrics metrics)
+        public static (string Subject, string Body) FormatPlainTextMessage(AutomatedEmailSettings settings, Deal? deal, ValuationMetrics metrics)
         {
             string origStr = $"₱{metrics.OriginalPrice:N2}";
             string estStr = $"₱{metrics.EstimatedValue:N2}";
@@ -666,7 +666,7 @@ namespace CRMS_Peguit.winforms.Services
             return (subject, body);
         }
 
-        private static (string Subject, string Body) FormatHtmlMessage(AutomatedEmailSettings settings, Deal? deal, ValuationMetrics metrics)
+        public static (string Subject, string Body) FormatHtmlMessage(AutomatedEmailSettings settings, Deal? deal, ValuationMetrics metrics)
         {
             string origStr = $"₱{metrics.OriginalPrice:N2}";
             string estStr = $"₱{metrics.EstimatedValue:N2}";

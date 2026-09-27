@@ -205,6 +205,35 @@ namespace CRMS_Peguit.winforms.Controllers
             TriggerBackgroundSync();
         }
 
+        public async Task HardDeleteAsync(int id)
+        {
+            EnsureAdmin();
+
+            var user = await _db.Users.IgnoreQueryFilters().SingleOrDefaultAsync(u => u.UserId == id);
+            if (user == null) throw new InvalidOperationException("User not found.");
+
+            // Check if user has associated operational records
+            bool hasDependencies = await _db.Customers.IgnoreQueryFilters().AnyAsync(c => c.CreatedByUserId == id || c.AssignedAgentId == id)
+                || await _db.Leads.IgnoreQueryFilters().AnyAsync(l => l.CreatedByUserId == id || l.AssignedAgentId == id)
+                || await _db.Deals.IgnoreQueryFilters().AnyAsync(d => d.CreatedByUserId == id || d.AgentId == id)
+                || await _db.SupportTickets.IgnoreQueryFilters().AnyAsync(t => t.RaisedByUserId == id || t.AssignedToUserId == id);
+
+            if (hasDependencies)
+            {
+                throw new InvalidOperationException($"Cannot permanently delete user '{user.FullName}' because they are linked to existing business records. Deactivating the account preserves transaction and audit integrity.");
+            }
+
+            var sessions = await _db.LoginSessions.IgnoreQueryFilters().Where(s => s.UserId == id).ToListAsync();
+            if (sessions.Count > 0) _db.LoginSessions.RemoveRange(sessions);
+
+            var prefs = await _db.NotificationPreferences.IgnoreQueryFilters().Where(p => p.UserId == id).ToListAsync();
+            if (prefs.Count > 0) _db.NotificationPreferences.RemoveRange(prefs);
+
+            _db.Users.Remove(user);
+            await _db.SaveChangesAsync();
+            TriggerBackgroundSync();
+        }
+
         public async Task<List<User>> GetDeactivatedAsync()
         {
             try

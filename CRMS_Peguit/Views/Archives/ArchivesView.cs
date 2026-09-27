@@ -16,7 +16,7 @@ namespace CRMS_Peguit.winforms.Views.Archives
     public class ArchivedItemDto
     {
         public string Id { get; set; } = string.Empty;
-        public string EntityType { get; set; } = string.Empty; // "Customer", "Lead", "User", "Ticket"
+        public string EntityType { get; set; } = string.Empty; // "Customer", "Lead", "User", "Ticket", "Task"
         public string Name { get; set; } = string.Empty;
         public string Subtitle { get; set; } = string.Empty;
         public DateTime? ArchivedAt { get; set; }
@@ -28,18 +28,24 @@ namespace CRMS_Peguit.winforms.Views.Archives
         private readonly CustomerController _customerController;
         private readonly LeadController _leadController;
         private readonly UserController _userController;
+        private readonly SupportTicketController _supportTicketController;
+        private readonly FollowUpController _followUpController;
 
         private Panel pnlCard = null!;
         private Label lblTitle = null!;
         private Label lblSubtitle = null!;
         private TextBox txtSearch = null!;
         private Button btnRefresh = null!;
+        private Button btnRestoreAll = null!;
+        private Button btnEmptyBin = null!;
         private Button btnFilterAll = null!;
         private Button btnFilterCustomers = null!;
         private Button btnFilterLeads = null!;
-        private Button btnFilterUsers = null!;
+        private Button btnFilterTasks = null!;
         private Button btnFilterTickets = null!;
+        private Button btnFilterUsers = null!;
         private DataGridView grid = null!;
+        private GridSkeletonOverlay? _gridSkeleton;
         private Panel _pnlEmptyState = null!;
 
         private string _filterType = "All";
@@ -52,6 +58,8 @@ namespace CRMS_Peguit.winforms.Views.Archives
             _customerController = new CustomerController();
             _leadController = new LeadController();
             _userController = new UserController();
+            _supportTicketController = new SupportTicketController();
+            _followUpController = new FollowUpController();
 
             InitializeComponent();
             InitPagination();
@@ -95,7 +103,7 @@ namespace CRMS_Peguit.winforms.Views.Archives
             // Subtitle
             lblSubtitle = new Label
             {
-                Text = "Review and restore archived records or reactivate inactive user accounts.",
+                Text = "Review, restore, or permanently purge archived records and deactivated accounts.",
                 Font = new Font("Segoe UI", 9.5f),
                 ForeColor = Theme.TextSecondary,
                 Location = new Point(25, 52),
@@ -109,7 +117,7 @@ namespace CRMS_Peguit.winforms.Views.Archives
                 PlaceholderText = "Search archived records...",
                 Font = new Font("Segoe UI", 10f),
                 Height = UiStyleConstants.ToolbarRowHeight,
-                Width = 260
+                Width = 240
             };
             this.Controls.Add(txtSearch);
 
@@ -117,16 +125,18 @@ namespace CRMS_Peguit.winforms.Views.Archives
             btnFilterAll = CreateFilterButton("All Records");
             btnFilterCustomers = CreateFilterButton("Customers");
             btnFilterLeads = CreateFilterButton("Leads");
-            btnFilterUsers = CreateFilterButton("Deactivated Users");
+            btnFilterTasks = CreateFilterButton("Follow-Ups & Tasks");
             btnFilterTickets = CreateFilterButton("Support Tickets");
+            btnFilterUsers = CreateFilterButton("Deactivated Users");
 
             this.Controls.Add(btnFilterAll);
             this.Controls.Add(btnFilterCustomers);
             this.Controls.Add(btnFilterLeads);
-            this.Controls.Add(btnFilterUsers);
+            this.Controls.Add(btnFilterTasks);
             this.Controls.Add(btnFilterTickets);
+            this.Controls.Add(btnFilterUsers);
 
-            // Refresh button
+            // Action buttons
             btnRefresh = new Button
             {
                 Text = "🔄 Refresh",
@@ -139,6 +149,32 @@ namespace CRMS_Peguit.winforms.Views.Archives
             };
             btnRefresh.FlatAppearance.BorderColor = Color.FromArgb(203, 213, 225);
             this.Controls.Add(btnRefresh);
+
+            btnRestoreAll = new Button
+            {
+                Text = "♻ Restore All",
+                BackColor = Color.FromArgb(240, 253, 244),
+                ForeColor = Color.FromArgb(22, 101, 52),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                Size = new Size(115, UiStyleConstants.ToolbarRowHeight),
+                Cursor = Cursors.Hand
+            };
+            btnRestoreAll.FlatAppearance.BorderColor = Color.FromArgb(187, 247, 208);
+            this.Controls.Add(btnRestoreAll);
+
+            btnEmptyBin = new Button
+            {
+                Text = "🗑 Empty Bin",
+                BackColor = Color.FromArgb(254, 242, 242),
+                ForeColor = Color.FromArgb(185, 28, 28),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                Size = new Size(115, UiStyleConstants.ToolbarRowHeight),
+                Cursor = Cursors.Hand
+            };
+            btnEmptyBin.FlatAppearance.BorderColor = Color.FromArgb(254, 202, 202);
+            this.Controls.Add(btnEmptyBin);
 
             // Card Panel
             pnlCard = new Panel
@@ -204,49 +240,71 @@ namespace CRMS_Peguit.winforms.Views.Archives
             grid.Columns.Clear();
 
             var colId = new DataGridViewTextBoxColumn { Name = "Id", Visible = false };
-            var colType = new DataGridViewTextBoxColumn { Name = "Type", HeaderText = "RECORD TYPE", Width = 130 };
+            var colType = new DataGridViewTextBoxColumn { Name = "Type", HeaderText = "RECORD TYPE", Width = 140 };
             var colName = new DataGridViewTextBoxColumn { Name = "Name", HeaderText = "NAME / TITLE", Width = 260 };
             var colSubtitle = new DataGridViewTextBoxColumn { Name = "Subtitle", HeaderText = "IDENTIFIER / DETAILS", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill };
             var colDate = new DataGridViewTextBoxColumn { Name = "ArchivedDate", HeaderText = "ARCHIVED / DEACTIVATED", Width = 190 };
-            var colAction = new DataGridViewButtonColumn
+            
+            var colRestore = new DataGridViewButtonColumn
             {
                 Name = "Action",
-                HeaderText = "ACTION",
+                HeaderText = "RESTORE",
                 Text = "♻ Restore",
                 UseColumnTextForButtonValue = true,
-                Width = 120
+                Width = 110
             };
 
-            grid.Columns.AddRange(colId, colType, colName, colSubtitle, colDate, colAction);
+            var colDelete = new DataGridViewButtonColumn
+            {
+                Name = "DeleteAction",
+                HeaderText = "PURGE",
+                Text = "🗑 Delete",
+                UseColumnTextForButtonValue = true,
+                Width = 110
+            };
+
+            grid.Columns.AddRange(colId, colType, colName, colSubtitle, colDate, colRestore, colDelete);
         }
 
         private void ApplyStyling()
         {
             UiRadiusHelper.StyleCard(pnlCard, 12);
             UiRadiusHelper.StyleButton(btnRefresh, 8);
+            UiRadiusHelper.StyleButton(btnRestoreAll, 8);
+            UiRadiusHelper.StyleButton(btnEmptyBin, 8);
             UiRadiusHelper.ApplyModernGridStyle(grid, 50);
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(grid);
             UiRadiusHelper.SetPadding(txtSearch, 10, 8);
         }
 
         private void BindEvents()
         {
             btnRefresh.Click += async (_, _) => await RefreshDataAsync();
+            btnRestoreAll.Click += async (_, _) => await RestoreAllFilteredAsync();
+            btnEmptyBin.Click += async (_, _) => await EmptyBinFilteredAsync();
             txtSearch.TextChanged += (_, _) => ApplyFilterAndDisplay();
 
             btnFilterAll.Click += (_, _) => SetFilter("All");
             btnFilterCustomers.Click += (_, _) => SetFilter("Customer");
             btnFilterLeads.Click += (_, _) => SetFilter("Lead");
-            btnFilterUsers.Click += (_, _) => SetFilter("User");
+            btnFilterTasks.Click += (_, _) => SetFilter("Task");
             btnFilterTickets.Click += (_, _) => SetFilter("Ticket");
+            btnFilterUsers.Click += (_, _) => SetFilter("User");
 
             grid.CellContentClick += async (s, e) =>
             {
                 if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
-                if (grid.Columns[e.ColumnIndex].Name == "Action")
+                string colName = grid.Columns[e.ColumnIndex].Name;
+
+                if (grid.Rows[e.RowIndex].Tag is ArchivedItemDto item)
                 {
-                    if (grid.Rows[e.RowIndex].Tag is ArchivedItemDto item)
+                    if (colName == "Action")
                     {
                         await RestoreItemAsync(item);
+                    }
+                    else if (colName == "DeleteAction")
+                    {
+                        await PermanentDeleteItemAsync(item);
                     }
                 }
             };
@@ -261,7 +319,7 @@ namespace CRMS_Peguit.winforms.Views.Archives
             };
         }
 
-        private void SetFilter(string type)
+        public void SetFilter(string type)
         {
             _filterType = type;
             UpdateFilterPillStyles();
@@ -275,8 +333,9 @@ namespace CRMS_Peguit.winforms.Views.Archives
                 (btnFilterAll, "All"),
                 (btnFilterCustomers, "Customer"),
                 (btnFilterLeads, "Lead"),
-                (btnFilterUsers, "User"),
-                (btnFilterTickets, "Ticket")
+                (btnFilterTasks, "Task"),
+                (btnFilterTickets, "Ticket"),
+                (btnFilterUsers, "User")
             };
 
             foreach (var (btn, type) in pills)
@@ -292,19 +351,27 @@ namespace CRMS_Peguit.winforms.Views.Archives
             int rightPadding = 24;
             int y = 92;
 
-            btnRefresh.Top = y;
-            btnRefresh.Left = ClientSize.Width - rightPadding - btnRefresh.Width;
+            // Action buttons on the right
+            btnEmptyBin.Top = y;
+            btnEmptyBin.Left = ClientSize.Width - rightPadding - btnEmptyBin.Width;
 
+            btnRestoreAll.Top = y;
+            btnRestoreAll.Left = btnEmptyBin.Left - 8 - btnRestoreAll.Width;
+
+            btnRefresh.Top = y;
+            btnRefresh.Left = btnRestoreAll.Left - 8 - btnRefresh.Width;
+
+            // Search and filter pills on the left
             txtSearch.Top = y;
             txtSearch.Left = leftMargin;
 
-            int pillX = txtSearch.Right + 12;
-            var pills = new[] { btnFilterAll, btnFilterCustomers, btnFilterLeads, btnFilterUsers, btnFilterTickets };
+            int pillX = txtSearch.Right + 10;
+            var pills = new[] { btnFilterAll, btnFilterCustomers, btnFilterLeads, btnFilterTasks, btnFilterTickets, btnFilterUsers };
             foreach (var p in pills)
             {
                 p.Top = y;
                 p.Left = pillX;
-                pillX += p.Width + 8;
+                pillX += p.Width + 6;
             }
 
             int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
@@ -316,6 +383,7 @@ namespace CRMS_Peguit.winforms.Views.Archives
         {
             if (_isLoading) return;
             _isLoading = true;
+            _gridSkeleton?.ShowSkeleton();
 
             try
             {
@@ -330,7 +398,7 @@ namespace CRMS_Peguit.winforms.Views.Archives
                         Id = $"c-{c.CustomerId}",
                         EntityType = "Customer",
                         Name = c.FullName,
-                        Subtitle = $"{c.Email ?? "No email"} · {c.Phone ?? "No phone"}",
+                        Subtitle = $"{c.Email ?? "No email"} · {c.Phone ?? "No phone"} · Type: {c.Type}",
                         ArchivedAt = c.DeletedAt ?? c.CreatedAt,
                         RawEntity = c
                     });
@@ -345,13 +413,43 @@ namespace CRMS_Peguit.winforms.Views.Archives
                         Id = $"l-{l.LeadId}",
                         EntityType = "Lead",
                         Name = l.FullName,
-                        Subtitle = $"{l.Email ?? "No email"} · Source: {l.Source ?? "Direct"}",
+                        Subtitle = $"{l.Email ?? "No email"} · Source: {l.Source ?? "Direct"} · Stage: {l.Stage}",
                         ArchivedAt = l.DeletedAt ?? l.CreatedAt,
                         RawEntity = l
                     });
                 }
 
-                // 3. Deactivated Users
+                // 3. Archived Follow-Ups / Tasks
+                var tasks = _followUpController.GetArchived();
+                foreach (var tr in tasks)
+                {
+                    _allItems.Add(new ArchivedItemDto
+                    {
+                        Id = $"tr-{tr.TaskReminderId}",
+                        EntityType = "Task",
+                        Name = tr.Title,
+                        Subtitle = $"{tr.Type} · Priority: {tr.Priority} · Due: {(tr.DueDate != default ? tr.DueDate.ToLocalTime().ToString("MMM dd, yyyy") : "N/A")}",
+                        ArchivedAt = tr.DeletedAt ?? tr.CreatedAt,
+                        RawEntity = tr
+                    });
+                }
+
+                // 4. Archived Support Tickets
+                var tickets = _supportTicketController.GetArchived();
+                foreach (var t in tickets)
+                {
+                    _allItems.Add(new ArchivedItemDto
+                    {
+                        Id = $"t-{t.TicketId}",
+                        EntityType = "Ticket",
+                        Name = $"Ticket #{t.TicketNumber}: {t.Category}",
+                        Subtitle = t.Description,
+                        ArchivedAt = t.DeletedAt ?? t.ResolvedAt ?? t.CreatedAt,
+                        RawEntity = t
+                    });
+                }
+
+                // 5. Deactivated Users
                 var users = await _userController.GetDeactivatedAsync();
                 foreach (var u in users)
                 {
@@ -360,32 +458,10 @@ namespace CRMS_Peguit.winforms.Views.Archives
                         Id = $"u-{u.UserId}",
                         EntityType = "User",
                         Name = u.FullName,
-                        Subtitle = $"{u.Email} · Role: {u.Role?.RoleName ?? "Staff"}",
+                        Subtitle = $"{u.Email} · Role: {u.Role?.RoleName ?? "Staff"} · Deactivated",
                         ArchivedAt = u.CreatedAt,
                         RawEntity = u
                     });
-                }
-
-                // 4. Archived Support Tickets
-                using (var db = LocalDb.CreateContext(CurrentSession.TenantId))
-                {
-                    var tickets = db.SupportTickets
-                        .Where(t => t.IsDeleted)
-                        .OrderByDescending(t => t.CreatedAt)
-                        .ToList();
-
-                    foreach (var t in tickets)
-                    {
-                        _allItems.Add(new ArchivedItemDto
-                        {
-                            Id = $"t-{t.TicketId}",
-                            EntityType = "Ticket",
-                            Name = $"Ticket #{t.TicketNumber}: {t.Category}",
-                            Subtitle = t.Description,
-                            ArchivedAt = t.ResolvedAt ?? t.CreatedAt,
-                            RawEntity = t
-                        });
-                    }
                 }
 
                 // Sort by date descending
@@ -395,6 +471,7 @@ namespace CRMS_Peguit.winforms.Views.Archives
             }
             finally
             {
+                _gridSkeleton?.HideSkeleton();
                 _isLoading = false;
             }
         }
@@ -427,6 +504,9 @@ namespace CRMS_Peguit.winforms.Views.Archives
 
             grid.Rows.Clear();
 
+            btnEmptyBin.Enabled = total > 0;
+            btnRestoreAll.Enabled = total > 0;
+
             if (total == 0)
             {
                 grid.Visible = false;
@@ -449,7 +529,8 @@ namespace CRMS_Peguit.winforms.Views.Archives
                     item.Name,
                     item.Subtitle,
                     item.ArchivedAt.HasValue ? item.ArchivedAt.Value.ToLocalTime().ToString("MMM dd, yyyy  h:mm tt") : "Unknown",
-                    "♻ Restore"
+                    "♻ Restore",
+                    "🗑 Delete"
                 );
                 grid.Rows[rowIndex].Tag = item;
             }
@@ -477,19 +558,17 @@ namespace CRMS_Peguit.winforms.Views.Archives
                 {
                     _leadController.Restore(lead);
                 }
-                else if (item.RawEntity is User user)
+                else if (item.RawEntity is TaskReminder task)
                 {
-                    await _userController.ReactivateAsync(user.UserId);
+                    _followUpController.Restore(task.TaskReminderId);
                 }
                 else if (item.RawEntity is SupportTicket ticket)
                 {
-                    using var db = LocalDb.CreateContext(CurrentSession.TenantId);
-                    var t = db.SupportTickets.FirstOrDefault(x => x.TicketId == ticket.TicketId);
-                    if (t != null)
-                    {
-                        t.IsDeleted = false;
-                        db.SaveChanges();
-                    }
+                    _supportTicketController.Restore(ticket.TicketId);
+                }
+                else if (item.RawEntity is User user)
+                {
+                    await _userController.ReactivateAsync(user.UserId);
                 }
 
                 MessageBox.Show(
@@ -504,6 +583,134 @@ namespace CRMS_Peguit.winforms.Views.Archives
             {
                 MessageBox.Show(ex.Message, "Error Restoring Record", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private async Task PermanentDeleteItemAsync(ArchivedItemDto item)
+        {
+            var confirm = MessageBox.Show(
+                $"Are you sure you want to PERMANENTLY delete {item.EntityType.ToLower()} '{item.Name}'?\n\nThis will completely erase the record from the database and cannot be undone.",
+                "Confirm Permanent Deletion",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (confirm != DialogResult.Yes) return;
+
+            try
+            {
+                if (item.RawEntity is Customer cust)
+                {
+                    _customerController.HardDelete(cust.CustomerId);
+                }
+                else if (item.RawEntity is Lead lead)
+                {
+                    _leadController.HardDelete(lead.LeadId);
+                }
+                else if (item.RawEntity is TaskReminder task)
+                {
+                    _followUpController.HardDelete(task.TaskReminderId);
+                }
+                else if (item.RawEntity is SupportTicket ticket)
+                {
+                    _supportTicketController.HardDelete(ticket.TicketId);
+                }
+                else if (item.RawEntity is User user)
+                {
+                    await _userController.HardDeleteAsync(user.UserId);
+                }
+
+                MessageBox.Show(
+                    $"'{item.Name}' was permanently purged from the database.",
+                    "Record Permanently Deleted",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
+                await RefreshDataAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Deletion Restricted", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async Task RestoreAllFilteredAsync()
+        {
+            var itemsToRestore = _allItems.AsEnumerable();
+            if (!string.Equals(_filterType, "All", StringComparison.OrdinalIgnoreCase))
+            {
+                itemsToRestore = itemsToRestore.Where(x => string.Equals(x.EntityType, _filterType, StringComparison.OrdinalIgnoreCase));
+            }
+            var list = itemsToRestore.ToList();
+            if (list.Count == 0) return;
+
+            var confirm = MessageBox.Show(
+                $"Are you sure you want to restore all {list.Count:N0} archived item(s) back to active status?",
+                "Restore All Records",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (confirm != DialogResult.Yes) return;
+
+            int restored = 0;
+            foreach (var item in list)
+            {
+                try
+                {
+                    if (item.RawEntity is Customer cust) _customerController.Restore(cust);
+                    else if (item.RawEntity is Lead lead) _leadController.Restore(lead);
+                    else if (item.RawEntity is TaskReminder task) _followUpController.Restore(task.TaskReminderId);
+                    else if (item.RawEntity is SupportTicket ticket) _supportTicketController.Restore(ticket.TicketId);
+                    else if (item.RawEntity is User user) await _userController.ReactivateAsync(user.UserId);
+                    restored++;
+                }
+                catch { }
+            }
+
+            MessageBox.Show($"Successfully restored {restored:N0} record(s).", "Batch Restore Completed", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            await RefreshDataAsync();
+        }
+
+        private async Task EmptyBinFilteredAsync()
+        {
+            var itemsToDelete = _allItems.AsEnumerable();
+            if (!string.Equals(_filterType, "All", StringComparison.OrdinalIgnoreCase))
+            {
+                itemsToDelete = itemsToDelete.Where(x => string.Equals(x.EntityType, _filterType, StringComparison.OrdinalIgnoreCase));
+            }
+            var list = itemsToDelete.ToList();
+            if (list.Count == 0) return;
+
+            var confirm = MessageBox.Show(
+                $"WARNING: You are about to permanently purge {list.Count:N0} item(s) from the database!\n\nThis operation CANNOT be reversed or undone. Proceed?",
+                "Empty Recycle Bin",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (confirm != DialogResult.Yes) return;
+
+            int purged = 0;
+            int failed = 0;
+            foreach (var item in list)
+            {
+                try
+                {
+                    if (item.RawEntity is Customer cust) _customerController.HardDelete(cust.CustomerId);
+                    else if (item.RawEntity is Lead lead) _leadController.HardDelete(lead.LeadId);
+                    else if (item.RawEntity is TaskReminder task) _followUpController.HardDelete(task.TaskReminderId);
+                    else if (item.RawEntity is SupportTicket ticket) _supportTicketController.HardDelete(ticket.TicketId);
+                    else if (item.RawEntity is User user) await _userController.HardDeleteAsync(user.UserId);
+                    purged++;
+                }
+                catch
+                {
+                    failed++;
+                }
+            }
+
+            string msg = $"Purged {purged:N0} record(s) permanently.";
+            if (failed > 0) msg += $" ({failed:N0} record(s) could not be removed due to foreign key constraints).";
+            MessageBox.Show(msg, "Recycle Bin Emptied", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            await RefreshDataAsync();
         }
     }
 }

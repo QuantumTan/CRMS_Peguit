@@ -18,8 +18,8 @@ namespace CRMS_Peguit.winforms.Controllers
         private readonly RealEstateDbContext _db;
         private readonly NotificationController _notifCtrl;
 
-        // FIXED: was hardcoded to 1 - now uses whoever is actually logged in.
-        private int TenantId => CurrentSession.TenantId;
+        // FIXED: was hardcoded to 1 - now uses whoever is actually logged in (safely defaults to 1).
+        private int TenantId => CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
 
         public LeadController()
         {
@@ -423,15 +423,43 @@ namespace CRMS_Peguit.winforms.Controllers
             try
             {
                 return _db.Leads
+                    .IgnoreQueryFilters()
+                    .Include(l => l.CreatedByUser)
+                        .ThenInclude(u => u.Role)
                     .AsNoTracking()
-                    .Where(l => l.IsDeleted)
-                    .OrderByDescending(l => l.DeletedAt)
+                    .Where(l => l.CreatedByUser != null && l.CreatedByUser.Role != null && l.CreatedByUser.Role.TenantId == TenantId && l.IsDeleted)
+                    .OrderByDescending(l => l.DeletedAt ?? l.CreatedAt)
                     .ToList();
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[LeadController.GetArchived] Error: {ex.Message}");
                 return new List<Lead>();
+            }
+        }
+
+        public void HardDelete(int leadId)
+        {
+            var item = _db.Leads
+                .IgnoreQueryFilters()
+                .SingleOrDefault(x => x.LeadId == leadId);
+            if (item is null) return;
+
+            // Clean up related activities or task reminders if any
+            var acts = _db.Activities.IgnoreQueryFilters().Where(a => a.RelatedLeadId == leadId).ToList();
+            foreach (var a in acts) a.RelatedLeadId = null;
+
+            var reminders = _db.TaskReminders.IgnoreQueryFilters().Where(r => r.RelatedLeadId == leadId).ToList();
+            foreach (var r in reminders) r.RelatedLeadId = null;
+
+            _db.Leads.Remove(item);
+            _db.SaveChanges();
+
+            LogActivity("Lead Permanently Deleted", null, null, $"Lead '{item.FullName}' was permanently deleted from recycle bin.");
+            SyncService.Instance.EnqueueOfflineDelete("Lead", leadId, TenantId, CurrentSession.UserId);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
             }
         }
 

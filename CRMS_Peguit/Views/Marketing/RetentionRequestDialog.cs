@@ -25,6 +25,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
         private ComboBox _cboReasonCategory = null!;
         private TextBox _txtDetails = null!;
         private Button _btnSubmit = null!;
+        private DetailSkeletonOverlay? _detailSkeleton;
 
         // Review Controls
         private TextBox _txtReviewerRemarks = null!;
@@ -88,7 +89,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
 
             var lblTitle = new Label
             {
-                Text = "New Retention Incentive Request",
+                Text = "Request Complimentary Client Care Service",
                 Font = new Font("Segoe UI", 13f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(15, 23, 42),
                 Location = new Point(20, 12),
@@ -97,8 +98,8 @@ namespace CRMS_Peguit.winforms.Views.Marketing
 
             var lblSub = new Label
             {
-                Text = "Submit a service-based client retention proposal for supervisory approval",
-                Font = new Font("Segoe UI", 9f),
+                Text = "Request supervisory approval for complimentary client care services (appraisals, deed reviews, neighborhood CMA reports)",
+                Font = new Font("Segoe UI", 8.5f),
                 ForeColor = Color.FromArgb(100, 116, 139),
                 Location = new Point(20, 38),
                 AutoSize = true
@@ -116,6 +117,25 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             };
 
             int y = 14;
+
+            var pnlNotice = new Panel
+            {
+                Location = new Point(10, y),
+                Size = new Size(600, 36),
+                BackColor = Color.FromArgb(240, 249, 255),
+                Padding = new Padding(10, 8, 10, 8)
+            };
+            UiRadiusHelper.StyleCard(pnlNotice, 6);
+            var lblNotice = new Label
+            {
+                Text = "Strict Policy: Real estate advisory only. Retail coupons, promotional vouchers, and discount sales gimmicks are strictly not permitted.",
+                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(3, 105, 161),
+                Dock = DockStyle.Fill
+            };
+            pnlNotice.Controls.Add(lblNotice);
+            pnlBody.Controls.Add(pnlNotice);
+            y += 46;
 
             // Customer
             var lblCust = new Label { Text = "Target Client *", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(10, y), AutoSize = true };
@@ -150,12 +170,12 @@ namespace CRMS_Peguit.winforms.Views.Marketing
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 9.5f)
             };
-            _cboActionType.Items.AddRange(new object[] { "Incentive Offer", "Service Concession", "Client Re-engagement", "Consultation Offer" });
+            _cboActionType.Items.AddRange(new object[] { "Complimentary Advisory Service", "CMA & Property Valuation", "Client Re-engagement Consultation", "Deed & Legal Document Review" });
             _cboActionType.SelectedIndex = 0;
             y += 40;
 
-            // Proposed Incentive (Service based)
-            var lblIncentive = new Label { Text = "Proposed Service Incentive * (Real Estate Service Concession, not retail % off)", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(10, y), AutoSize = true };
+            // Proposed Service Offering
+            var lblIncentive = new Label { Text = "Complimentary Advisory Service Offering * (Licensed Appraisal, Deed Review, CMA Study)", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(10, y), AutoSize = true };
             y += 24;
             _txtProposedIncentive = new TextBox
             {
@@ -259,6 +279,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             pnlBottom.Controls.Add(_btnSubmit);
 
             this.Controls.Add(pnlBody);
+            _detailSkeleton = DetailSkeletonOverlay.CreateForContainer(pnlBody);
             this.Controls.Add(pnlBottom);
             this.Controls.Add(pnlHeader);
 
@@ -268,34 +289,42 @@ namespace CRMS_Peguit.winforms.Views.Marketing
 
         private async Task LoadCustomersForDropdownAsync()
         {
-            var customers = await _controller.GetCustomersAsync();
-            _cboCustomer.Items.Clear();
-
-            int selectedIndex = 0;
-            for (int i = 0; i < customers.Count; i++)
+            _detailSkeleton?.ShowSkeleton();
+            try
             {
-                var c = customers[i];
-                _cboCustomer.Items.Add(new CustomerComboItem(c.CustomerId, $"{c.FullName} ({c.Email}) - {c.CurrentSegment}"));
-                if (_preselectedCustomer != null && c.CustomerId == _preselectedCustomer.CustomerId)
+                var customers = await _controller.GetCustomersAsync();
+                _cboCustomer.Items.Clear();
+
+                int selectedIndex = 0;
+                for (int i = 0; i < customers.Count; i++)
                 {
-                    selectedIndex = i;
+                    var c = customers[i];
+                    _cboCustomer.Items.Add(new CustomerComboItem(c.CustomerId, $"{c.FullName} ({c.Email}) - {c.CurrentSegment}"));
+                    if (_preselectedCustomer != null && c.CustomerId == _preselectedCustomer.CustomerId)
+                    {
+                        selectedIndex = i;
+                    }
                 }
-            }
 
-            if (_cboCustomer.Items.Count > 0)
-            {
-                _cboCustomer.SelectedIndex = selectedIndex;
-                UpdateDefaultIncentiveForSelectedCustomer();
-            }
-
-            _cboCustomer.SelectedIndexChanged += (s, e) => UpdateDefaultIncentiveForSelectedCustomer();
-            _cboSegment.SelectedIndexChanged += (s, e) =>
-            {
-                if (_cboSegment.SelectedItem is string seg)
+                if (_cboCustomer.Items.Count > 0)
                 {
-                    _txtProposedIncentive.Text = RetentionCalculationService.GetRecommendedIncentive(seg);
+                    _cboCustomer.SelectedIndex = selectedIndex;
+                    UpdateDefaultIncentiveForSelectedCustomer();
                 }
-            };
+
+                _cboCustomer.SelectedIndexChanged += (s, e) => UpdateDefaultIncentiveForSelectedCustomer();
+                _cboSegment.SelectedIndexChanged += (s, e) =>
+                {
+                    if (_cboSegment.SelectedItem is string seg)
+                    {
+                        _txtProposedIncentive.Text = RetentionCalculationService.GetRecommendedIncentive(seg);
+                    }
+                };
+            }
+            finally
+            {
+                _detailSkeleton?.HideSkeleton();
+            }
         }
 
         private void UpdateDefaultIncentiveForSelectedCustomer()
