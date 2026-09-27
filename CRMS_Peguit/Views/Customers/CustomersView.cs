@@ -1,5 +1,6 @@
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -9,7 +10,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
 {
     public partial class CustomersView : UserControl
     {
-        private readonly CustomerApiService _controller;
+        private readonly CustomerController _controller;
         private string _filterStatus = "All";
         private Button? _btnExport;
         private Panel _pnlEmptyState = null!;
@@ -22,7 +23,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
         public CustomersView()
         {
             InitializeComponent();
-            _controller = new CustomerApiService();
+            _controller = new CustomerController();
 
             _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
             _searchDebounceTimer.Tick += async (_, _) =>

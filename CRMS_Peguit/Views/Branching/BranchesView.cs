@@ -4,9 +4,9 @@ using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -15,7 +15,7 @@ namespace CRMS_Peguit.winforms.Views.Branching
 {
     public class BranchesView : UserControl
     {
-        private readonly BranchApiService _controller;
+        private readonly BranchController _controller;
         private List<BranchItemDto> _branches = new();
 
         private Panel _pnlHeader = null!;
@@ -37,7 +37,7 @@ namespace CRMS_Peguit.winforms.Views.Branching
 
         public BranchesView()
         {
-            _controller = new BranchApiService();
+            _controller = new BranchController();
             InitializeComponent();
             LoadDataAsync();
         }

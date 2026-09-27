@@ -18,8 +18,6 @@ namespace CRMS_Peguit.winforms.Auth
         public static string? ActiveBranchName { get; private set; }
         public static string? JwtToken { get; private set; }
         public static CRMS_Peguit.winforms.Models.Roles.User? CurrentUser { get; private set; }
-        public static string? Role => CurrentUser?.Role.ToString();
-        public static UserRole? CurrentUserRole => CurrentUser?.Role;
         public static bool IsOffline { get; private set; }
 
         // ==============================================

@@ -4,8 +4,8 @@ using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -14,7 +14,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 {
     public class AdminPanelMasterView : UserControl
     {
-        private readonly SuperAdminSubscriptionApiService _controller;
+        private readonly SuperAdminSubscriptionController _controller;
         private List<TenantSubscriptionDto> _allSubscriptions = new();
         private string _activeTierFilter = "All";
 
@@ -41,7 +41,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
         public AdminPanelMasterView()
         {
-            _controller = new SuperAdminSubscriptionApiService();
+            _controller = new SuperAdminSubscriptionController();
             InitializeComponent();
             LoadDataAsync();
         }

@@ -6,10 +6,10 @@ using System.Linq;
 using System.Text;
 using System.Windows.Forms;
 using CRMS_Peguit.winforms.Auth;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
-using CRMS_Peguit.domain.Common;
+using CRMS_Peguit.winforms.Models.Analytics;
 using CRMS_Peguit.winforms.Models.Services;
-using CRMS_Peguit.winforms.Services;
 using Color = System.Drawing.Color;
 using Label = System.Windows.Forms.Label;
 using FontStyle = System.Drawing.FontStyle;
@@ -18,7 +18,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
 {
     public partial class AnalyticsView : UserControl
     {
-        private readonly AnalyticsApiService _controller;
+        private readonly AnalyticsController _controller;
         private AnalyticsSnapshot? _currentSnapshot;
         private List<AnalyticsDetailRow> _allDrillDownRows = new();
         private string? _activeFilterCategory = null;
@@ -29,7 +29,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
         public AnalyticsView()
         {
             InitializeComponent();
-            _controller = new AnalyticsApiService();
+            _controller = new AnalyticsController();
 
             ApplyStyling();
             BindEvents();

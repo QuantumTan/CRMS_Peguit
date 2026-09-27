@@ -4,8 +4,8 @@ using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.winforms.Auth;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -22,7 +22,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 {
     public class SystemSettingsView : UserControl
     {
-        private readonly SuperAdminApiService _controller = new();
+        private readonly SuperAdminController _controller = new();
         private List<SystemSettingDto> _settings = new();
 
         private DataGridView _grid = null!;

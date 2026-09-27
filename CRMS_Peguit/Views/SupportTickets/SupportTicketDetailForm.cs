@@ -6,8 +6,8 @@ using System.Linq;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
-using CRMS_Peguit.winforms.Services;
 using CRMS_Peguit.winforms.Views.Shared;
 
 namespace CRMS_Peguit.winforms.Views.SupportTickets
@@ -15,7 +15,7 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
     public partial class SupportTicketDetailForm : Form
     {
         private SupportTicket _ticket;
-        private readonly SupportTicketApiService _controller;
+        private readonly SupportTicketController _controller;
 
         private Panel? _pnlHeader;
         private Panel? _pnlFooter;
@@ -26,7 +26,7 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
         private Button? _btnClose;
         private TextBox? _txtNewComment;
 
-        public SupportTicketDetailForm(SupportTicket ticket, SupportTicketApiService controller)
+        public SupportTicketDetailForm(SupportTicket ticket, SupportTicketController controller)
         {
             _ticket = ticket;
             _controller = controller;

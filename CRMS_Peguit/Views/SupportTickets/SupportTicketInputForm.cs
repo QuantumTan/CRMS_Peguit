@@ -4,18 +4,18 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
-using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Views.SupportTickets
 {
     public partial class SupportTicketInputForm : Form
     {
         public SupportTicket? Result { get; private set; }
-        private readonly SupportTicketApiService _controller;
+        private readonly SupportTicketController _controller;
         private List<Customer> _customers = new();
 
-        public SupportTicketInputForm(SupportTicketApiService controller)
+        public SupportTicketInputForm(SupportTicketController controller)
         {
             _controller = controller;
             InitializeComponent();

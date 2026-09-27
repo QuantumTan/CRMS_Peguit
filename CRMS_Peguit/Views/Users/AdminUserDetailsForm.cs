@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Services;
@@ -12,15 +13,15 @@ namespace CRMS_Peguit.winforms.Views.Users
 {
     public partial class AdminUserDetailsForm : Form
     {
-        private readonly UserApiService _controller;
+        private readonly UserController _controller;
         private readonly User _user;
         private readonly Dictionary<int, string> _roles;
 
-        public AdminUserDetailsForm() : this(new UserApiService(), new User(), new Dictionary<int, string>())
+        public AdminUserDetailsForm() : this(new UserController(), new User(), new Dictionary<int, string>())
         {
         }
 
-        public AdminUserDetailsForm(UserApiService controller, User user, Dictionary<int, string> roles)
+        public AdminUserDetailsForm(UserController controller, User user, Dictionary<int, string> roles)
         {
             _controller = controller;
             _user = user;

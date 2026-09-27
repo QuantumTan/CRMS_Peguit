@@ -4,10 +4,10 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
-using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.Models;
 using CRMS_Peguit.winforms.Auth;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Roles;
 using CRMS_Peguit.winforms.Models.Services;
@@ -107,7 +107,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                 object? snapshot = null;
                 await System.Threading.Tasks.Task.Run(() =>
                 {
-                    using var ctrl = new DashboardApiService();
+                    using var ctrl = new DashboardController();
                     snapshot = role switch
                     {
                         UserRole.SalesStaff => (object)ctrl.GetAgentSnapshot(CurrentSession.UserId),
@@ -169,7 +169,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                 using var form = new LeadInputForm();
                 if (form.ShowDialog(this) == DialogResult.OK && form.Result != null)
                 {
-                    using var leadCtrl = new LeadApiService();
+                    using var leadCtrl = new LeadController();
                     leadCtrl.Add(form.Result);
                     LoadData();
                 }
@@ -180,7 +180,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                 using var form = new CustomerInputForm();
                 if (form.ShowDialog(this) == DialogResult.OK && form.Result != null)
                 {
-                    using var custCtrl = new CustomerApiService();
+                    using var custCtrl = new CustomerController();
                     custCtrl.Add(form.Result);
                     LoadData();
                 }
@@ -246,7 +246,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                             timeAgo: item.DueTimeText,
                             onClick: () =>
                             {
-                                using var fuCtrl = new FollowUpApiService();
+                                using var fuCtrl = new FollowUpController();
                                 var reminder = fuCtrl.GetById(item.TaskReminderId);
                                 if (reminder != null)
                                 {
@@ -363,7 +363,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                         actionBtnText: "Assign",
                         onActionClick: () =>
                         {
-                            using var appCtrl = new ApprovalApiService();
+                            using var appCtrl = new ApprovalController();
                             var agents = appCtrl.GetAgents();
                             using var dlg = new AssignAgentDialog(item.Name, agents, item.AssignedAgentId);
                             if (dlg.ShowDialog(this) == DialogResult.OK)
@@ -1104,7 +1104,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             _plotAdminCommissionTrend.Plot.Clear();
             BiDisplayConstants.ConfigureStandardPlot(_plotAdminCommissionTrend);
 
-            if (trend == null || trend.Count == 0 || trend.All(t => t.CommissionAmount <= 0.0001m))
+            if (trend == null || trend.Count == 0 || trend.All(t => t.CommissionAmount <= 0.0001))
             {
                 BiDisplayConstants.ShowPlotEmpty(_plotAdminCommissionTrend, "No commission recorded in past 6 months");
                 return;
@@ -1118,7 +1118,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                 bars.Add(new ScottPlot.Bar
                 {
                     Position = i,
-                    Value = (double)trend[i].CommissionAmount,
+                    Value = trend[i].CommissionAmount,
                     FillColor = ScottPlot.Color.FromColor(Theme.Primary),
                     LineWidth = 0
                 });
@@ -1136,7 +1136,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             _plotAdminCommissionTrend.Plot.Axes.Frameless();
             _plotAdminCommissionTrend.Plot.HideGrid();
 
-            double maxVal = (double)trend.Max(t => t.CommissionAmount);
+            double maxVal = trend.Max(t => t.CommissionAmount);
             _plotAdminCommissionTrend.Plot.Axes.SetLimits(-0.6, trend.Count - 0.4, 0, Math.Max(1.0, maxVal * 1.15));
             _plotAdminCommissionTrend.Refresh();
         }

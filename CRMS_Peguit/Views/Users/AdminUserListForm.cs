@@ -5,6 +5,7 @@ using System.Windows.Forms;
 using System.Drawing;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -13,14 +14,14 @@ namespace CRMS_Peguit.winforms.Views.Users
 {
     public partial class AdminUserListForm : UserControl
     {
-        private readonly UserApiService _controller;
+        private readonly UserController _controller;
         private Panel _pnlEmptyState = null!;
         private PaginationControl _pagination = null!;
 
         public AdminUserListForm(string initialRoleFilter = "All Roles")
         {
             InitializeComponent();
-            _controller = new UserApiService();
+            _controller = new UserController();
 
             InitPagination();
             InitEmptyState();

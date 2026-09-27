@@ -5,8 +5,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.EntityFrameworkCore;
-using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.winforms.Auth;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -24,7 +24,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 {
     public class AdministratorsView : UserControl
     {
-        private readonly SuperAdminApiService _controller = new();
+        private readonly SuperAdminController _controller = new();
         private List<AdminDto> _allAdmins = new();
 
         // ── KPI Controls ─────────────────────────────────────────────────────
@@ -726,7 +726,11 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             List<(int TenantId, string CompanyName)> companies = new();
             try
             {
-                var comps = await _controller.GetCompaniesAsync();
+                using var masterDb = LocalDb.CreateMasterContext();
+                var comps = await masterDb.Companies
+                    .AsNoTracking()
+                    .OrderBy(c => c.CompanyName)
+                    .ToListAsync();
                 companies = comps.Select(c => (c.CompanyId, c.CompanyName)).ToList();
             }
             catch

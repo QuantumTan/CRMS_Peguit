@@ -6,14 +6,14 @@ using System.Linq;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
-using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Views.Deals
 {
     public partial class DealInputForm : Form
     {
-        private readonly DealApiService _controller;
+        private readonly DealController _controller;
         private readonly Deal? _existingDeal;
 
         public Deal? Result { get; private set; }
@@ -38,7 +38,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
         private CheckedListBox _chkClauses = null!;
         private TextBox _txtSpecialStipulations = null!;
 
-        public DealInputForm(DealApiService controller, Deal? deal = null)
+        public DealInputForm(DealController controller, Deal? deal = null)
         {
             _controller = controller;
             _existingDeal = deal;
@@ -380,7 +380,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
             if (!decimal.TryParse(_txtValue.Text.Replace(",", "").Trim(), out decimal val))
                 val = 0;
 
-            var financing = DealApiService.CalculateFinancing(val, _numDownPercent.Value, _cboPaymentScheme.SelectedItem?.ToString());
+            var financing = DealController.CalculateFinancing(val, _numDownPercent.Value, _cboPaymentScheme.SelectedItem?.ToString());
             _lblDownAmount.Text = financing.DownPaymentDisplay;
             _lblBalanceAmount.Text = financing.BalanceDisplay;
         }
@@ -485,7 +485,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
 
         private void BtnSaveClick(object? sender, EventArgs e)
         {
-            if (!DealApiService.ValidateDealInput(_cboCustomer.SelectedValue, _cboProperty.SelectedValue, _txtValue.Text, _dtpCloseDate.Value, out decimal dealVal, out string? error))
+            if (!DealController.ValidateDealInput(_cboCustomer.SelectedValue, _cboProperty.SelectedValue, _txtValue.Text, _dtpCloseDate.Value, out decimal dealVal, out string? error))
             {
                 MessageBox.Show(error ?? "Validation error.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
@@ -494,7 +494,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
             decimal.TryParse(_txtReservationFee.Text.Replace(",", "").Trim(), out decimal resFee);
             decimal downPercent = _numDownPercent.Value;
             string paymentScheme = _cboPaymentScheme.SelectedItem?.ToString() ?? "Bank Financing";
-            var financing = DealApiService.CalculateFinancing(dealVal, downPercent, paymentScheme);
+            var financing = DealController.CalculateFinancing(dealVal, downPercent, paymentScheme);
             decimal downAmt = financing.DownPaymentAmount;
             decimal balAmt = financing.BalanceAmount;
 

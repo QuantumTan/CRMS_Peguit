@@ -7,8 +7,8 @@ using System.Linq;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
-using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Views.Deals
 {
@@ -18,7 +18,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
             { "Offer", "Reservation", "Contract", "Closed" };
 
         private Deal? _deal;
-        private readonly DealApiService _controller;
+        private readonly DealController _controller;
 
         private Panel? _pnlHeader;
         private Panel? _pnlFooter;
@@ -27,11 +27,11 @@ namespace CRMS_Peguit.winforms.Views.Deals
         private Button? _btnViewContract;
         private Button? _btnClose;
 
-        public DealDetailForm() : this(new Deal(), new DealApiService())
+        public DealDetailForm() : this(new Deal(), new DealController())
         {
         }
 
-        public DealDetailForm(Deal deal, DealApiService controller)
+        public DealDetailForm(Deal deal, DealController controller)
         {
             _deal = deal;
             _controller = controller;

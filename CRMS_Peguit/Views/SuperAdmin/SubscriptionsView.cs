@@ -5,8 +5,8 @@ using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.domain.entities;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -25,7 +25,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 {
     public class SubscriptionsView : UserControl
     {
-        private readonly SuperAdminSubscriptionApiService _controller = new();
+        private readonly SuperAdminSubscriptionController _controller = new();
         private List<TenantSubscriptionDto> _allSubscriptions = new();
         private TenantSubscriptionDto? _selectedSub;
 

@@ -1,5 +1,5 @@
 using CRMS_Peguit.domain.entities;
-using CRMS_Peguit.winforms.Services;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
 
 namespace CRMS_Peguit.winforms.Views.Customers
@@ -96,7 +96,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
             string firstName = txtFirstName.Text.Trim();
             string lastName = txtLastName.Text.Trim();
 
-            if (!CustomerApiService.ValidateCustomerInput(firstName, lastName, txtEmail.Text, txtPhone.Text, out string? error))
+            if (!CustomerController.ValidateCustomerInput(firstName, lastName, txtEmail.Text, txtPhone.Text, out string? error))
             {
                 Control target = error?.Contains("email", StringComparison.OrdinalIgnoreCase) == true
                     ? txtEmail

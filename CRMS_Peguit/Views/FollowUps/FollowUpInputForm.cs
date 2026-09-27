@@ -4,8 +4,8 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
-using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Views.FollowUps
 {
@@ -13,12 +13,12 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
     {
         public TaskReminder? Result { get; private set; }
 
-        private readonly FollowUpApiService _controller;
+        private readonly FollowUpController _controller;
         private readonly TaskReminder? _existing;
         private List<Customer> _assignedCustomers = new();
         private List<Lead> _assignedLeads = new();
 
-        public FollowUpInputForm(FollowUpApiService controller, TaskReminder? existing = null)
+        public FollowUpInputForm(FollowUpController controller, TaskReminder? existing = null)
         {
             _controller = controller;
             _existing = existing;

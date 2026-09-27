@@ -6,6 +6,7 @@ using System.Linq;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
 using CRMS_Peguit.winforms.Views.Customers;
@@ -22,7 +23,7 @@ namespace CRMS_Peguit.winforms.Views.Controls
     {
         private int _unreadCount = 0;
         private readonly System.Windows.Forms.Timer _pollTimer;
-        private readonly NotificationApiService _controller;
+        private readonly NotificationController _controller;
         private ToolStripDropDown? _dropdown;
         private bool _isHovered = false;
 
@@ -42,7 +43,7 @@ namespace CRMS_Peguit.winforms.Views.Controls
             Cursor = Cursors.Hand;
             BackColor = Theme.HeaderBackground;
 
-            _controller = new NotificationApiService();
+            _controller = new NotificationController();
 
             // 30-second polling interval (simple, responsive, zero-infrastructure)
             _pollTimer = new System.Windows.Forms.Timer
@@ -80,7 +81,7 @@ namespace CRMS_Peguit.winforms.Views.Controls
             {
                 try
                 {
-                    using var ctrl = new NotificationApiService();
+                    using var ctrl = new NotificationController();
 
                     // Run role-specific trigger evaluation during polling
                     if (RbacService.IsAgent)
@@ -560,7 +561,7 @@ namespace CRMS_Peguit.winforms.Views.Controls
                 switch (notif.RelatedEntityType.ToLowerInvariant())
                 {
                     case "lead":
-                        using (var leadCtrl = new LeadApiService())
+                        using (var leadCtrl = new LeadController())
                         {
                             var lead = leadCtrl.GetById(entityId);
                             if (lead == null)
@@ -575,7 +576,7 @@ namespace CRMS_Peguit.winforms.Views.Controls
                         break;
 
                     case "customer":
-                        using (var custCtrl = new CustomerApiService())
+                        using (var custCtrl = new CustomerController())
                         {
                             var customer = custCtrl.GetById(entityId);
                             if (customer == null)
@@ -590,7 +591,7 @@ namespace CRMS_Peguit.winforms.Views.Controls
                         break;
 
                     case "deal":
-                        using (var dealCtrl = new DealApiService())
+                        using (var dealCtrl = new DealController())
                         {
                             var deal = dealCtrl.GetById(entityId);
                             if (deal == null)
@@ -605,7 +606,7 @@ namespace CRMS_Peguit.winforms.Views.Controls
                         break;
 
                     case "property":
-                        using (var propCtrl = new PropertyApiService())
+                        using (var propCtrl = new PropertyController())
                         {
                             var prop = propCtrl.GetById(entityId);
                             if (prop == null)
@@ -621,7 +622,7 @@ namespace CRMS_Peguit.winforms.Views.Controls
 
                     case "supportticket":
                     case "ticket":
-                        using (var tckCtrl = new SupportTicketApiService())
+                        using (var tckCtrl = new SupportTicketController())
                         {
                             var ticket = tckCtrl.GetById(entityId);
                             if (ticket == null || !tckCtrl.CanUserViewTicket(ticket))

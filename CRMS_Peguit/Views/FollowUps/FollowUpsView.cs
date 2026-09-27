@@ -6,6 +6,7 @@ using System.Linq;
 using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
+using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -14,7 +15,7 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
 {
     public partial class FollowUpsView : UserControl
     {
-        private readonly FollowUpApiService _controller;
+        private readonly FollowUpController _controller;
         private string _filterCategory = "All"; // "Overdue", "Today", "Upcoming", "All", "Completed"
         private List<TaskReminder> _allReminders = new();
         private List<TaskReminder> _filteredReminders = new();
@@ -24,7 +25,7 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
         public FollowUpsView()
         {
             InitializeComponent();
-            _controller = new FollowUpApiService();
+            _controller = new FollowUpController();
 
             InitGridColumns();
             InitPagination();
