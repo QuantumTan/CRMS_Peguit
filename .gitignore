@@ -443,3 +443,10 @@ FodyWeavers.xsd
 *.temp
 *.log
 *.cache
+
+# ============================================
+# LOCAL SCRATCH & WRAPPER SCRIPTS
+# ============================================
+scratch_*.ps1
+powershell.bat
+powershell.cmd
