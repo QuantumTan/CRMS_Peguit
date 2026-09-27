@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 // =============================================================================
 // CreateAdminDialog — Create a new Admin-role user in a specified tenant.
@@ -34,84 +35,86 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _tenants = tenants;
 
             Text = "Create Administrator";
-            Size = new Size(480, 440);
-            StartPosition = FormStartPosition.CenterParent;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            BackColor = Theme.Surface;
+            Size = new Size(520, 520);
+            UiRadiusHelper.StyleModal(this, 8);
 
-            var pnl = new Panel { Dock = DockStyle.Fill, Padding = new Padding(28) };
-            Controls.Add(pnl);
+            var pnlContent = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(24),
+                BackColor = Color.White,
+                AutoScroll = true
+            };
 
-            int y = 20;
+            int y = 24;
 
             var lblHeader = new Label
             {
                 Text = "New Administrator Account",
-                Font = new Font("Segoe UI", 13f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 13.5f, FontStyle.Bold),
                 ForeColor = Theme.TextPrimary,
                 AutoSize = true,
-                Location = new Point(0, y)
+                Location = new Point(24, y)
             };
-            pnl.Controls.Add(lblHeader);
-            y += 34;
+            pnlContent.Controls.Add(lblHeader);
+            y += 32;
 
             var lblSubtitle = new Label
             {
-                Text = "Creates a User record in the selected tenant database.\nRole will be set to Admin.",
+                Text = "Creates a User record in the selected tenant database. Role will be set to Admin.",
                 Font = new Font("Segoe UI", 9f),
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
-                Location = new Point(0, y)
+                Location = new Point(24, y)
             };
-            pnl.Controls.Add(lblSubtitle);
-            y += 40;
+            pnlContent.Controls.Add(lblSubtitle);
+            y += 34;
 
             // Tenant
-            pnl.Controls.Add(MakeLabel("Company / Tenant:", y));
-            y += 22;
+            pnlContent.Controls.Add(MakeLabel("Company / Tenant:", y));
+            y += 20;
             _cmbTenant = new ComboBox
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                Font = new Font("Segoe UI", 10f),
-                Location = new Point(0, y),
-                Width = 410
+                Location = new Point(24, y),
+                Width = 436
             };
+            UiRadiusHelper.StyleStandardComboBox(_cmbTenant);
             foreach (var (tid, name) in _tenants)
                 _cmbTenant.Items.Add($"[{tid}] {name}");
             if (_cmbTenant.Items.Count > 0) _cmbTenant.SelectedIndex = 0;
-            pnl.Controls.Add(_cmbTenant);
-            y += 34;
+            pnlContent.Controls.Add(_cmbTenant);
+            y += 38;
 
             // Names row
-            pnl.Controls.Add(MakeLabel("First Name:", y));
-            y += 22;
-            _txtFirst = MakeTextBox(y, 195);
-            pnl.Controls.Add(_txtFirst);
+            pnlContent.Controls.Add(MakeLabel("First Name:", y));
+            var lblLast = MakeLabel("Last Name:", y);
+            lblLast.Location = new Point(248, y);
+            pnlContent.Controls.Add(lblLast);
+            y += 20;
 
-            var lblLast = MakeLabel("Last Name:", y - 22);
-            lblLast.Location = new Point(215, y - 22);
-            pnl.Controls.Add(lblLast);
-            _txtLast = MakeTextBox(y, 195);
-            _txtLast.Location = new Point(215, y);
-            pnl.Controls.Add(_txtLast);
-            y += 34;
+            _txtFirst = MakeTextBox(y, 212);
+            pnlContent.Controls.Add(_txtFirst);
+
+            _txtLast = MakeTextBox(y, 212);
+            _txtLast.Location = new Point(248, y);
+            pnlContent.Controls.Add(_txtLast);
+            y += 38;
 
             // Email
-            pnl.Controls.Add(MakeLabel("Email Address:", y));
-            y += 22;
-            _txtEmail = MakeTextBox(y, 410);
-            pnl.Controls.Add(_txtEmail);
-            y += 34;
+            pnlContent.Controls.Add(MakeLabel("Email Address:", y));
+            y += 20;
+            _txtEmail = MakeTextBox(y, 436);
+            pnlContent.Controls.Add(_txtEmail);
+            y += 38;
 
             // Password
-            pnl.Controls.Add(MakeLabel("Password:", y));
-            y += 22;
-            _txtPassword = MakeTextBox(y, 410);
+            pnlContent.Controls.Add(MakeLabel("Password:", y));
+            y += 20;
+            _txtPassword = MakeTextBox(y, 436);
             _txtPassword.UseSystemPasswordChar = true;
-            pnl.Controls.Add(_txtPassword);
-            y += 34;
+            pnlContent.Controls.Add(_txtPassword);
+            y += 38;
 
             // Error label
             _lblError = new Label
@@ -120,37 +123,43 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = new Font("Segoe UI", 9f),
                 ForeColor = Theme.StatusAlert,
                 AutoSize = true,
-                Location = new Point(0, y)
+                Location = new Point(24, y)
             };
-            pnl.Controls.Add(_lblError);
-            y += 24;
+            pnlContent.Controls.Add(_lblError);
+
+            // Footer Panel
+            var pnlFooter = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 60,
+                BackColor = Color.FromArgb(248, 250, 252)
+            };
 
             // Buttons
             var btnCancel = new Button
             {
                 Text = "Cancel",
                 DialogResult = DialogResult.Cancel,
-                Location = new Point(210, y),
-                Size = new Size(90, 36),
-                Font = new Font("Segoe UI", 9.5f),
-                Cursor = Cursors.Hand
+                Location = new Point(248, 12),
+                Size = new Size(100, 36),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
-            UiRadiusHelper.StyleButton(btnCancel, 6);
-            pnl.Controls.Add(btnCancel);
+            UiRadiusHelper.StyleSecondaryButton(btnCancel, 6);
+            pnlFooter.Controls.Add(btnCancel);
 
             var btnCreate = new Button
             {
                 Text = "Create Admin",
-                Location = new Point(316, y),
-                Size = new Size(120, 36),
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                BackColor = Theme.Primary,
-                ForeColor = Color.White,
-                Cursor = Cursors.Hand
+                Location = new Point(356, 12),
+                Size = new Size(112, 36),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
-            UiRadiusHelper.StyleButton(btnCreate, 6);
+            UiRadiusHelper.StylePrimaryButton(btnCreate, 6);
             btnCreate.Click += BtnCreate_Click;
-            pnl.Controls.Add(btnCreate);
+            pnlFooter.Controls.Add(btnCreate);
+
+            Controls.Add(pnlContent);
+            Controls.Add(pnlFooter);
 
             AcceptButton = btnCreate;
             CancelButton = btnCancel;
@@ -187,14 +196,18 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             Font = new Font("Segoe UI", 9f, FontStyle.Bold),
             ForeColor = Theme.TextPrimary,
             AutoSize = true,
-            Location = new Point(0, y)
+            Location = new Point(24, y)
         };
 
-        private static TextBox MakeTextBox(int y, int width) => new TextBox
+        private static TextBox MakeTextBox(int y, int width)
         {
-            Font = new Font("Segoe UI", 10f),
-            Location = new Point(0, y),
-            Width = width
-        };
+            var txt = new TextBox
+            {
+                Location = new Point(24, y),
+                Width = width
+            };
+            UiRadiusHelper.StyleStandardInput(txt);
+            return txt;
+        }
     }
 }

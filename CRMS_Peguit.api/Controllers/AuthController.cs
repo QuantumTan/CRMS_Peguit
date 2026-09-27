@@ -1,6 +1,7 @@
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.infrastructure.Security;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -43,6 +44,7 @@ namespace CRMS_Peguit.api.Controllers
         // CONNECTIVITY PING
         // ==============================================
 
+        [AllowAnonymous]
         [HttpGet("ping")]
         [HttpHead("ping")]
         public IActionResult Ping()
@@ -54,6 +56,7 @@ namespace CRMS_Peguit.api.Controllers
         // LOGIN
         // ==============================================
 
+        [AllowAnonymous]
         [HttpPost("login")]
         public async Task<ActionResult<LoginResponse>> Login(
             [FromBody] LoginRequest request)
@@ -82,11 +85,10 @@ namespace CRMS_Peguit.api.Controllers
             var user =
                 await _db.Users
                     .IgnoreQueryFilters()
-                    .Include(u => u.Person)
                     .Include(u => u.Role)
                     .FirstOrDefaultAsync(
                         u =>
-                            u.Person.Email == request.Email.Trim()
+                            u.Email == request.Email.Trim()
                             &&
                             (u.Status == "Active" || u.Status == "active")
                     );

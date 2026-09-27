@@ -432,7 +432,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 // 1. Deals
                 var deals = GetDealsQuery(db)
                     .Include(d => d.Agent)
-                    .Include(d => d.Customer).ThenInclude(c => c!.Person)
+                    .Include(d => d.Customer)
                     .Include(d => d.Property)
                     .Where(d => (d.ContractSignedDate ?? d.CreatedAt) >= startDate && (d.ContractSignedDate ?? d.CreatedAt) <= endDate)
                     .ToList();
@@ -461,7 +461,6 @@ namespace CRMS_Peguit.winforms.Controllers
                 // 2. Leads
                 var leads = GetLeadsQuery(db)
                     .Include(l => l.AssignedAgent)
-                    .Include(l => l.Person)
                     .Where(l => l.CreatedAt >= startDate && l.CreatedAt <= endDate)
                     .ToList();
 
@@ -483,7 +482,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 // 3. Support Tickets
                 var tickets = GetTicketsQuery(db)
                     .Include(t => t.AssignedToUser)
-                    .Include(t => t.Customer).ThenInclude(c => c.Person)
+                    .Include(t => t.Customer)
                     .Where(t => t.CreatedAt >= startDate && t.CreatedAt <= endDate)
                     .ToList();
 

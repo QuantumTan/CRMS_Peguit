@@ -33,6 +33,8 @@ namespace CRMS_Peguit.winforms.Views.Leads
 
         private System.Windows.Forms.Button btnSave = null!;
         private System.Windows.Forms.Button btnCancel = null!;
+        private System.Windows.Forms.Panel pnlFooter = null!;
+        private System.Windows.Forms.Panel pnlContent = null!;
 
         protected override void Dispose(bool disposing)
         {
@@ -71,6 +73,10 @@ namespace CRMS_Peguit.winforms.Views.Leads
             txtNotes = new TextBox();
             btnSave = new Button();
             btnCancel = new Button();
+            pnlFooter = new Panel();
+            pnlContent = new Panel();
+            pnlFooter.SuspendLayout();
+            pnlContent.SuspendLayout();
             SuspendLayout();
             // 
             // lblFirstName
@@ -315,8 +321,45 @@ namespace CRMS_Peguit.winforms.Views.Leads
             txtNotes.TabIndex = 21;
             // 
             // 
+            // 
             // btnCancel
             // 
+            // pnlContent
+            // 
+            pnlContent.AutoScroll = true;
+            pnlContent.BackColor = Color.FromArgb(243, 247, 250);
+            pnlContent.Controls.Add(lblFirstName);
+            pnlContent.Controls.Add(txtFirstName);
+            pnlContent.Controls.Add(lblMiddleName);
+            pnlContent.Controls.Add(txtMiddleName);
+            pnlContent.Controls.Add(lblLastName);
+            pnlContent.Controls.Add(txtLastName);
+            pnlContent.Controls.Add(lblSuffix);
+            pnlContent.Controls.Add(cmbSuffix);
+            pnlContent.Controls.Add(lblEmail);
+            pnlContent.Controls.Add(txtEmail);
+            pnlContent.Controls.Add(lblPhone);
+            pnlContent.Controls.Add(txtPhone);
+            pnlContent.Controls.Add(lblSource);
+            pnlContent.Controls.Add(cmbSource);
+            pnlContent.Controls.Add(lblStage);
+            pnlContent.Controls.Add(cmbStage);
+            pnlContent.Controls.Add(lblPriority);
+            pnlContent.Controls.Add(cmbPriority);
+            pnlContent.Controls.Add(lblExpectedValue);
+            pnlContent.Controls.Add(txtExpectedValue);
+            pnlContent.Controls.Add(lblNotes);
+            pnlContent.Controls.Add(txtNotes);
+            pnlContent.Dock = DockStyle.Fill;
+            pnlContent.Location = new Point(0, 0);
+            pnlContent.Name = "pnlContent";
+            pnlContent.Padding = new Padding(20);
+            pnlContent.Size = new Size(540, 610);
+            pnlContent.TabIndex = 0;
+            // 
+            // btnCancel
+            // 
+            btnCancel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnCancel.BackColor = Color.White;
             btnCancel.Cursor = Cursors.Hand;
             btnCancel.DialogResult = DialogResult.Cancel;
@@ -324,70 +367,65 @@ namespace CRMS_Peguit.winforms.Views.Leads
             btnCancel.FlatStyle = FlatStyle.Flat;
             btnCancel.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
             btnCancel.ForeColor = Color.FromArgb(8, 52, 87);
-            btnCancel.Location = new Point(300, 555);
+            btnCancel.Location = new Point(320, 11);
             btnCancel.Name = "btnCancel";
-            btnCancel.Size = new Size(85, 38);
+            btnCancel.Size = new Size(95, 38);
             btnCancel.TabIndex = 22;
             btnCancel.Text = "Cancel";
             btnCancel.UseVisualStyleBackColor = false;
             // 
             // btnSave
             // 
+            btnSave.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnSave.BackColor = Color.FromArgb(37, 103, 156);
             btnSave.Cursor = Cursors.Hand;
             btnSave.FlatAppearance.BorderSize = 0;
             btnSave.FlatStyle = FlatStyle.Flat;
             btnSave.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
             btnSave.ForeColor = Color.White;
-            btnSave.Location = new Point(395, 555);
+            btnSave.Location = new Point(425, 11);
             btnSave.Name = "btnSave";
-            btnSave.Size = new Size(85, 38);
+            btnSave.Size = new Size(95, 38);
             btnSave.TabIndex = 23;
             btnSave.Text = "Save";
             btnSave.UseVisualStyleBackColor = false;
+            // 
+            // pnlFooter
+            // 
+            pnlFooter.BackColor = Color.FromArgb(243, 247, 250);
+            pnlFooter.Controls.Add(btnCancel);
+            pnlFooter.Controls.Add(btnSave);
+            pnlFooter.Dock = DockStyle.Bottom;
+            pnlFooter.Location = new Point(0, 610);
+            pnlFooter.Name = "pnlFooter";
+            pnlFooter.Padding = new Padding(20, 10, 20, 10);
+            pnlFooter.Size = new Size(540, 60);
+            pnlFooter.TabIndex = 1;
             // 
             // LeadInputForm
             // 
             AcceptButton = btnSave;
             AutoScaleDimensions = new SizeF(9F, 23F);
             AutoScaleMode = AutoScaleMode.Font;
+            AutoScroll = false;
             BackColor = Color.FromArgb(243, 247, 250);
             CancelButton = btnCancel;
-            ClientSize = new Size(504, 621);
-            Controls.Add(lblFirstName);
-            Controls.Add(txtFirstName);
-            Controls.Add(lblMiddleName);
-            Controls.Add(txtMiddleName);
-            Controls.Add(lblLastName);
-            Controls.Add(txtLastName);
-            Controls.Add(lblSuffix);
-            Controls.Add(cmbSuffix);
-            Controls.Add(lblEmail);
-            Controls.Add(txtEmail);
-            Controls.Add(lblPhone);
-            Controls.Add(txtPhone);
-            Controls.Add(lblSource);
-            Controls.Add(cmbSource);
-            Controls.Add(lblStage);
-            Controls.Add(cmbStage);
-            Controls.Add(lblPriority);
-            Controls.Add(cmbPriority);
-            Controls.Add(lblExpectedValue);
-            Controls.Add(txtExpectedValue);
-            Controls.Add(lblNotes);
-            Controls.Add(txtNotes);
-            Controls.Add(btnCancel);
-            Controls.Add(btnSave);
+            ClientSize = new Size(540, 670);
+            Controls.Add(pnlContent);
+            Controls.Add(pnlFooter);
             Font = new Font("Segoe UI", 10F);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
+            MinimumSize = new Size(540, 520);
             Name = "LeadInputForm";
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterParent;
             Text = "Lead Details";
+            pnlContent.ResumeLayout(false);
+            pnlContent.PerformLayout();
+            pnlFooter.ResumeLayout(false);
             ResumeLayout(false);
-            PerformLayout();
         }
 
         #endregion

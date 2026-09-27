@@ -35,7 +35,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var query = _db.Leads
-                .Include(l => l.Person)
                 .Include(l => l.AssignedAgent)
                 .Include(l => l.CreatedByUser)
                 .Where(l => !l.IsDeleted)
@@ -53,13 +52,13 @@ namespace CRMS_Peguit.api.Controllers
             if (!string.IsNullOrWhiteSpace(search))
             {
                 string s = search.Trim();
-                query = query.Where(l => (l.Person != null && (
-                    l.Person.FirstName.Contains(s) ||
-                    l.Person.LastName.Contains(s) ||
-                    (l.Person.MiddleName != null && l.Person.MiddleName.Contains(s)) ||
-                    (l.Person.Suffix != null && l.Person.Suffix.Contains(s)) ||
-                    (l.Person.Email != null && l.Person.Email.Contains(s)) ||
-                    (l.Person.Phone != null && l.Person.Phone.Contains(s)))) ||
+                query = query.Where(l =>
+                    l.FirstName.Contains(s) ||
+                    l.LastName.Contains(s) ||
+                    (l.MiddleName != null && l.MiddleName.Contains(s)) ||
+                    (l.Suffix != null && l.Suffix.Contains(s)) ||
+                    (l.Email != null && l.Email.Contains(s)) ||
+                    (l.Phone != null && l.Phone.Contains(s)) ||
                     (l.Source != null && l.Source.Contains(s)) ||
                     (l.Notes != null && l.Notes.Contains(s)));
             }
@@ -115,7 +114,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var lead = await _db.Leads
-                .Include(l => l.Person)
                 .Include(l => l.AssignedAgent)
                 .Include(l => l.CreatedByUser)
                 .SingleOrDefaultAsync(x => x.LeadId == id);
@@ -137,21 +135,10 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> Create(Lead lead)
         {
             var user = CurrentUser;
-            if (lead.PersonId <= 0 && lead.Person == null)
-            {
-                lead.Person = new Person
-                {
-                    FirstName = lead.FirstName,
-                    MiddleName = lead.MiddleName,
-                    LastName = lead.LastName,
-                    Suffix = lead.Suffix,
-                    Email = lead.Email,
-                    Phone = lead.Phone
-                };
-            }
+            if (user.UserId <= 0) return Unauthorized();
 
             lead.CreatedAt = DateTime.UtcNow;
-            lead.CreatedByUserId = user.UserId > 0 ? user.UserId : (lead.CreatedByUserId > 0 ? lead.CreatedByUserId : 1);
+            lead.CreatedByUserId = user.UserId;
             lead.IsDeleted = false;
             lead.DeletedAt = null;
 
@@ -178,7 +165,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var item = await _db.Leads
-                .Include(l => l.Person)
                 .SingleOrDefaultAsync(x => x.LeadId == id);
             if (item is null) return NotFound();
 
@@ -336,7 +322,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var items = await _db.Leads
                 .IgnoreQueryFilters()
-                .Include(l => l.Person)
                 .Where(l => l.IsDeleted)
                 .OrderByDescending(l => l.DeletedAt)
                 .ToListAsync();
@@ -404,7 +389,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var items = await _db.Leads
                 .AsNoTracking()
-                .Include(l => l.Person)
                 .Where(l => !l.IsDeleted && (l.AssignmentStatus == "pending_review" || l.AssignedAgentId == null))
                 .OrderByDescending(l => l.CreatedAt)
                 .ToListAsync();
@@ -422,10 +406,9 @@ namespace CRMS_Peguit.api.Controllers
 
             var agents = await _db.Users
                 .AsNoTracking()
-                .Include(u => u.Person)
                 .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status.ToLower() != "inactive")
-                .OrderBy(u => u.Person.LastName)
-                .ThenBy(u => u.Person.FirstName)
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
                 .Select(u => new AgentPickerDto(u.UserId, u.FullName, u.Email))
                 .ToListAsync();
 
@@ -437,7 +420,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var dict = await _db.Users
                 .AsNoTracking()
-                .Include(u => u.Person)
                 .ToDictionaryAsync(u => u.UserId, u => u.FullName);
             return Ok(dict);
         }
@@ -457,7 +439,7 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> LogEmail(int id, [FromBody] LogCustomerActivityRequest req)
         {
             var user = CurrentUser;
-            var lead = await _db.Leads.Include(l => l.Person).SingleOrDefaultAsync(l => l.LeadId == id);
+            var lead = await _db.Leads.SingleOrDefaultAsync(l => l.LeadId == id);
             if (lead == null) return NotFound();
 
             LogActivityInternal("Email", id, null, $"Email sent to '{lead.FullName}'. Subject: {req.Subject}", user.UserId);

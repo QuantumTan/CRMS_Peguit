@@ -40,8 +40,8 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var query = _db.TaskReminders
-                .Include(r => r.RelatedCustomer).ThenInclude(c => c!.Person)
-                .Include(r => r.RelatedLead).ThenInclude(l => l!.Person)
+                .Include(r => r.RelatedCustomer)
+                .Include(r => r.RelatedLead)
                 .Where(r => !r.IsDeleted)
                 .AsQueryable();
 
@@ -78,8 +78,8 @@ namespace CRMS_Peguit.api.Controllers
                 query = query.Where(r =>
                     r.Title.Contains(s) ||
                     (r.Notes != null && r.Notes.Contains(s)) ||
-                    (r.RelatedCustomer != null && (r.RelatedCustomer.Person.FirstName.Contains(s) || r.RelatedCustomer.Person.LastName.Contains(s))) ||
-                    (r.RelatedLead != null && (r.RelatedLead.Person.FirstName.Contains(s) || r.RelatedLead.Person.LastName.Contains(s))));
+                    (r.RelatedCustomer != null && (r.RelatedCustomer.FirstName.Contains(s) || r.RelatedCustomer.LastName.Contains(s))) ||
+                    (r.RelatedLead != null && (r.RelatedLead.FirstName.Contains(s) || r.RelatedLead.LastName.Contains(s))));
             }
 
             if (page.HasValue || pageSize.HasValue)
@@ -129,8 +129,8 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> GetById(int id)
         {
             var item = await _db.TaskReminders
-                .Include(r => r.RelatedCustomer).ThenInclude(c => c!.Person)
-                .Include(r => r.RelatedLead).ThenInclude(l => l!.Person)
+                .Include(r => r.RelatedCustomer)
+                .Include(r => r.RelatedLead)
                 .SingleOrDefaultAsync(r => r.TaskReminderId == id && !r.IsDeleted);
 
             return item is null ? NotFound() : Ok(item);
@@ -140,9 +140,11 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> Create(TaskReminder reminder)
         {
             var user = CurrentUser;
+            if (user.UserId <= 0) return Unauthorized();
+
             if (reminder.AssignedToUserId <= 0)
             {
-                reminder.AssignedToUserId = user.UserId > 0 ? user.UserId : 1;
+                reminder.AssignedToUserId = user.UserId;
             }
 
             reminder.CreatedAt = DateTime.UtcNow;
@@ -187,6 +189,8 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> MarkComplete(int id, [FromBody] CompleteTaskRequest req)
         {
             var user = CurrentUser;
+            if (user.UserId <= 0) return Unauthorized();
+
             var item = await _db.TaskReminders.SingleOrDefaultAsync(r => r.TaskReminderId == id);
             if (item is null) return NotFound();
 
@@ -201,7 +205,7 @@ namespace CRMS_Peguit.api.Controllers
                     Type = item.Type,
                     RelatedCustomerId = item.RelatedCustomerId,
                     RelatedLeadId = item.RelatedLeadId,
-                    LoggedByAgentId = user.UserId > 0 ? user.UserId : item.AssignedToUserId,
+                    LoggedByAgentId = user.UserId,
                     Notes = string.IsNullOrWhiteSpace(req.ActivityNotes) ? $"Completed task: {item.Title}" : req.ActivityNotes,
                     ActivityDate = DateTime.UtcNow
                 });
@@ -259,15 +263,15 @@ namespace CRMS_Peguit.api.Controllers
             var user = CurrentUser;
             int effectiveUserId = userId ?? user.UserId;
 
-            var query = _db.Customers.AsNoTracking().Include(c => c.Person).Where(c => !c.IsDeleted);
+            var query = _db.Customers.AsNoTracking().Where(c => !c.IsDeleted);
             if (effectiveUserId > 0 && !ApiSecurityHelper.HasFullOversight(user.Role))
             {
                 query = query.Where(c => c.AssignedAgentId == effectiveUserId);
             }
 
             var list = await query
-                .OrderBy(c => c.Person.LastName)
-                .ThenBy(c => c.Person.FirstName)
+                .OrderBy(c => c.LastName)
+                .ThenBy(c => c.FirstName)
                 .ToListAsync();
 
             return Ok(list);
@@ -279,15 +283,15 @@ namespace CRMS_Peguit.api.Controllers
             var user = CurrentUser;
             int effectiveUserId = userId ?? user.UserId;
 
-            var query = _db.Leads.AsNoTracking().Include(l => l.Person).Where(l => !l.IsDeleted && l.Stage.ToLower() != "converted" && l.Stage.ToLower() != "lost");
+            var query = _db.Leads.AsNoTracking().Where(l => !l.IsDeleted && l.Stage.ToLower() != "converted" && l.Stage.ToLower() != "lost");
             if (effectiveUserId > 0 && !ApiSecurityHelper.HasFullOversight(user.Role))
             {
                 query = query.Where(l => l.AssignedAgentId == effectiveUserId);
             }
 
             var list = await query
-                .OrderBy(l => l.Person.LastName)
-                .ThenBy(l => l.Person.FirstName)
+                .OrderBy(l => l.LastName)
+                .ThenBy(l => l.FirstName)
                 .ToListAsync();
 
             return Ok(list);
@@ -304,8 +308,8 @@ namespace CRMS_Peguit.api.Controllers
 
             var query = _db.TaskReminders
                 .AsNoTracking()
-                .Include(r => r.RelatedCustomer).ThenInclude(c => c!.Person)
-                .Include(r => r.RelatedLead).ThenInclude(l => l!.Person)
+                .Include(r => r.RelatedCustomer)
+                .Include(r => r.RelatedLead)
                 .Where(r => !r.IsDeleted && r.Status != "Completed" && r.DueDate <= todayEnd);
 
             if (effectiveUserId > 0 && !ApiSecurityHelper.HasFullOversight(user.Role))

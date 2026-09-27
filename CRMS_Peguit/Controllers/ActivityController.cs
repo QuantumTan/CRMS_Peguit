@@ -135,9 +135,10 @@ namespace CRMS_Peguit.winforms.Controllers
             _db.SaveChanges();
             try { LocalDataCache.Instance.SaveActivitiesMirror(TenantId, new[] { activity }); } catch { }
 
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            SyncService.Instance.EnqueueOfflineCreate("Activity", activity, TenantId, currentUserId, activity.ActivityId.ToString());
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
             {
-                SyncService.Instance.EnqueueOfflineCreate("Activity", activity, TenantId, currentUserId);
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
             }
 
             // Auto-advance lead from "new" to "contacted" on interaction
@@ -150,12 +151,32 @@ namespace CRMS_Peguit.winforms.Controllers
                     {
                         lead.Stage = "contacted";
                         _db.SaveChanges();
+                        SyncService.Instance.EnqueueOfflineUpdate("Lead", lead.LeadId, lead, TenantId, currentUserId, lead.CreatedAt);
+                        if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+                        {
+                            _ = Task.Run(() => SyncService.Instance.SyncAsync());
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"[ActivityController] Error advancing lead stage: {ex.Message}");
                 }
+            }
+
+            if (activity.RelatedCustomerId.HasValue)
+            {
+                int custId = activity.RelatedCustomerId.Value;
+                int tenant = TenantId;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var dbContext = LocalDb.CreateContext(tenant);
+                        await RetentionCalculationService.RecalculateCustomerAsync(dbContext, custId);
+                    }
+                    catch { }
+                });
             }
 
             return activity;
@@ -175,7 +196,6 @@ namespace CRMS_Peguit.winforms.Controllers
                 var activitiesQuery = _db.Activities
                     .AsNoTracking()
                     .Include(a => a.LoggedByAgent)
-                        .ThenInclude(u => u.Person)
                     .AsQueryable();
 
                 if (customerId.HasValue)
@@ -234,7 +254,6 @@ namespace CRMS_Peguit.winforms.Controllers
                 var tasksQuery = _db.TaskReminders
                     .AsNoTracking()
                     .Include(t => t.AssignedToUser)
-                        .ThenInclude(u => u.Person)
                     .Where(t => !t.IsDeleted && t.Status == "Completed");
 
                 if (customerId.HasValue)
@@ -268,7 +287,6 @@ namespace CRMS_Peguit.winforms.Controllers
                     .Include(p => p.Property)
                     .Include(p => p.Activity)
                         .ThenInclude(a => a.LoggedByAgent)
-                            .ThenInclude(u => u.Person)
                     .AsQueryable();
 
                 if (customerId.HasValue)
@@ -305,7 +323,6 @@ namespace CRMS_Peguit.winforms.Controllers
                         .AsNoTracking()
                         .Include(d => d.Property)
                         .Include(d => d.Agent)
-                            .ThenInclude(u => u!.Person)
                         .Where(d => d.CustomerId == customerId.Value)
                         .ToList();
 
@@ -332,7 +349,6 @@ namespace CRMS_Peguit.winforms.Controllers
                     var tickets = _db.SupportTickets
                         .AsNoTracking()
                         .Include(t => t.RaisedByUser)
-                            .ThenInclude(u => u.Person)
                         .Where(t => t.CustomerId == customerId.Value && !t.IsDeleted)
                         .ToList();
 
@@ -507,9 +523,9 @@ namespace CRMS_Peguit.winforms.Controllers
                 // 1. Activities logged by this agent (or all agents if agentId is null)
                 var manualQuery = _db.Activities
                     .AsNoTracking()
-                    .Include(a => a.LoggedByAgent).ThenInclude(u => u.Person)
-                    .Include(a => a.RelatedCustomer).ThenInclude(c => c!.Person)
-                    .Include(a => a.RelatedLead).ThenInclude(l => l!.Person)
+                    .Include(a => a.LoggedByAgent)
+                    .Include(a => a.RelatedCustomer)
+                    .Include(a => a.RelatedLead)
                     .AsQueryable();
 
                 if (agentId.HasValue && agentId.Value > 0)
@@ -569,9 +585,9 @@ namespace CRMS_Peguit.winforms.Controllers
                 // 2. Completed Follow-Ups assigned to this agent (or all if agentId is null)
                 var taskQuery = _db.TaskReminders
                     .AsNoTracking()
-                    .Include(t => t.AssignedToUser).ThenInclude(u => u.Person)
-                    .Include(t => t.RelatedCustomer).ThenInclude(c => c!.Person)
-                    .Include(t => t.RelatedLead).ThenInclude(l => l!.Person)
+                    .Include(t => t.AssignedToUser)
+                    .Include(t => t.RelatedCustomer)
+                    .Include(t => t.RelatedLead)
                     .Where(t => !t.IsDeleted && t.Status == "Completed");
 
                 if (agentId.HasValue && agentId.Value > 0)
@@ -608,9 +624,9 @@ namespace CRMS_Peguit.winforms.Controllers
                 var showingQuery = _db.PropertyShowingDetails
                     .AsNoTracking()
                     .Include(p => p.Property)
-                    .Include(p => p.Activity).ThenInclude(a => a.LoggedByAgent).ThenInclude(u => u.Person)
-                    .Include(p => p.Activity).ThenInclude(a => a.RelatedCustomer).ThenInclude(c => c!.Person)
-                    .Include(p => p.Activity).ThenInclude(a => a.RelatedLead).ThenInclude(l => l!.Person)
+                    .Include(p => p.Activity).ThenInclude(a => a.LoggedByAgent)
+                    .Include(p => p.Activity).ThenInclude(a => a.RelatedCustomer)
+                    .Include(p => p.Activity).ThenInclude(a => a.RelatedLead)
                     .AsQueryable();
 
                 if (agentId.HasValue && agentId.Value > 0)

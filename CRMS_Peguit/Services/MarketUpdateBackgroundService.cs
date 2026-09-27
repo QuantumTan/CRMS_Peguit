@@ -153,7 +153,7 @@ namespace CRMS_Peguit.winforms.Services
 
             var query = db.Deals
                 .AsNoTracking()
-                .Include(d => d.Customer).ThenInclude(c => c!.Person)
+                .Include(d => d.Customer)
                 .Include(d => d.Property)
                 .Where(d => d.Customer != null && !d.Customer.IsDeleted)
                 .Where(d => d.Stage.ToLower() == "closed" || d.Stage.ToLower() == "closed-won" || d.Stage.ToLower() == "won");
@@ -261,9 +261,9 @@ namespace CRMS_Peguit.winforms.Services
 
             using var db = LocalDb.CreateContext(tenantId);
             var query = db.Deals
-                .Include(d => d.Customer).ThenInclude(c => c!.Person)
+                .Include(d => d.Customer)
                 .Include(d => d.Property)
-                .Include(d => d.Agent).ThenInclude(a => a!.Person)
+                .Include(d => d.Agent)
                 .Where(d => d.Customer != null && !d.Customer.IsDeleted)
                 .Where(d => d.Stage.ToLower() == "closed" || d.Stage.ToLower() == "closed-won" || d.Stage.ToLower() == "won");
 
@@ -420,9 +420,9 @@ namespace CRMS_Peguit.winforms.Services
 
             var query = db.Deals
                 .AsNoTracking()
-                .Include(d => d.Customer).ThenInclude(c => c!.Person)
+                .Include(d => d.Customer)
                 .Include(d => d.Property)
-                .Include(d => d.Agent).ThenInclude(a => a!.Person)
+                .Include(d => d.Agent)
                 .Where(d => d.Customer != null && !d.Customer.IsDeleted)
                 .Where(d => d.Stage.ToLower() == "closed" || d.Stage.ToLower() == "closed-won" || d.Stage.ToLower() == "won");
 

@@ -34,7 +34,6 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         private PaginationControl _pagination = null!;
         private Button _btnRunBackup = null!;
         private Button _btnRestore = null!;
-        private Button _btnSeedAllTenants = null!;
         private Label _lblLastStatus = null!;
         private Panel _pnlEmptyState = null!;
 
@@ -49,13 +48,13 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             Dock = DockStyle.Fill;
             BackColor = Theme.Background;
 
-            // 1. Page Header (Height = 76)
+            // 1. Page Header (Height = 96)
             var pnlPageHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 76,
+                Height = 96,
                 BackColor = Theme.Surface,
-                Padding = new Padding(28, 14, 28, 0)
+                Padding = new Padding(28, 16, 28, 16)
             };
             pnlPageHeader.Paint += (s, e) =>
             {
@@ -69,7 +68,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = UiStyleConstants.PageTitleFont,
                 ForeColor = Theme.TextPrimary,
                 AutoSize = true,
-                Location = new Point(28, 14)
+                Location = new Point(28, 18)
             };
             var lblSub = new Label
             {
@@ -77,7 +76,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = UiStyleConstants.SubtitleFont,
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
-                Location = new Point(28, 42)
+                Location = new Point(28, 56)
             };
             pnlPageHeader.Controls.Add(lblSub);
             pnlPageHeader.Controls.Add(lblTitle);
@@ -97,6 +96,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
+                AutoEllipsis = true,
+                MaximumSize = new Size(Math.Max(150, pnlToolbar.Width - 580), 24),
                 Location = new Point(24, 17)
             };
             pnlToolbar.Controls.Add(_lblLastStatus);
@@ -112,7 +113,10 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 BackColor = Color.Transparent
             };
             pnlToolbar.SizeChanged += (_, _) =>
+            {
                 pnlActions.Location = new Point(pnlToolbar.Width - 564, 8);
+                _lblLastStatus.MaximumSize = new Size(Math.Max(150, pnlToolbar.Width - 580), 24);
+            };
 
             _btnRunBackup = new Button
             {
@@ -140,22 +144,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             UiRadiusHelper.StyleButton(_btnRestore, 6);
             _btnRestore.Click += BtnRestore_Click;
 
-            _btnSeedAllTenants = new Button
-            {
-                Text = "🌱  Seed All Tenants",
-                Size = new Size(160, 34),
-                BackColor = Color.FromArgb(240, 253, 244),
-                ForeColor = Color.FromArgb(22, 101, 52),
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                Cursor = Cursors.Hand,
-                Margin = new Padding(4, 0, 0, 0)
-            };
-            UiRadiusHelper.StyleButton(_btnSeedAllTenants, 6);
-            _btnSeedAllTenants.Click += BtnSeedAllTenants_Click;
-
             pnlActions.Controls.Add(_btnRunBackup);
             pnlActions.Controls.Add(_btnRestore);
-            pnlActions.Controls.Add(_btnSeedAllTenants);
             pnlToolbar.Controls.Add(pnlActions);
 
             // 3. Danger / Warning Alert Banner (Height = 44)
@@ -252,6 +242,11 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 FillWeight = 22,
                 MinimumWidth = 140
             });
+            _grid.Columns.Add(new ActionsColumn
+            {
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+                Width = 64
+            });
 
             _grid.CellPainting += (s, e) =>
             {
@@ -272,6 +267,58 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 {
                     e.CellStyle.Font = new Font("Consolas", 9f);
                     e.CellStyle.ForeColor = Color.FromArgb(71, 85, 105);
+                }
+            };
+
+            _grid.CellClick += (s, e) =>
+            {
+                if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+                string colName = _grid.Columns[e.ColumnIndex].Name;
+                if (colName == "Actions" || _grid.Columns[e.ColumnIndex] is ActionsColumn)
+                {
+                    if (_grid.Rows[e.RowIndex].DataBoundItem is not { } boundItem) return;
+                    dynamic row = boundItem;
+                    int backupId = (int)row.BackupId;
+                    string loc = (string)row.FileLocation;
+
+                    var cellRect = _grid.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, false);
+                    var menu = new ContextMenuStrip();
+
+                    var restoreItem = new ToolStripMenuItem("⏮  Restore This Snapshot...");
+                    restoreItem.Click += async (_, _) =>
+                    {
+                        var backup = await _controller.GetBackupForRestoreAsync(backupId);
+                        if (backup == null)
+                        {
+                            MessageBox.Show("Could not retrieve backup snapshot details.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+                        using var dlg = new RestoreConfirmDialog(backup);
+                        if (dlg.ShowDialog(this) == DialogResult.OK)
+                        {
+                            int userId = CurrentSession.UserId > 0 ? CurrentSession.UserId : 1;
+                            bool ok = await _controller.RestoreBackupAsync(backupId, userId);
+                            if (ok)
+                            {
+                                MessageBox.Show("Disaster recovery restoration completed.", "Restored", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                                await LoadDataAsync();
+                            }
+                        }
+                    };
+                    menu.Items.Add(restoreItem);
+
+                    var copyItem = new ToolStripMenuItem("📋  Copy Archive Location");
+                    copyItem.Click += (_, _) =>
+                    {
+                        if (!string.IsNullOrEmpty(loc))
+                        {
+                            Clipboard.SetText(loc);
+                            MessageBox.Show("Archive path copied to clipboard.", "Copied", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                    };
+                    menu.Items.Add(copyItem);
+
+                    menu.Show(_grid, new Point(Math.Max(0, cellRect.Right - 220), cellRect.Bottom));
                 }
             };
 
@@ -463,68 +510,6 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             }
             finally
             {
-                _btnRestore.Enabled = true;
-            }
-        }
-
-        private async void BtnSeedAllTenants_Click(object? sender, EventArgs e)
-        {
-            var confirm = MessageBox.Show(
-                "This will verify and seed full realistic datasets across ALL tenants:\n\n" +
-                "  • Tenant 1: Apex Realty (Standard Tier)\n" +
-                "  • Tenant 2: BlueHorizon Properties (Professional Tier)\n" +
-                "  • Tenant 3: Crestview Holdings (Enterprise Multi-Branch: Manila, Cebu, Davao)\n\n" +
-                "Datasets include users, roles, team members, customers, buyer profiles, properties, deals, contingencies, clauses, leads, support tickets, comments, activities, follow-ups, campaigns, and notifications.\n\n" +
-                "Proceed with seeding all tenants?",
-                "Confirm Seed All Tenants",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-
-            if (confirm != DialogResult.Yes) return;
-
-            _btnSeedAllTenants.Enabled = false;
-            _btnRunBackup.Enabled = false;
-            _btnRestore.Enabled = false;
-            _lblLastStatus.Text = "🌱 Seeding all tenants in progress...";
-            _lblLastStatus.ForeColor = Color.FromArgb(22, 101, 52);
-
-            try
-            {
-                var progress = new Progress<string>(msg =>
-                {
-                    _lblLastStatus.Text = msg;
-                });
-
-                await Task.Run(() => LocalDb.SeedAllTenantsAsync(progress));
-
-                _lblLastStatus.Text = "✓ All tenants successfully seeded.";
-                _lblLastStatus.ForeColor = Color.FromArgb(22, 101, 52);
-
-                MessageBox.Show(
-                    "All tenant databases have been successfully seeded!\n\n" +
-                    "  • Tenant 1 (Apex Realty): CRMS_Tenant_1\n" +
-                    "  • Tenant 2 (BlueHorizon Properties): CRMS_Tenant_2\n" +
-                    "  • Tenant 3 (Crestview Holdings): CRMS_Tenant_3 (3 Branches)\n\n" +
-                    "Default credentials:\n" +
-                    "  • Tenant 1: admin@test.com / Admin123! | manager@test.com / Manager123! | agent@test.com / Agent123!\n" +
-                    "  • Tenant 2: tenantb_admin@test.com / Admin123! | manager.b@test.com / Manager123! | agent.b@test.com / Agent123!\n" +
-                    "  • Tenant 3: tenantc_admin@test.com / Admin123! | manager.c@test.com / Manager123! | agent.c@test.com / Agent123!",
-                    "Seeding Complete",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-
-                await LoadDataAsync();
-            }
-            catch (Exception ex)
-            {
-                _lblLastStatus.Text = $"Seeding error: {ex.Message}";
-                _lblLastStatus.ForeColor = Color.FromArgb(153, 27, 27);
-                MessageBox.Show($"Failed to seed all tenants: {ex.Message}", "Seeding Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            finally
-            {
-                _btnSeedAllTenants.Enabled = true;
-                _btnRunBackup.Enabled = true;
                 _btnRestore.Enabled = true;
             }
         }

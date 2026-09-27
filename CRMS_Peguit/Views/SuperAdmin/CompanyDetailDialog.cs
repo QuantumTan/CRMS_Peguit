@@ -4,6 +4,7 @@ using System.Windows.Forms;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 // =============================================================================
 // CompanyDetailDialog — Read-only view of Company + Subscription metadata.
@@ -21,42 +22,43 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         public CompanyDetailDialog(CompanyDetailDto detail)
         {
             Text = $"Company Detail — {detail.CompanyName}";
-            Size = new Size(500, 420);
-            StartPosition = FormStartPosition.CenterParent;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            BackColor = Theme.Surface;
+            Size = new Size(520, 520);
+            UiRadiusHelper.StyleModal(this, 8);
 
-            var pnl = new Panel { Dock = DockStyle.Fill, Padding = new Padding(28) };
-            Controls.Add(pnl);
+            var pnlContent = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(24),
+                BackColor = Color.White,
+                AutoScroll = true
+            };
 
             // Company header with AvatarLabel
             var avatarLabel = new AvatarLabel(detail.CompanyName, detail.CompanyCode)
             {
-                Location = new Point(0, 0),
-                Size = new Size(430, 44),
+                Location = new Point(24, 20),
+                Size = new Size(456, 44),
                 AvatarSize = 36
             };
-            pnl.Controls.Add(avatarLabel);
+            pnlContent.Controls.Add(avatarLabel);
 
-            int y = 58;
+            int y = 76;
 
             // Company section
-            AddSectionHeader(pnl, "Company Information", ref y);
-            AddField(pnl, "Company Code", detail.CompanyCode, ref y);
-            AddField(pnl, "Company Name", detail.CompanyName, ref y);
-            AddField(pnl, "Status", detail.IsActive ? "Active" : "Inactive", ref y, isStatus: true);
-            AddField(pnl, "Registered On", detail.CreatedAt.ToLocalTime().ToString("MMMM dd, yyyy"), ref y);
+            AddSectionHeader(pnlContent, "Company Information", ref y);
+            AddField(pnlContent, "Company Code", detail.CompanyCode, ref y);
+            AddField(pnlContent, "Company Name", detail.CompanyName, ref y);
+            AddField(pnlContent, "Status", detail.IsActive ? "Active" : "Inactive", ref y, isStatus: true);
+            AddField(pnlContent, "Registered On", detail.CreatedAt.ToLocalTime().ToString("MMMM dd, yyyy"), ref y);
 
             y += 10;
 
             // Subscription section
-            AddSectionHeader(pnl, "Current Subscription", ref y);
-            AddField(pnl, "Plan Tier", detail.PlanName, ref y);
-            AddField(pnl, "Status", detail.SubscriptionStatus, ref y, isStatus: true);
-            AddField(pnl, "Monthly Billing", $"₱{detail.BillingAmount:N2}", ref y);
-            AddField(pnl, "Subscription End",
+            AddSectionHeader(pnlContent, "Current Subscription", ref y);
+            AddField(pnlContent, "Plan Tier", detail.PlanName, ref y);
+            AddField(pnlContent, "Status", detail.SubscriptionStatus, ref y, isStatus: true);
+            AddField(pnlContent, "Monthly Billing", $"₱{detail.BillingAmount:N2}", ref y);
+            AddField(pnlContent, "Subscription End",
                 detail.SubscriptionEndDate.HasValue
                     ? detail.SubscriptionEndDate.Value.ToString("MMMM dd, yyyy")
                     : "Lifetime / No expiry", ref y);
@@ -67,28 +69,35 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             var lblNote = new Label
             {
                 Text = "ℹ  No tenant CRM records (Customers, Leads, Deals, Properties) are accessible from this view.",
-                Font = new Font("Segoe UI", 8f, FontStyle.Italic),
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Italic),
                 ForeColor = Theme.TextSecondary,
-                Location = new Point(0, y),
-                Size = new Size(430, 32),
+                Location = new Point(24, y),
+                Size = new Size(456, 32),
                 AutoSize = false
             };
-            pnl.Controls.Add(lblNote);
-            y += 40;
+            pnlContent.Controls.Add(lblNote);
+
+            // Footer Panel
+            var pnlFooter = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 60,
+                BackColor = Color.FromArgb(248, 250, 252)
+            };
 
             var btnClose = new Button
             {
                 Text = "Close",
                 DialogResult = DialogResult.Cancel,
-                Location = new Point(340, y),
-                Size = new Size(90, 36),
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                BackColor = Theme.Primary,
-                ForeColor = Color.White,
-                Cursor = Cursors.Hand
+                Location = new Point(370, 12),
+                Size = new Size(110, 36),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
-            UiRadiusHelper.StyleButton(btnClose, 6);
-            pnl.Controls.Add(btnClose);
+            UiRadiusHelper.StyleSecondaryButton(btnClose, 6);
+            pnlFooter.Controls.Add(btnClose);
+
+            Controls.Add(pnlContent);
+            Controls.Add(pnlFooter);
 
             AcceptButton = btnClose;
             CancelButton = btnClose;
@@ -98,8 +107,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         {
             var divider = new Panel
             {
-                Location = new Point(0, y),
-                Size = new Size(430, 1),
+                Location = new Point(24, y),
+                Size = new Size(456, 1),
                 BackColor = Theme.Border
             };
             pnl.Controls.Add(divider);
@@ -111,7 +120,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
-                Location = new Point(0, y)
+                Location = new Point(24, y)
             };
             pnl.Controls.Add(lbl);
             y += 22;
@@ -125,7 +134,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
-                Location = new Point(0, y)
+                Location = new Point(24, y)
             };
             pnl.Controls.Add(lblKey);
 
@@ -133,7 +142,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             {
                 var stText = new StatusText
                 {
-                    Location = new Point(150, y),
+                    Location = new Point(170, y),
                     AutoSize = true
                 };
                 stText.SetStatus(value);
@@ -147,7 +156,9 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                     Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                     ForeColor = Theme.TextPrimary,
                     AutoSize = true,
-                    Location = new Point(150, y)
+                    AutoEllipsis = true,
+                    MaximumSize = new Size(310, 24),
+                    Location = new Point(170, y)
                 };
                 pnl.Controls.Add(lblVal);
             }

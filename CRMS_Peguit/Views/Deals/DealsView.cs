@@ -138,17 +138,9 @@ namespace CRMS_Peguit.winforms.Views.Deals
                 _btnExport.BringToFront();
             }
 
-            kpiTotal.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiOffer.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiContract.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiClosed.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiLost.ClickMode = KpiClickMode.InPlaceFilter;
-
-            kpiTotal.Click += (_, _) => ToggleOrSetFilter("All");
-            kpiOffer.Click += (_, _) => ToggleOrSetFilter("Offer");
-            kpiContract.Click += (_, _) => ToggleOrSetFilter("Contract");
-            kpiClosed.Click += (_, _) => ToggleOrSetFilter("Closed");
-            kpiLost.Click += (_, _) => ToggleOrSetFilter("Lost");
+            _filterCoord = new ScreenFilterCoordinator();
+            _filterCoord.Register(kpiTotal, kpiOffer, kpiContract, kpiClosed, kpiLost);
+            _filterCoord.FilterChanged += (_, key) => SetFilter(key ?? "All");
 
             btnFilterAll.Click += (_, _) => ToggleOrSetFilter("All");
             btnFilterOffer.Click += (_, _) => ToggleOrSetFilter("Offer");
@@ -187,15 +179,17 @@ namespace CRMS_Peguit.winforms.Views.Deals
             };
         }
 
+        private ScreenFilterCoordinator _filterCoord = null!;
+
         public void ToggleOrSetFilter(string stage)
         {
             if (string.Equals(_filterStage, stage, StringComparison.OrdinalIgnoreCase) && !string.Equals(stage, "All", StringComparison.OrdinalIgnoreCase))
             {
-                SetFilter("All");
+                _filterCoord.SetActive(this, null);
             }
             else
             {
-                SetFilter(stage);
+                _filterCoord.SetActive(this, stage);
             }
         }
 

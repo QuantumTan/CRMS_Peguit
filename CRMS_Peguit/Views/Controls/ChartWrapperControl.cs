@@ -26,6 +26,15 @@ namespace CRMS_Peguit.winforms.Controls
         public Color Color { get; set; }
         public string? FullTooltip { get; set; }
 
+        // Rich Web-App-Grade Tooltip Properties
+        public string FormattedValue { get; set; } = string.Empty;
+        public string? ComparisonBadge { get; set; }
+        public Color? ComparisonBadgeColor { get; set; }
+
+        // Live ScottPlot 5 primitive references for smooth transitions, dimming & pulse
+        public ScottPlot.Bar? ScottBar { get; set; }
+        public ScottPlot.PieSlice? ScottSlice { get; set; }
+
         // Bar geometry
         public int BarIndex { get; set; } = -1;
         public double BarPosition { get; set; }
@@ -57,6 +66,8 @@ namespace CRMS_Peguit.winforms.Controls
         private readonly FlowLayoutPanel _pnlLegend;
         private readonly FormsPlot _plot;
         private readonly ToolTip _toolTip = new();
+        private readonly ModernChartTooltip _modernTooltip = new();
+        private readonly ChartSkeletonOverlay _skeletonOverlay = new();
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public FormsPlot PlotControl => _plot;
@@ -86,6 +97,23 @@ namespace CRMS_Peguit.winforms.Controls
         private ChartSegment? _hoveredSegment;
         private bool _isCardHovered;
         private Action? _externalNavigationAction;
+
+        // NEXA Standard: hover debounce (50-100ms) to prevent tooltip thrashing
+        private System.Windows.Forms.Timer? _hoverDebounceTimer;
+        private Point _pendingMousePos;
+
+        // Modern Animation Engine (Lightweight, non-blocking 300-350ms entrance transitions)
+        private System.Windows.Forms.Timer? _entranceTimer;
+        private DateTime _entranceStartTime;
+        private bool _isEntranceAnimating;
+        private readonly List<(ScottPlot.Bar bar, double targetVal, ScottPlot.Plottables.Text? label)> _animatingBars = new();
+        private readonly List<(ScottPlot.PieSlice slice, double targetVal)> _animatingSlices = new();
+
+        // Selected-state pulse feedback timer (140ms single-shot)
+        private System.Windows.Forms.Timer? _selectionPulseTimer;
+
+        // NEXA Standard: clean-click drag-threshold guard
+        private readonly InteractionHelper.ClickTracker _clickTracker = new();
 
         private const int CardRadius = 12;
         private const int HeaderHeight = 56;
@@ -179,10 +207,28 @@ namespace CRMS_Peguit.winforms.Controls
             Controls.Add(_pnlLegend);
             Controls.Add(_pnlHeader);
 
+            // Attach modern interactive UI components
+            _skeletonOverlay.Dock = DockStyle.Fill;
+            _plot.Controls.Add(_skeletonOverlay);
+            _plot.Controls.Add(_modernTooltip);
+            _modernTooltip.BringToFront();
+
+            // Initialize hover debounce timer (NEXA Standard: 50-100ms)
+            _hoverDebounceTimer = InteractionHelper.CreateHoverDebounceTimer(OnHoverDebounceElapsed);
+
             // Wire hover and interaction
             _plot.MouseMove += Plot_MouseMove;
-            _plot.MouseLeave += (_, _) => SetHoveredSegment(null);
+            _plot.MouseLeave += (_, _) =>
+            {
+                _hoverDebounceTimer?.Stop();
+                ResetHoverHighlights();
+                SetHoveredSegment(null);
+                _modernTooltip.HideImmediate();
+                _toolTip.Hide(_plot); // Prevent stuck tooltips
+                _plot.Cursor = Mode == KpiClickMode.Navigate ? Cursors.Hand : Cursors.Default;
+            };
             _plot.MouseClick += Plot_MouseClick;
+            _plot.MouseDown += (_, e) => _clickTracker.RecordMouseDown(e);
 
             MouseEnter += (_, _) => SetCardHover(true);
             MouseLeave += (_, _) => SetCardHover(false);
@@ -254,11 +300,24 @@ namespace CRMS_Peguit.winforms.Controls
             _segments.Add(segment);
         }
 
+        public void ShowLoadingSkeleton(ChartSkeletonType type = ChartSkeletonType.Bars)
+        {
+            CompleteEntranceAnimation();
+            _skeletonOverlay.ShowSkeleton(type);
+            _modernTooltip.HideImmediate();
+        }
+
+        public void HideLoadingSkeleton()
+        {
+            _skeletonOverlay.HideSkeleton();
+        }
+
         public void ClearFilter()
         {
             if (ActiveSegmentKey != null)
             {
                 ActiveSegmentKey = null;
+                ApplySelectionStyles(isPulsing: false);
                 UpdateActionHintForInPlace();
                 UpdateLegendChipSelection();
                 Invalidate();
@@ -268,17 +327,125 @@ namespace CRMS_Peguit.winforms.Controls
         public void SetActiveFilter(string? key)
         {
             ActiveSegmentKey = key;
+            TriggerSelectionPulse();
             UpdateActionHintForInPlace();
             UpdateLegendChipSelection();
             Invalidate();
         }
 
+        private void TriggerSelectionPulse()
+        {
+            _selectionPulseTimer?.Stop();
+            ApplySelectionStyles(isPulsing: true);
+
+            _selectionPulseTimer = new System.Windows.Forms.Timer { Interval = 140 };
+            _selectionPulseTimer.Tick += (_, _) =>
+            {
+                _selectionPulseTimer.Stop();
+                ApplySelectionStyles(isPulsing: false);
+            };
+            _selectionPulseTimer.Start();
+        }
+
+        private void ApplySelectionStyles(bool isPulsing)
+        {
+            if (IsFilterActive)
+            {
+                foreach (var s in _segments)
+                {
+                    bool isSelected = string.Equals(ActiveSegmentKey, s.Key, StringComparison.OrdinalIgnoreCase);
+                    if (isSelected)
+                    {
+                        // Selected segment: full vibrant color + prominent accent border
+                        if (s.ScottBar != null)
+                        {
+                            s.ScottBar.FillColor = ScottPlot.Color.FromColor(s.Color);
+                            s.ScottBar.LineWidth = isPulsing ? 3.0f : 1.8f;
+                            s.ScottBar.LineColor = ScottPlot.Color.FromColor(Color.FromArgb(14, 165, 233)); // Sky 500
+                        }
+                        if (s.ScottSlice != null)
+                        {
+                            s.ScottSlice.FillColor = ScottPlot.Color.FromColor(s.Color);
+                        }
+                    }
+                    else
+                    {
+                        // Non-selected segment: dimmed slightly (35-40% opacity) to visually emphasize active filter
+                        Color dimmed = Color.FromArgb(85, s.Color.R, s.Color.G, s.Color.B);
+                        if (s.ScottBar != null)
+                        {
+                            s.ScottBar.FillColor = ScottPlot.Color.FromColor(dimmed);
+                            s.ScottBar.LineWidth = 0.5f;
+                            s.ScottBar.LineColor = ScottPlot.Color.FromColor(Color.FromArgb(20, 0, 0, 0));
+                        }
+                        if (s.ScottSlice != null)
+                        {
+                            s.ScottSlice.FillColor = ScottPlot.Color.FromColor(dimmed);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // No filter active: restore all segments to full vibrant colors
+                foreach (var s in _segments)
+                {
+                    if (s.ScottBar != null)
+                    {
+                        s.ScottBar.FillColor = ScottPlot.Color.FromColor(s.Color);
+                        s.ScottBar.LineWidth = 0.5f;
+                        s.ScottBar.LineColor = ScottPlot.Color.FromColor(Color.FromArgb(30, 0, 0, 0));
+                    }
+                    if (s.ScottSlice != null)
+                    {
+                        s.ScottSlice.FillColor = ScottPlot.Color.FromColor(s.Color);
+                    }
+                }
+            }
+            _plot.Refresh();
+        }
+
+        private void ResetHoverHighlights()
+        {
+            if (_hoveredSegment != null)
+            {
+                _hoveredSegment = null;
+                ApplySelectionStyles(isPulsing: false);
+            }
+        }
+
+        public void CompleteEntranceAnimation()
+        {
+            if (!_isEntranceAnimating) return;
+            _entranceTimer?.Stop();
+            _isEntranceAnimating = false;
+
+            foreach (var (bar, targetVal, txt) in _animatingBars)
+            {
+                bar.Value = targetVal;
+                if (txt != null) txt.IsVisible = true;
+            }
+
+            foreach (var (slice, targetVal) in _animatingSlices)
+            {
+                slice.Value = targetVal;
+            }
+
+            _animatingBars.Clear();
+            _animatingSlices.Clear();
+
+            ApplySelectionStyles(isPulsing: false);
+            _plot.Refresh();
+        }
+
         // =========================================================================
-        // HIGH-LEVEL CHART RENDERING WITH HIT-TEST REGISTRATION
+        // HIGH-LEVEL CHART RENDERING WITH ENTRANCE ANIMATION & HIT-TEST REGISTRATION
         // =========================================================================
 
         public void RenderDonutPlot(IEnumerable<(string label, double value, Color color, string? key)> items, int maxSlices = 5)
         {
+            CompleteEntranceAnimation();
+            HideLoadingSkeleton();
             ClearSegments();
             _plot.Plot.Clear();
             BiDisplayConstants.ConfigureStandardPlot(_plot);
@@ -295,30 +462,40 @@ namespace CRMS_Peguit.winforms.Controls
             // Calculate angular boundaries for hit testing
             double currentAngle = 0;
             var pieSlices = new List<PieSlice>();
+            _animatingSlices.Clear();
+            _animatingBars.Clear();
 
             foreach (var item in list.Take(maxSlices))
             {
                 double sweep = totalSum > 0 ? (item.value / totalSum) * 360.0 : 0;
                 string segKey = item.key ?? item.label.Trim();
+                double pct = totalSum > 0 ? (item.value / totalSum) * 100 : 0;
+                string valText = item.value >= 1_000_000 ? $"₱{item.value / 1_000_000:N1}M" : (item.value >= 1_000 ? $"{item.value:N0}" : $"{item.value:N0}");
+
+                var slice = new PieSlice
+                {
+                    Value = item.value * 0.01, // start near 0 for entrance sweep
+                    FillColor = ScottPlot.Color.FromColor(item.color),
+                    Label = $"{item.label}\n{item.value:N0}"
+                };
+                pieSlices.Add(slice);
+                _animatingSlices.Add((slice, item.value));
 
                 var seg = new ChartSegment
                 {
                     Key = segKey,
                     Label = item.label,
                     Value = item.value,
+                    FormattedValue = valText,
+                    ComparisonBadge = $"{pct:F1}% of total",
+                    ComparisonBadgeColor = item.color,
                     Color = item.color,
+                    ScottSlice = slice,
                     StartAngleDeg = currentAngle,
                     SweepAngleDeg = sweep,
-                    FullTooltip = $"{item.label}: {item.value:N0} ({(totalSum > 0 ? (item.value / totalSum) * 100 : 0):F1}%)"
+                    FullTooltip = $"{item.label}: {item.value:N0} ({pct:F1}%)"
                 };
                 RegisterSegment(seg);
-
-                pieSlices.Add(new PieSlice
-                {
-                    Value = item.value,
-                    FillColor = ScottPlot.Color.FromColor(item.color),
-                    Label = $"{item.label}\n{item.value:N0}"
-                });
 
                 currentAngle += sweep;
             }
@@ -329,25 +506,33 @@ namespace CRMS_Peguit.winforms.Controls
                 var others = list.Skip(maxSlices).ToList();
                 double otherSum = others.Sum(x => x.value);
                 double sweep = (otherSum / totalSum) * 360.0;
+                double pct = (otherSum / totalSum) * 100;
+                string valText = otherSum >= 1_000 ? $"{otherSum:N0}" : $"{otherSum:N0}";
+
+                var slice = new PieSlice
+                {
+                    Value = otherSum * 0.01,
+                    FillColor = ScottPlot.Color.FromColor(BiDisplayConstants.StatusNeutral),
+                    Label = $"Other\n{otherSum:N0}"
+                };
+                pieSlices.Add(slice);
+                _animatingSlices.Add((slice, otherSum));
 
                 var seg = new ChartSegment
                 {
                     Key = "Other",
                     Label = "Other",
                     Value = otherSum,
+                    FormattedValue = valText,
+                    ComparisonBadge = $"{pct:F1}% of total",
+                    ComparisonBadgeColor = BiDisplayConstants.StatusNeutral,
                     Color = BiDisplayConstants.StatusNeutral,
+                    ScottSlice = slice,
                     StartAngleDeg = currentAngle,
                     SweepAngleDeg = sweep,
-                    FullTooltip = $"Other: {otherSum:N0} ({(otherSum / totalSum) * 100:F1}%)"
+                    FullTooltip = $"Other: {otherSum:N0} ({pct:F1}%)"
                 };
                 RegisterSegment(seg);
-
-                pieSlices.Add(new PieSlice
-                {
-                    Value = otherSum,
-                    FillColor = ScottPlot.Color.FromColor(BiDisplayConstants.StatusNeutral),
-                    Label = $"Other\n{otherSum:N0}"
-                });
             }
 
             var pie = _plot.Plot.Add.Pie(pieSlices);
@@ -364,13 +549,42 @@ namespace CRMS_Peguit.winforms.Controls
             double yLim = 1.45;
             double xLim = yLim * Math.Max(1.0, aspect);
             _plot.Plot.Axes.SetLimits(-xLim, xLim, -yLim, yLim);
-            _plot.Refresh();
 
             BuildLegendChips();
+
+            // Run entrance sweep animation (~320ms EaseOutCubic)
+            _isEntranceAnimating = true;
+            _entranceStartTime = DateTime.UtcNow;
+            _entranceTimer?.Stop();
+            _entranceTimer = new System.Windows.Forms.Timer { Interval = 16 };
+            _entranceTimer.Tick += (_, _) =>
+            {
+                double elapsed = (DateTime.UtcNow - _entranceStartTime).TotalMilliseconds;
+                double progress = Math.Min(1.0, elapsed / 320.0);
+                double ease = 1.0 - Math.Pow(1.0 - progress, 3); // EaseOutCubic
+
+                foreach (var (sl, targetVal) in _animatingSlices)
+                {
+                    sl.Value = Math.Max(0.001, targetVal * ease);
+                }
+
+                if (progress >= 1.0)
+                {
+                    CompleteEntranceAnimation();
+                }
+                else
+                {
+                    _plot.Refresh();
+                }
+            };
+            _entranceTimer.Start();
+            _plot.Refresh();
         }
 
         public void RenderBarPlot(IEnumerable<(string label, double value, Color color, string? key)> items, double rotation = 0)
         {
+            CompleteEntranceAnimation();
+            HideLoadingSkeleton();
             ClearSegments();
             _plot.Plot.Clear();
             BiDisplayConstants.ConfigureStandardPlot(_plot);
@@ -391,49 +605,89 @@ namespace CRMS_Peguit.winforms.Controls
 
             var bars = new List<ScottPlot.Bar>();
             var ticks = new List<ScottPlot.Tick>();
+            var textLabels = new List<ScottPlot.Plottables.Text?>();
             double barWidth = list.Count switch { 1 => 0.40, 2 => 0.52, 3 => 0.62, _ => 0.72 };
             double maxY = 0;
+            double totalSum = list.Sum(x => x.value);
 
             for (int i = 0; i < list.Count; i++)
             {
                 var it = list[i];
                 if (it.value > maxY) maxY = it.value;
 
+                string valDisplay = it.value >= 1_000 ? $"{it.value:N0}" : (it.value % 1 == 0 ? $"{it.value:N0}" : $"{it.value:N1}");
+                string? compBadge = null;
+                Color? compBadgeColor = null;
+
+                // Rich Contextual Comparison (vs prior period or % of whole)
+                if (i > 0 && list[i - 1].value > 0.0001)
+                {
+                    double diff = it.value - list[i - 1].value;
+                    double pctChange = (diff / list[i - 1].value) * 100.0;
+                    if (diff > 0)
+                    {
+                        compBadge = $"+{pctChange:F1}% vs prior";
+                        compBadgeColor = Theme.StatusSuccess;
+                    }
+                    else if (diff < 0)
+                    {
+                        compBadge = $"{pctChange:F1}% vs prior";
+                        compBadgeColor = Theme.StatusAlert;
+                    }
+                    else
+                    {
+                        compBadge = "0.0% vs prior";
+                        compBadgeColor = Theme.StatusNeutral;
+                    }
+                }
+                else if (totalSum > 0)
+                {
+                    compBadge = $"{(it.value / totalSum * 100.0):F1}% of total";
+                    compBadgeColor = Color.FromArgb(14, 165, 233);
+                }
+
                 string segKey = it.key ?? it.label.Trim();
+                var bar = new ScottPlot.Bar
+                {
+                    Position = i,
+                    Value = 0, // starts at 0 for entrance growth
+                    Size = barWidth,
+                    FillColor = ScottPlot.Color.FromColor(it.color),
+                    LineWidth = 0.5f,
+                    LineColor = ScottPlot.Color.FromColor(Color.FromArgb(30, 0, 0, 0))
+                };
+                bars.Add(bar);
+
                 var seg = new ChartSegment
                 {
                     Key = segKey,
                     Label = it.label,
                     Value = it.value,
+                    FormattedValue = valDisplay,
+                    ComparisonBadge = compBadge,
+                    ComparisonBadgeColor = compBadgeColor,
                     Color = it.color,
                     BarIndex = i,
                     BarPosition = i,
                     BarWidth = barWidth,
-                    FullTooltip = $"{it.label}: {it.value:N0}"
+                    ScottBar = bar,
+                    FullTooltip = $"{it.label}: {valDisplay}"
                 };
                 RegisterSegment(seg);
-
-                bars.Add(new ScottPlot.Bar
-                {
-                    Position = i,
-                    Value = it.value,
-                    Size = barWidth,
-                    FillColor = ScottPlot.Color.FromColor(it.color),
-                    LineWidth = 0.5f,
-                    LineColor = ScottPlot.Color.FromColor(Color.FromArgb(30, 0, 0, 0))
-                });
                 ticks.Add(new ScottPlot.Tick(i, it.label));
 
+                ScottPlot.Plottables.Text? txt = null;
                 if (it.value > 0)
                 {
-                    string valDisplay = it.value >= 1_000 ? $"{it.value:N0}" : (it.value % 1 == 0 ? $"{it.value:N0}" : $"{it.value:N1}");
-                    var txt = _plot.Plot.Add.Text(valDisplay, i, it.value);
+                    txt = _plot.Plot.Add.Text(valDisplay, i, it.value);
                     txt.LabelAlignment = Alignment.LowerCenter;
                     txt.LabelFontSize = 10.5f;
                     txt.LabelFontName = "Segoe UI";
                     txt.LabelFontColor = ScottPlot.Color.FromHex("#0F172A");
                     txt.LabelBold = true;
+                    txt.IsVisible = false; // visible upon entrance completion
                 }
+                textLabels.Add(txt);
             }
 
             _plot.Plot.Add.Bars(bars);
@@ -449,9 +703,44 @@ namespace CRMS_Peguit.winforms.Controls
 
             double topHeadroom = maxY > 0 ? maxY * 1.20 : 10;
             _plot.Plot.Axes.SetLimits(-0.6, list.Count - 0.4, 0, topHeadroom);
-            _plot.Refresh();
 
             BuildLegendChips();
+
+            // Run entrance growth animation (~320ms EaseOutCubic)
+            _animatingBars.Clear();
+            _animatingSlices.Clear();
+            _isEntranceAnimating = true;
+            _entranceStartTime = DateTime.UtcNow;
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                _animatingBars.Add((bars[i], list[i].value, textLabels[i]));
+            }
+
+            _entranceTimer?.Stop();
+            _entranceTimer = new System.Windows.Forms.Timer { Interval = 16 };
+            _entranceTimer.Tick += (_, _) =>
+            {
+                double elapsed = (DateTime.UtcNow - _entranceStartTime).TotalMilliseconds;
+                double progress = Math.Min(1.0, elapsed / 320.0);
+                double ease = 1.0 - Math.Pow(1.0 - progress, 3); // EaseOutCubic
+
+                foreach (var (b, targetVal, _) in _animatingBars)
+                {
+                    b.Value = targetVal * ease;
+                }
+
+                if (progress >= 1.0)
+                {
+                    CompleteEntranceAnimation();
+                }
+                else
+                {
+                    _plot.Refresh();
+                }
+            };
+            _entranceTimer.Start();
+            _plot.Refresh();
         }
 
         // =========================================================================
@@ -561,37 +850,107 @@ namespace CRMS_Peguit.winforms.Controls
         }
 
         // =========================================================================
-        // HIT-TESTING & EVENT HANDLING
+        // HIT-TESTING & EVENT HANDLING WITH PROXIMITY DETECTION & MODERN TOOLTIP
         // =========================================================================
 
         private void Plot_MouseMove(object? sender, MouseEventArgs e)
         {
-            var hit = HitTestSegment(e.Location);
-            SetHoveredSegment(hit);
+            if (_isEntranceAnimating)
+            {
+                CompleteEntranceAnimation();
+            }
+
+            _pendingMousePos = e.Location;
+            _hoverDebounceTimer?.Stop();
+            _hoverDebounceTimer?.Start();
+        }
+
+        private void OnHoverDebounceElapsed()
+        {
+            var hit = HitTestSegment(_pendingMousePos);
+
+            // Smooth segment hover highlight transition
+            if (hit != _hoveredSegment)
+            {
+                // Restore previous hovered segment to base state (dimmed or normal)
+                if (_hoveredSegment != null && !string.Equals(ActiveSegmentKey, _hoveredSegment.Key, StringComparison.OrdinalIgnoreCase))
+                {
+                    Color baseCol = IsFilterActive ? Color.FromArgb(85, _hoveredSegment.Color.R, _hoveredSegment.Color.G, _hoveredSegment.Color.B) : _hoveredSegment.Color;
+                    if (_hoveredSegment.ScottBar != null)
+                    {
+                        _hoveredSegment.ScottBar.FillColor = ScottPlot.Color.FromColor(baseCol);
+                        _hoveredSegment.ScottBar.LineWidth = 0.5f;
+                        _hoveredSegment.ScottBar.LineColor = ScottPlot.Color.FromColor(Color.FromArgb(30, 0, 0, 0));
+                    }
+                    if (_hoveredSegment.ScottSlice != null)
+                    {
+                        _hoveredSegment.ScottSlice.FillColor = ScottPlot.Color.FromColor(baseCol);
+                    }
+                }
+
+                _hoveredSegment = hit;
+
+                // Highlight new hovered segment (brightness boost + crisp accent outline)
+                if (_hoveredSegment != null && !string.Equals(ActiveSegmentKey, _hoveredSegment.Key, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (_hoveredSegment.ScottBar != null)
+                    {
+                        _hoveredSegment.ScottBar.FillColor = ScottPlot.Color.FromColor(_hoveredSegment.Color);
+                        _hoveredSegment.ScottBar.LineWidth = 1.6f;
+                        _hoveredSegment.ScottBar.LineColor = ScottPlot.Color.FromColor(Color.FromArgb(100, 116, 139)); // Slate 500
+                    }
+                    if (_hoveredSegment.ScottSlice != null)
+                    {
+                        _hoveredSegment.ScottSlice.FillColor = ScottPlot.Color.FromColor(_hoveredSegment.Color);
+                    }
+                }
+
+                _plot.Refresh();
+            }
 
             if (hit != null)
             {
                 _plot.Cursor = Cursors.Hand;
-                string hint = Mode == KpiClickMode.Navigate ? " · View full report →" : " · Click to filter in-place";
-                _toolTip.SetToolTip(_plot, $"{hit.FullTooltip ?? hit.Label}{hint}");
+                string hint = Mode == KpiClickMode.Navigate ? "• View full report →" : "• Click to filter in-place";
+
+                // Display modern web-app-grade styled tooltip with contextual comparisons
+                _modernTooltip.ShowTooltip(
+                    _pendingMousePos,
+                    hit.Label,
+                    hit.FormattedValue,
+                    hit.ComparisonBadge,
+                    hit.ComparisonBadgeColor,
+                    hint,
+                    hit.Color);
+
+                _toolTip.SetToolTip(_plot, null); // suppress fallback
             }
             else
             {
+                _modernTooltip.HideTooltip();
+
                 if (Mode == KpiClickMode.Navigate)
                 {
                     _plot.Cursor = Cursors.Hand;
-                    _toolTip.SetToolTip(_plot, "Click to view full report →");
                 }
                 else
                 {
                     _plot.Cursor = Cursors.Default;
-                    _toolTip.SetToolTip(_plot, null);
                 }
             }
         }
 
         private void Plot_MouseClick(object? sender, MouseEventArgs e)
         {
+            if (_isEntranceAnimating)
+            {
+                CompleteEntranceAnimation();
+            }
+
+            // Drag-threshold guard: reject clicks that are really drags
+            if (!_clickTracker.Validate(e))
+                return;
+
             var hit = HitTestSegment(e.Location);
             if (hit != null)
             {
@@ -603,6 +962,10 @@ namespace CRMS_Peguit.winforms.Controls
             }
         }
 
+        /// <summary>
+        /// Geometry hit-testing with proximity cushion so hovering near thin bars or slices
+        /// responds smoothly without requiring exact-pixel precision.
+        /// </summary>
         private ChartSegment? HitTestSegment(Point pixelPt)
         {
             if (_segments.Count == 0) return null;
@@ -611,30 +974,39 @@ namespace CRMS_Peguit.winforms.Controls
             {
                 var coords = _plot.Plot.GetCoordinates(new Pixel(pixelPt.X, pixelPt.Y));
 
-                // 1. Bar chart hit-testing
+                // 1. Bar chart proximity hit-testing
                 if (_segments.Any(s => s.BarIndex >= 0))
                 {
+                    ChartSegment? nearestBar = null;
+                    double minDistance = double.MaxValue;
+
                     foreach (var s in _segments)
                     {
                         if (s.BarIndex >= 0)
                         {
-                            double half = s.BarWidth / 2.0;
-                            if (coords.X >= s.BarPosition - half && coords.X <= s.BarPosition + half &&
-                                coords.Y >= 0 && coords.Y <= s.Value * 1.05)
+                            double proximityHalf = s.BarWidth * 0.75; // 50% cushion around bar width
+                            if (coords.X >= s.BarPosition - proximityHalf && coords.X <= s.BarPosition + proximityHalf &&
+                                coords.Y >= -0.5 && coords.Y <= s.Value * 1.25)
                             {
-                                return s;
+                                double dist = Math.Abs(coords.X - s.BarPosition);
+                                if (dist < minDistance)
+                                {
+                                    minDistance = dist;
+                                    nearestBar = s;
+                                }
                             }
                         }
                     }
+
+                    if (nearestBar != null) return nearestBar;
                 }
 
-                // 2. Donut / Pie chart hit-testing (centered at 0,0)
+                // 2. Donut / Pie chart hit-testing (centered at 0,0) with expanded radial cushion
                 if (_segments.Any(s => s.SweepAngleDeg > 0))
                 {
                     double dist = Math.Sqrt(coords.X * coords.X + coords.Y * coords.Y);
-                    if (dist >= 0.45 && dist <= 1.35)
+                    if (dist >= 0.30 && dist <= 1.55) // Expanded proximity radius
                     {
-                        // In cartesian coordinates: angle counter-clockwise from positive X
                         double angleRad = Math.Atan2(coords.Y, coords.X);
                         double angleDeg = angleRad * 180.0 / Math.PI;
                         if (angleDeg < 0) angleDeg += 360.0;
@@ -652,7 +1024,6 @@ namespace CRMS_Peguit.winforms.Controls
                             }
                             else
                             {
-                                // Wraps around 360
                                 if (angleDeg >= start || angleDeg <= end) return s;
                             }
                         }
@@ -822,6 +1193,21 @@ namespace CRMS_Peguit.winforms.Controls
             {
                 e.Graphics.DrawPath(borderPen, borderPath);
             }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _entranceTimer?.Stop();
+                _entranceTimer?.Dispose();
+                _selectionPulseTimer?.Stop();
+                _selectionPulseTimer?.Dispose();
+                _hoverDebounceTimer?.Stop();
+                _hoverDebounceTimer?.Dispose();
+                _toolTip.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 }

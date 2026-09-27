@@ -92,9 +92,11 @@ namespace CRMS_Peguit.api.Controllers
             else
             {
                 var user = CurrentUser;
+                if (user.TenantId <= 0) return Unauthorized();
+
                 _db.Campaigns.Add(new Campaign
                 {
-                    TenantId = user.TenantId > 0 ? user.TenantId : 1,
+                    TenantId = user.TenantId,
                     Name = trimmedName,
                     Channel = string.IsNullOrWhiteSpace(req.Channel) ? "Direct" : req.Channel.Trim(),
                     Status = "Active",
@@ -119,7 +121,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var leadsQuery = _db.Leads
-                .Include(l => l.Person)
                 .Where(l => !l.IsDeleted);
 
             if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)

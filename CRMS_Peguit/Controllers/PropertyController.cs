@@ -69,8 +69,8 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 using var db = LocalDb.CreateContext(TenantId);
                 var query = db.Properties
-                    .Include(p => p.OwnerCustomer).ThenInclude(c => c!.Person)
-                    .Include(p => p.ListedByAgent).ThenInclude(u => u!.Person)
+                    .Include(p => p.OwnerCustomer)
+                    .Include(p => p.ListedByAgent)
                     .AsNoTracking();
 
                 if (!RbacService.HasFullOversight && RbacService.IsAgent)
@@ -110,8 +110,8 @@ namespace CRMS_Peguit.winforms.Controllers
                         p.Address.Contains(s) ||
                         (p.PropertyType != null && p.PropertyType.Contains(s)) ||
                         (p.Status != null && p.Status.Contains(s)) ||
-                        (p.OwnerCustomer != null && (p.OwnerCustomer.Person.FirstName.Contains(s) || p.OwnerCustomer.Person.LastName.Contains(s))) ||
-                        (p.ListedByAgent != null && (p.ListedByAgent.Person.FirstName.Contains(s) || p.ListedByAgent.Person.LastName.Contains(s))));
+                        (p.OwnerCustomer != null && (p.OwnerCustomer.FirstName.Contains(s) || p.OwnerCustomer.LastName.Contains(s))) ||
+                        (p.ListedByAgent != null && (p.ListedByAgent.FirstName.Contains(s) || p.ListedByAgent.LastName.Contains(s))));
                 }
 
                 int totalCount = await query.CountAsync();
@@ -212,6 +212,13 @@ namespace CRMS_Peguit.winforms.Controllers
             _db.Properties.Add(property);
             _db.SaveChanges();
             LogActivity("Property Created", null, null, $"Property listing '{property.Address}' was created.");
+
+            SyncService.Instance.EnqueueOfflineCreate("Property", property, TenantId, CurrentSession.UserId, property.PropertyId.ToString());
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
+
             return property;
         }
 
@@ -261,6 +268,12 @@ namespace CRMS_Peguit.winforms.Controllers
             }
 
             LogActivity("Property Updated", null, null, $"Property listing '{item.Address}' was updated.");
+
+            SyncService.Instance.EnqueueOfflineUpdate("Property", item.PropertyId, item, TenantId, CurrentSession.UserId, item.CreatedAt);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
         }
 
         public void Delete(Property property)
@@ -272,6 +285,12 @@ namespace CRMS_Peguit.winforms.Controllers
             _db.Properties.Remove(item);
             _db.SaveChanges();
             LogActivity("Property Removed", null, null, $"Property listing '{item.Address}' was removed.");
+
+            SyncService.Instance.EnqueueOfflineDelete("Property", item.PropertyId, TenantId, CurrentSession.UserId);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
         }
 
         public void ApproveAssignment(Property property, string? notes = null)
@@ -335,16 +354,16 @@ namespace CRMS_Peguit.winforms.Controllers
             return db.Customers
                 .AsNoTracking()
                 .Where(c => sellerTypes.Contains(c.Type.ToLower()) && c.Status.ToLower() == "active")
-                .OrderBy(c => c.Person.LastName)
-                .ThenBy(c => c.Person.FirstName)
+                .OrderBy(c => c.LastName)
+                .ThenBy(c => c.FirstName)
                 .Select(c => new
                 {
                     c.CustomerId,
-                    c.Person.FirstName,
-                    c.Person.MiddleName,
-                    c.Person.LastName,
-                    c.Person.Suffix,
-                    c.Person.Email
+                    c.FirstName,
+                    c.MiddleName,
+                    c.LastName,
+                    c.Suffix,
+                    c.Email
                 })
                 .AsEnumerable()
                 .Select(c => new CustomerPickerItem(
@@ -368,8 +387,8 @@ namespace CRMS_Peguit.winforms.Controllers
                 return db.Users
                     .AsNoTracking()
                     .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status.ToLower() != "inactive")
-                    .OrderBy(u => u.Person.LastName)
-                    .ThenBy(u => u.Person.FirstName)
+                    .OrderBy(u => u.LastName)
+                    .ThenBy(u => u.FirstName)
                     .AsEnumerable()
                     .Select(u => new AgentPickerItem(u.UserId, u.FullName, u.Email))
                     .ToList();
@@ -388,10 +407,10 @@ namespace CRMS_Peguit.winforms.Controllers
                 .Where(c => c.CustomerId == ownerCustomerId)
                 .Select(c => new
                 {
-                    c.Person.FirstName,
-                    c.Person.MiddleName,
-                    c.Person.LastName,
-                    c.Person.Suffix
+                    c.FirstName,
+                    c.MiddleName,
+                    c.LastName,
+                    c.Suffix
                 })
                 .AsEnumerable()
                 .Select(c => BuildFullName(c.FirstName, c.MiddleName, c.LastName, c.Suffix))
@@ -421,7 +440,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 if (!_db.Users.Any(u => u.UserId == agentId))
                 {
                     var userByEmail = CurrentSession.CurrentUser != null && !string.IsNullOrEmpty(CurrentSession.CurrentUser.Email)
-                        ? _db.Users.FirstOrDefault(u => u.Person != null && u.Person.Email != null && u.Person.Email.ToLower() == CurrentSession.CurrentUser.Email.ToLower())
+                        ? _db.Users.FirstOrDefault(u => u.Email != null && u.Email.ToLower() == CurrentSession.CurrentUser.Email.ToLower())
                         : null;
 
                     if (userByEmail != null)

@@ -36,8 +36,8 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var query = _db.Properties
-                .Include(p => p.OwnerCustomer).ThenInclude(c => c!.Person)
-                .Include(p => p.ListedByAgent).ThenInclude(u => u!.Person)
+                .Include(p => p.OwnerCustomer)
+                .Include(p => p.ListedByAgent)
                 .Include(p => p.CreatedByUser)
                 .AsQueryable();
 
@@ -109,8 +109,8 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var item = await _db.Properties
-                .Include(p => p.OwnerCustomer).ThenInclude(c => c!.Person)
-                .Include(p => p.ListedByAgent).ThenInclude(u => u!.Person)
+                .Include(p => p.OwnerCustomer)
+                .Include(p => p.ListedByAgent)
                 .Include(p => p.CreatedByUser)
                 .SingleOrDefaultAsync(p => p.PropertyId == id);
 
@@ -131,8 +131,9 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> Create(Property property)
         {
             var user = CurrentUser;
+            if (user.UserId <= 0) return Unauthorized();
             property.CreatedAt = DateTime.UtcNow;
-            property.CreatedByUserId = user.UserId > 0 ? user.UserId : (property.CreatedByUserId > 0 ? property.CreatedByUserId : 1);
+            property.CreatedByUserId = user.UserId;
 
             if (ApiSecurityHelper.CanAssignRecords(user.Role))
             {
@@ -266,10 +267,9 @@ namespace CRMS_Peguit.api.Controllers
         {
             var owners = await _db.Customers
                 .AsNoTracking()
-                .Include(c => c.Person)
                 .Where(c => !c.IsDeleted)
-                .OrderBy(c => c.Person.LastName)
-                .ThenBy(c => c.Person.FirstName)
+                .OrderBy(c => c.LastName)
+                .ThenBy(c => c.FirstName)
                 .Select(c => new CustomerPickerDto(c.CustomerId, c.FullName, c.Email))
                 .ToListAsync();
 
@@ -287,10 +287,9 @@ namespace CRMS_Peguit.api.Controllers
 
             var agents = await _db.Users
                 .AsNoTracking()
-                .Include(u => u.Person)
                 .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status.ToLower() != "inactive")
-                .OrderBy(u => u.Person.LastName)
-                .ThenBy(u => u.Person.FirstName)
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
                 .Select(u => new AgentPickerDto(u.UserId, u.FullName, u.Email))
                 .ToListAsync();
 

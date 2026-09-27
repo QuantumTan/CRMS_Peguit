@@ -10,15 +10,49 @@ using CRMS_Peguit.infrastructure.Security;
 
 namespace CRMS_Peguit.api.Controllers
 {
-    public record CreateUserRequest(
-        string FirstName,
-        string? MiddleName,
-        string LastName,
-        string? Suffix,
-        string Email,
-        int RoleId,
-        int? BranchId,
-        string Password);
+    public class CreateUserRequest
+    {
+        public string? FirstName { get; set; }
+        public string? MiddleName { get; set; }
+        public string? LastName { get; set; }
+        public string? Suffix { get; set; }
+        public string? Email { get; set; }
+        public int RoleId { get; set; }
+        public int? BranchId { get; set; }
+        public string? Password { get; set; }
+
+        // Support payload from WinForms UserApiService: new { user, plainTextPassword }
+        public User? User { get; set; }
+        public string? PlainTextPassword { get; set; }
+
+        public string GetEffectiveFirstName() => User?.FirstName ?? FirstName ?? string.Empty;
+        public string? GetEffectiveMiddleName() => User?.MiddleName ?? MiddleName;
+        public string GetEffectiveLastName() => User?.LastName ?? LastName ?? string.Empty;
+        public string? GetEffectiveSuffix() => User?.Suffix ?? Suffix;
+        public string GetEffectiveEmail() => User?.Email ?? Email ?? string.Empty;
+        public int GetEffectiveRoleId() => User != null && User.RoleId > 0 ? User.RoleId : RoleId;
+        public int? GetEffectiveBranchId() => User?.BranchId ?? BranchId;
+        public string GetEffectivePassword() => !string.IsNullOrEmpty(Password) ? Password : (PlainTextPassword ?? string.Empty);
+    }
+
+    public class UserDto
+    {
+        public int UserId { get; set; }
+        public int PersonId { get; set; }
+        public string FirstName { get; set; } = string.Empty;
+        public string? MiddleName { get; set; }
+        public string LastName { get; set; } = string.Empty;
+        public string? Suffix { get; set; }
+        public string Email { get; set; } = string.Empty;
+        public string? Phone { get; set; }
+        public string FullName { get; set; } = string.Empty;
+        public int RoleId { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public int? BranchId { get; set; }
+        public Role? Role { get; set; }
+        public Branch? Branch { get; set; }
+    }
 
     public record ChangePasswordRequest(string NewPassword);
     public record TeamRosterDto(int UserId, string FullName, string RoleName, string Status);
@@ -39,7 +73,27 @@ namespace CRMS_Peguit.api.Controllers
             ApiSecurityHelper.GetCurrentUserInfo(HttpContext);
 
         private bool IsAdmin =>
-            ApiSecurityHelper.IsAdmin(CurrentUser.Role) || ApiSecurityHelper.IsSuperAdmin(CurrentUser.Role);
+            CurrentUser.UserId > 0 &&
+            (ApiSecurityHelper.IsAdmin(CurrentUser.Role) || ApiSecurityHelper.IsSuperAdmin(CurrentUser.Role));
+
+        private static UserDto ToDto(User u) => new()
+        {
+            UserId = u.UserId,
+            PersonId = u.PersonId,
+            FirstName = u.FirstName,
+            MiddleName = u.MiddleName,
+            LastName = u.LastName,
+            Suffix = u.Suffix,
+            Email = u.Email,
+            Phone = u.Phone,
+            FullName = u.FullName,
+            RoleId = u.RoleId,
+            Status = u.Status,
+            CreatedAt = u.CreatedAt,
+            BranchId = u.BranchId,
+            Role = u.Role,
+            Branch = u.Branch
+        };
 
         [HttpGet]
         public async Task<IActionResult> GetAll([FromQuery] bool includeInactive = false, [FromQuery] int? branchId = null)
@@ -49,7 +103,6 @@ namespace CRMS_Peguit.api.Controllers
 
             var query = _db.Users
                 .Include(u => u.Branch)
-                .Include(u => u.Person)
                 .Include(u => u.Role)
                 .AsNoTracking();
 
@@ -71,11 +124,11 @@ namespace CRMS_Peguit.api.Controllers
             query = query.Where(u => managedRoleIds.Contains(u.RoleId));
 
             var list = await query
-                .OrderBy(u => u.Person.FirstName)
-                .ThenBy(u => u.Person.LastName)
+                .OrderBy(u => u.FirstName)
+                .ThenBy(u => u.LastName)
                 .ToListAsync();
 
-            return Ok(list);
+            return Ok(list.Select(ToDto).ToList());
         }
 
         [HttpGet("{id:int}")]
@@ -86,12 +139,11 @@ namespace CRMS_Peguit.api.Controllers
 
             var user = await _db.Users
                 .Include(u => u.Branch)
-                .Include(u => u.Person)
                 .Include(u => u.Role)
                 .AsNoTracking()
                 .SingleOrDefaultAsync(u => u.UserId == id);
 
-            return user is null ? NotFound() : Ok(user);
+            return user is null ? NotFound() : Ok(ToDto(user));
         }
 
         [HttpGet("roles")]
@@ -110,26 +162,50 @@ namespace CRMS_Peguit.api.Controllers
             if (!IsAdmin)
                 return StatusCode(StatusCodes.Status403Forbidden, "Only Admins can create user accounts.");
 
-            if (await _db.Users.AnyAsync(u => u.Person.Email == req.Email.Trim()))
+            var email = req.GetEffectiveEmail().Trim();
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                return BadRequest("Email is required.");
+            }
+
+            if (await _db.Users.AnyAsync(u => u.Email == email))
             {
                 return BadRequest("A user with this email already exists in your tenant.");
             }
 
-            var person = new Person
+            int roleId = req.GetEffectiveRoleId();
+            var allowedRoleIds = await _db.Roles
+                .Where(r => r.RoleName == "Manager" || r.RoleName == "Agent" || r.RoleName == "Sales Staff")
+                .Select(r => r.RoleId)
+                .ToListAsync();
+
+            if (!allowedRoleIds.Contains(roleId))
             {
-                FirstName = req.FirstName.Trim(),
-                MiddleName = req.MiddleName?.Trim(),
-                LastName = req.LastName.Trim(),
-                Suffix = req.Suffix?.Trim(),
-                Email = req.Email.Trim()
-            };
+                return BadRequest("RoleId must be an allowed managed role (Manager, Agent, Sales Staff). Assigning SuperAdmin is not permitted.");
+            }
+
+            var targetRole = await _db.Roles.FirstOrDefaultAsync(r => r.RoleId == roleId);
+            if (targetRole == null || ApiSecurityHelper.IsSuperAdmin(targetRole.RoleName))
+            {
+                return BadRequest("Cannot assign SuperAdmin role via this API.");
+            }
+
+            var password = req.GetEffectivePassword();
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                return BadRequest("Password is required.");
+            }
 
             var user = new User
             {
-                Person = person,
-                RoleId = req.RoleId,
-                BranchId = req.BranchId,
-                PasswordHash = PasswordHasher.Hash(req.Password),
+                FirstName = req.GetEffectiveFirstName().Trim(),
+                MiddleName = req.GetEffectiveMiddleName()?.Trim(),
+                LastName = req.GetEffectiveLastName().Trim(),
+                Suffix = req.GetEffectiveSuffix()?.Trim(),
+                Email = email,
+                RoleId = roleId,
+                BranchId = req.GetEffectiveBranchId(),
+                PasswordHash = PasswordHasher.Hash(password),
                 Status = "active",
                 CreatedAt = DateTime.UtcNow
             };
@@ -137,7 +213,7 @@ namespace CRMS_Peguit.api.Controllers
             _db.Users.Add(user);
             await _db.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetById), new { id = user.UserId }, user);
+            return CreatedAtAction(nameof(GetById), new { id = user.UserId }, ToDto(user));
         }
 
         [HttpPut("{id:int}")]
@@ -146,10 +222,39 @@ namespace CRMS_Peguit.api.Controllers
             if (!IsAdmin)
                 return StatusCode(StatusCodes.Status403Forbidden, "Only Admins can update users.");
 
-            var existing = await _db.Users.Include(u => u.Person).SingleOrDefaultAsync(u => u.UserId == id);
+            var existing = await _db.Users
+                .Include(u => u.Role)
+                .SingleOrDefaultAsync(u => u.UserId == id);
+
             if (existing == null) return NotFound();
 
-            if (await _db.Users.AnyAsync(u => u.Person.Email == updated.Email.Trim() && u.UserId != id))
+            if (existing.Role != null && ApiSecurityHelper.IsSuperAdmin(existing.Role.RoleName))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, "Cannot modify SuperAdmin accounts via this API.");
+            }
+
+            if (updated.RoleId > 0)
+            {
+                var allowedRoleIds = await _db.Roles
+                    .Where(r => r.RoleName == "Manager" || r.RoleName == "Agent" || r.RoleName == "Sales Staff")
+                    .Select(r => r.RoleId)
+                    .ToListAsync();
+
+                if (!allowedRoleIds.Contains(updated.RoleId))
+                {
+                    return BadRequest("RoleId must be an allowed managed role (Manager, Agent, Sales Staff). Assigning SuperAdmin is not permitted.");
+                }
+
+                var targetRole = await _db.Roles.FirstOrDefaultAsync(r => r.RoleId == updated.RoleId);
+                if (targetRole == null || ApiSecurityHelper.IsSuperAdmin(targetRole.RoleName))
+                {
+                    return BadRequest("Cannot assign SuperAdmin role via this API.");
+                }
+
+                existing.RoleId = updated.RoleId;
+            }
+
+            if (await _db.Users.AnyAsync(u => u.Email == updated.Email.Trim() && u.UserId != id))
             {
                 return BadRequest("A user with this email already exists in your tenant.");
             }
@@ -159,11 +264,10 @@ namespace CRMS_Peguit.api.Controllers
             existing.LastName = updated.LastName;
             existing.Suffix = updated.Suffix;
             existing.Email = updated.Email;
-            existing.RoleId = updated.RoleId;
             existing.BranchId = updated.BranchId;
 
             await _db.SaveChangesAsync();
-            return Ok(existing);
+            return Ok(ToDto(existing));
         }
 
         [HttpPut("{id:int}/deactivate")]
@@ -177,8 +281,16 @@ namespace CRMS_Peguit.api.Controllers
                 return BadRequest("You cannot deactivate your own account.");
             }
 
-            var user = await _db.Users.SingleOrDefaultAsync(u => u.UserId == id);
+            var user = await _db.Users
+                .Include(u => u.Role)
+                .SingleOrDefaultAsync(u => u.UserId == id);
+
             if (user == null) return NotFound();
+
+            if (user.Role != null && ApiSecurityHelper.IsSuperAdmin(user.Role.RoleName))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, "Cannot deactivate SuperAdmin accounts via this API.");
+            }
 
             user.Status = "inactive";
             await _db.SaveChangesAsync();
@@ -191,8 +303,16 @@ namespace CRMS_Peguit.api.Controllers
             if (!IsAdmin)
                 return StatusCode(StatusCodes.Status403Forbidden, "Only Admins can reactivate users.");
 
-            var user = await _db.Users.SingleOrDefaultAsync(u => u.UserId == id);
+            var user = await _db.Users
+                .Include(u => u.Role)
+                .SingleOrDefaultAsync(u => u.UserId == id);
+
             if (user == null) return NotFound();
+
+            if (user.Role != null && ApiSecurityHelper.IsSuperAdmin(user.Role.RoleName))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, "Cannot reactivate SuperAdmin accounts via this API.");
+            }
 
             user.Status = "active";
             await _db.SaveChangesAsync();
@@ -206,15 +326,15 @@ namespace CRMS_Peguit.api.Controllers
                 return StatusCode(StatusCodes.Status403Forbidden, "Only Admins can view deactivated users.");
 
             var users = await _db.Users
-                .Include(u => u.Person)
                 .Include(u => u.Role)
+                .Include(u => u.Branch)
                 .AsNoTracking()
                 .Where(u => u.Status.ToLower() == "inactive")
-                .OrderBy(u => u.Person.LastName)
-                .ThenBy(u => u.Person.FirstName)
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
                 .ToListAsync();
 
-            return Ok(users);
+            return Ok(users.Select(ToDto).ToList());
         }
 
         [HttpPut("{id:int}/change-password")]
@@ -223,8 +343,16 @@ namespace CRMS_Peguit.api.Controllers
             if (!IsAdmin)
                 return StatusCode(StatusCodes.Status403Forbidden, "Only Admins can change user passwords.");
 
-            var user = await _db.Users.SingleOrDefaultAsync(u => u.UserId == id);
+            var user = await _db.Users
+                .Include(u => u.Role)
+                .SingleOrDefaultAsync(u => u.UserId == id);
+
             if (user == null) return NotFound();
+
+            if (user.Role != null && ApiSecurityHelper.IsSuperAdmin(user.Role.RoleName))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, "Cannot change SuperAdmin passwords via this API.");
+            }
 
             user.PasswordHash = PasswordHasher.Hash(req.NewPassword);
             await _db.SaveChangesAsync();
@@ -256,11 +384,10 @@ namespace CRMS_Peguit.api.Controllers
             var users = await _db.Users
                 .AsNoTracking()
                 .Include(u => u.Role)
-                .Include(u => u.Person)
                 .Where(u => managedRoles.Contains(u.Role.RoleName))
                 .OrderByDescending(u => u.Role.RoleName == "Manager")
-                .ThenBy(u => u.Person.FirstName)
-                .ThenBy(u => u.Person.LastName)
+                .ThenBy(u => u.FirstName)
+                .ThenBy(u => u.LastName)
                 .Take(maxCount)
                 .ToListAsync();
 

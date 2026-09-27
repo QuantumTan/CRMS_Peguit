@@ -58,9 +58,8 @@ namespace CRMS_Peguit.infrastructure.Seeding
             int? hqBranchId = branches.FirstOrDefault(b => b.BranchCode == "BR-MNL")?.BranchId ?? branches.FirstOrDefault()?.BranchId;
 
             var existingEmails = await db.Users
-                .Include(u => u.Person)
-                .Where(u => u.Person != null && u.Person.Email != null)
-                .Select(u => u.Person!.Email!.ToLower())
+                .Where(u => u.Email != null)
+                .Select(u => u.Email!.ToLower())
                 .ToListAsync();
 
             List<(string FirstName, string LastName, string Email, string Phone, int RoleId, string Password, int? BranchId)> baseUsersToEnsure;
@@ -112,13 +111,10 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 {
                     toAdd.Add(new User
                     {
-                        Person = new Person
-                        {
-                            FirstName = bu.FirstName,
-                            LastName = bu.LastName,
-                            Email = bu.Email,
-                            Phone = bu.Phone
-                        },
+                        FirstName = bu.FirstName,
+                        LastName = bu.LastName,
+                        Email = bu.Email,
+                        Phone = bu.Phone,
                         PasswordHash = PasswordHasher.Hash(bu.Password),
                         RoleId = bu.RoleId,
                         BranchId = bu.BranchId,
@@ -157,9 +153,8 @@ namespace CRMS_Peguit.infrastructure.Seeding
             if (agentRole == null || managerRole == null) return;
 
             var existingEmails = await db.Users
-                .Include(u => u.Person)
-                .Where(u => u.Person != null && u.Person.Email != null)
-                .Select(u => u.Person!.Email!.ToLower())
+                .Where(u => u.Email != null)
+                .Select(u => u.Email!.ToLower())
                 .ToListAsync();
 
             var branches = await db.Branches.OrderBy(b => b.BranchId).ToListAsync();
@@ -216,17 +211,12 @@ namespace CRMS_Peguit.infrastructure.Seeding
             {
                 if (!existingEmails.Contains(member.Email.ToLower()))
                 {
-                    var person = new Person
+                    toAdd.Add(new User
                     {
                         FirstName = member.FirstName,
                         LastName = member.LastName,
                         Email = member.Email,
-                        Phone = member.Phone
-                    };
-
-                    toAdd.Add(new User
-                    {
-                        Person = person,
+                        Phone = member.Phone,
                         PasswordHash = PasswordHasher.Hash(member.Password),
                         RoleId = member.RoleId,
                         BranchId = member.BranchId,
@@ -251,13 +241,12 @@ namespace CRMS_Peguit.infrastructure.Seeding
 
             var agents = await db.Users
                 .Include(u => u.Role)
-                .Include(u => u.Person)
                 .Where(u => u.Status.ToLower() == "active" && u.Role.RoleName == "Agent")
                 .ToListAsync();
 
             if (agents.Count == 0)
             {
-                agents = await db.Users.Include(u => u.Role).Include(u => u.Person).ToListAsync();
+                agents = await db.Users.Include(u => u.Role).ToListAsync();
             }
 
             int fallbackUserId = agents.FirstOrDefault()?.UserId ?? 1;
@@ -373,7 +362,6 @@ namespace CRMS_Peguit.infrastructure.Seeding
         {
             var agents = await db.Users
                 .Include(u => u.Role)
-                .Include(u => u.Person)
                 .Where(u => u.Status.ToLower() == "active")
                 .ToListAsync();
 
@@ -392,13 +380,13 @@ namespace CRMS_Peguit.infrastructure.Seeding
             int? davaoBranchId = branches.FirstOrDefault(b => b.BranchCode == "BR-DVO")?.BranchId ?? branches.Skip(2).FirstOrDefault()?.BranchId;
 
             // Ensure rich pools
-            var existingCustomers = await db.Customers.Include(c => c.Person).Where(c => !c.IsDeleted).ToListAsync();
+            var existingCustomers = await db.Customers.Where(c => !c.IsDeleted).ToListAsync();
             if (existingCustomers.Count < 50)
             {
                 var newCustomers = GenerateCustomerPool(60 - existingCustomers.Count, salesAgents, fallbackUserId);
                 db.Customers.AddRange(newCustomers);
                 await db.SaveChangesAsync();
-                existingCustomers = await db.Customers.Include(c => c.Person).Where(c => !c.IsDeleted).ToListAsync();
+                existingCustomers = await db.Customers.Where(c => !c.IsDeleted).ToListAsync();
             }
 
             var existingProperties = await db.Properties.ToListAsync();
@@ -581,21 +569,16 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 string email = $"{fn.ToLower()}.{ln.ToLower()}{rnd.Next(10, 999)}@example.ph";
                 string phone = $"09{rnd.Next(10, 99)}{rnd.Next(1000000, 9999999)}";
 
-                var person = new Person
-                {
-                    FirstName = fn,
-                    LastName = ln,
-                    Email = email,
-                    Phone = phone
-                };
-
                 var assignedAgent = agents[i % agents.Count];
                 int typeRoll = rnd.Next(100);
                 string custType = typeRoll < 60 ? "buyer" : (typeRoll < 85 ? "seller" : "investor");
 
                 var customer = new Customer
                 {
-                    Person = person,
+                    FirstName = fn,
+                    LastName = ln,
+                    Email = email,
+                    Phone = phone,
                     Type = custType,
                     Status = "active",
                     AssignmentStatus = "approved",
@@ -894,14 +877,12 @@ namespace CRMS_Peguit.infrastructure.Seeding
         {
             var agents = await db.Users
                 .Include(u => u.Role)
-                .Include(u => u.Person)
                 .Where(u => u.Status.ToLower() == "active")
                 .ToListAsync();
 
             if (agents.Count == 0) return;
 
             var customers = await db.Customers
-                .Include(c => c.Person)
                 .Where(c => !c.IsDeleted)
                 .ToListAsync();
 
@@ -977,14 +958,6 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 for (int i = 0; i < leadNames.Length; i++)
                 {
                     var item = leadNames[i];
-                    var person = new Person
-                    {
-                        FirstName = item.Fn,
-                        LastName = item.Ln,
-                        Email = item.Email,
-                        Phone = item.Phone
-                    };
-
                     var agent = agents[i % agents.Count];
                     int daysAgo = rnd.Next(5, 450);
                     var created = DateTime.UtcNow.AddDays(-daysAgo);
@@ -1004,7 +977,10 @@ namespace CRMS_Peguit.infrastructure.Seeding
 
                     var lead = new Lead
                     {
-                        Person = person,
+                        FirstName = item.Fn,
+                        LastName = item.Ln,
+                        Email = item.Email,
+                        Phone = item.Phone,
                         Source = sources[rnd.Next(sources.Length)],
                         Stage = stage,
                         Priority = priorities[rnd.Next(priorities.Length)],

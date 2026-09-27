@@ -12,6 +12,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
     {
         private readonly CustomerController _controller;
         private string _filterStatus = "All";
+        private ScreenFilterCoordinator _filterCoord = null!;
         private Button? _btnExport;
         private Panel _pnlEmptyState = null!;
         private PaginationControl _pagination = null!;
@@ -118,21 +119,19 @@ namespace CRMS_Peguit.winforms.Views.Customers
                 _btnExport.BringToFront();
             }
 
-            // Case 1: InPlaceFilter mode on all KPI cards
-            kpiTotal.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiActive.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiFollowUp.ClickMode = KpiClickMode.InPlaceFilter;
-            kpiInactive.ClickMode = KpiClickMode.InPlaceFilter;
+            // Case 1: InPlaceFilter mode on all KPI cards via ScreenFilterCoordinator
+            _filterCoord = new ScreenFilterCoordinator();
+            _filterCoord.Register(kpiTotal, kpiActive, kpiFollowUp, kpiInactive);
+            
+            _filterCoord.FilterChanged += (src, key) =>
+            {
+                SetFilter(key ?? "All");
+            };
 
-            kpiTotal.Click += (_, _) => SetFilter("All");
-            kpiActive.Click += (_, _) => SetFilter("Active");
-            kpiFollowUp.Click += (_, _) => SetFilter("Follow Up");
-            kpiInactive.Click += (_, _) => SetFilter("Inactive");
-
-            btnFilterAll.Click += (_, _) => SetFilter("All");
-            btnFilterActive.Click += (_, _) => SetFilter("Active");
-            btnFilterFollowUp.Click += (_, _) => SetFilter("Follow Up");
-            btnFilterInactive.Click += (_, _) => SetFilter("Inactive");
+            btnFilterAll.Click += (s, _) => { _filterCoord.SetActive(s!, "All"); };
+            btnFilterActive.Click += (s, _) => { _filterCoord.SetActive(s!, "Active"); };
+            btnFilterFollowUp.Click += (s, _) => { _filterCoord.SetActive(s!, "Follow Up"); };
+            btnFilterInactive.Click += (s, _) => { _filterCoord.SetActive(s!, "Inactive"); };
 
             // Modern Grid Styling & Search Padding
             UiGridHelper.ApplyModernGridStyle(grid, 52);
@@ -183,11 +182,6 @@ namespace CRMS_Peguit.winforms.Views.Customers
                 bool isSelected = string.Equals(_filterStatus, name, StringComparison.OrdinalIgnoreCase);
                 UiRadiusHelper.StyleFilterPill(btn, isSelected);
             }
-
-            kpiTotal.SetSelected(string.Equals(_filterStatus, "All", StringComparison.OrdinalIgnoreCase));
-            kpiActive.SetSelected(string.Equals(_filterStatus, "Active", StringComparison.OrdinalIgnoreCase));
-            kpiFollowUp.SetSelected(string.Equals(_filterStatus, "Follow Up", StringComparison.OrdinalIgnoreCase));
-            kpiInactive.SetSelected(string.Equals(_filterStatus, "Inactive", StringComparison.OrdinalIgnoreCase));
         }
 
         public void RefreshGrid(bool reloadFromDb = true)

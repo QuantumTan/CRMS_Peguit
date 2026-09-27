@@ -3,17 +3,24 @@ using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
+using PlatformSnapshotDto = CRMS_Peguit.winforms.Controllers.PlatformSnapshotDto;
 
 // =============================================================================
-// SuperAdminDashboardView — KPI row + "Subscriptions by Status" bar chart.
+// SuperAdminDashboardView — Complete Platform Overview
+// Architecture:
+//   - KPI row: Total Tenants, Active Subscriptions, Expiring This Month, Last Backup Status
+//   - Bar chart: Subscriptions by Tier
+//   - Recent Platform Activity: Live audit log stream
+//   - KPI Click-Navigation: Navigates directly to target modules
 //
-// DATA BOUNDARY: All data via SuperAdminController.GetPlatformSnapshotAsync()
-// which sources exclusively from MasterCrmsDbContext (Companies, Subscriptions)
-// and BackupLogs from the management tenant (TenantId=1).
-// NO Customer/Lead/Deal/Property/Activity/SupportTicket/TaskReminder/Notification.
+// DATA BOUNDARY ATTESTATION:
+// ZERO access to tenant business/operational data (Customers, Leads, Deals,
+// Properties, Activities, SupportTickets, TaskReminders, Notifications).
 // =============================================================================
 
 namespace CRMS_Peguit.winforms.Views.SuperAdmin
@@ -21,20 +28,23 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
     public class SuperAdminDashboardView : UserControl
     {
         private readonly SuperAdminController _controller = new();
+        private readonly SuperAdminSyncHealthController _syncController = new();
 
         // KPI cards
         private KpiCard _kpiTenants = null!;
         private KpiCard _kpiActiveSubs = null!;
         private KpiCard _kpiExpiring = null!;
-        private KpiCard _kpiMrr = null!;
+        private KpiCard _kpiBackup = null!;
 
-        // Chart panels
-        private Panel _pnlChart = null!;
+        // Content panels
         private Panel _pnlTierDist = null!;
+        private Panel _pnlActivity = null!;
 
-        // Last backup controls
-        private StatusText _stBackupStatus = null!;
-        private Label _lblLastBackupDate = null!;
+        // Public navigation events
+        public event Action? NavigateToTenants;
+        public event Action? NavigateToSubscriptions;
+        public event Action? NavigateToBackups;
+        public event Action? NavigateToAuditLog;
 
         public SuperAdminDashboardView()
         {
@@ -55,13 +65,13 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             };
             Controls.Add(scrollHost);
 
-            // 1. Page Header (Height = 76)
+            // 1. Page Header (Height = 96)
             var pnlPageHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 76,
+                Height = 96,
                 BackColor = Theme.Surface,
-                Padding = new Padding(28, 14, 28, 0)
+                Padding = new Padding(28, 16, 28, 16)
             };
             pnlPageHeader.Paint += (s, e) =>
             {
@@ -72,18 +82,18 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             var lblTitle = new Label
             {
                 Text = "Platform Overview",
-                Font = new Font("Segoe UI", 16f, FontStyle.Bold),
+                Font = UiStyleConstants.PageTitleFont,
                 ForeColor = Theme.TextPrimary,
                 AutoSize = true,
-                Location = new Point(28, 14)
+                Location = new Point(28, 18)
             };
             var lblSub = new Label
             {
-                Text = "High-level platform metrics & subscription health — aggregate counts only, no tenant business data",
-                Font = new Font("Segoe UI", 9.5f),
+                Text = "High-level platform metrics, subscription distribution, and recent platform activity stream.",
+                Font = UiStyleConstants.SubtitleFont,
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
-                Location = new Point(28, 42)
+                Location = new Point(28, 56)
             };
             var btnRefresh = new Button
             {
@@ -97,15 +107,16 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             };
             UiRadiusHelper.StyleButton(btnRefresh, 6);
             btnRefresh.Click += (_, _) => _ = LoadDataAsync();
-            btnRefresh.Location = new Point(pnlPageHeader.Width - 138, 18);
+            btnRefresh.Location = new Point(pnlPageHeader.Width - 138, 30);
             pnlPageHeader.SizeChanged += (_, _) =>
-                btnRefresh.Location = new Point(pnlPageHeader.Width - 138, 18);
+                btnRefresh.Location = new Point(pnlPageHeader.Width - 138, 30);
 
             pnlPageHeader.Controls.Add(lblSub);
             pnlPageHeader.Controls.Add(lblTitle);
             pnlPageHeader.Controls.Add(btnRefresh);
 
             // 2. KPI row (Height = 124)
+            // Exactly 4 KPIs: Total Tenants, Active Subscriptions, Expiring This Month, Last Backup Status
             var pnlKpis = new TableLayoutPanel
             {
                 Dock = DockStyle.Top,
@@ -120,148 +131,155 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             pnlKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
             pnlKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
 
-            _kpiTenants = new KpiCard { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 8, 0) };
-            _kpiActiveSubs = new KpiCard { Dock = DockStyle.Fill, Margin = new Padding(4, 0, 4, 0) };
-            _kpiExpiring = new KpiCard { Dock = DockStyle.Fill, Margin = new Padding(4, 0, 4, 0) };
-            _kpiMrr = new KpiCard { Dock = DockStyle.Fill, Margin = new Padding(8, 0, 0, 0) };
+            _kpiTenants = new KpiCard("TOTAL TENANTS", "tenants", Theme.Primary, KpiIconType.Building, null, KpiClickMode.Navigate)
+            {
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 0, 8, 0)
+            };
+            _kpiTenants.SetAction(() => NavigateToTenants?.Invoke());
+
+            _kpiActiveSubs = new KpiCard("ACTIVE SUBSCRIPTIONS", "subscriptions", Theme.StatusSuccess, KpiIconType.Target, null, KpiClickMode.Navigate)
+            {
+                Dock = DockStyle.Fill,
+                Margin = new Padding(4, 0, 4, 0)
+            };
+            _kpiActiveSubs.SetAction(() => NavigateToSubscriptions?.Invoke());
+
+            _kpiExpiring = new KpiCard("EXPIRING THIS MONTH", "expiring", Theme.StatusPending, KpiIconType.Clock, null, KpiClickMode.Navigate)
+            {
+                Dock = DockStyle.Fill,
+                Margin = new Padding(4, 0, 4, 0)
+            };
+            _kpiExpiring.SetAction(() => NavigateToSubscriptions?.Invoke());
+
+            _kpiBackup = new KpiCard("LAST BACKUP STATUS", "backups", Theme.PrimaryDark, KpiIconType.Refresh, null, KpiClickMode.Navigate)
+            {
+                Dock = DockStyle.Fill,
+                Margin = new Padding(8, 0, 0, 0)
+            };
+            _kpiBackup.SetAction(() => NavigateToBackups?.Invoke());
 
             pnlKpis.Controls.Add(_kpiTenants, 0, 0);
             pnlKpis.Controls.Add(_kpiActiveSubs, 1, 0);
             pnlKpis.Controls.Add(_kpiExpiring, 2, 0);
-            pnlKpis.Controls.Add(_kpiMrr, 3, 0);
+            pnlKpis.Controls.Add(_kpiBackup, 3, 0);
 
-            // 3. Backup Status Bar (Height = 48)
-            var pnlBackupBar = new Panel
+            // 3. Main Dashboard Content (Height = 440)
+            var pnlContent = new TableLayoutPanel
             {
                 Dock = DockStyle.Top,
-                Height = 48,
-                BackColor = Theme.Surface,
-                Padding = new Padding(28, 0, 28, 0)
-            };
-            pnlBackupBar.Paint += (s, e) =>
-            {
-                using var p = new Pen(Theme.Border, 1f);
-                e.Graphics.DrawLine(p, 0, 0, pnlBackupBar.Width, 0);
-                e.Graphics.DrawLine(p, 0, pnlBackupBar.Height - 1, pnlBackupBar.Width, pnlBackupBar.Height - 1);
-            };
-
-            var lblBackupIcon = new Label
-            {
-                Text = "🗄",
-                Font = new Font("Segoe UI", 12f),
-                Location = new Point(28, 12),
-                AutoSize = true
-            };
-            var lblLastBackup = new Label
-            {
-                Text = "System Health & Last Backup:",
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                ForeColor = Theme.TextPrimary,
-                AutoSize = true,
-                Location = new Point(54, 14)
-            };
-            _stBackupStatus = new StatusText
-            {
-                Location = new Point(245, 14),
-                AutoSize = true
-            };
-            _lblLastBackupDate = new Label
-            {
-                Text = "—",
-                Font = new Font("Segoe UI", 9f),
-                ForeColor = Theme.TextSecondary,
-                AutoSize = true,
-                Location = new Point(310, 14)
-            };
-            pnlBackupBar.Controls.Add(lblBackupIcon);
-            pnlBackupBar.Controls.Add(lblLastBackup);
-            pnlBackupBar.Controls.Add(_stBackupStatus);
-            pnlBackupBar.Controls.Add(_lblLastBackupDate);
-
-            // 4. Charts row (Height = 380)
-            var pnlCharts = new TableLayoutPanel
-            {
-                Dock = DockStyle.Top,
-                Height = 380,
+                Height = 460,
                 ColumnCount = 2,
                 RowCount = 1,
                 Padding = new Padding(24, 16, 24, 20),
                 BackColor = Theme.Background
             };
-            pnlCharts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 54f));
-            pnlCharts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 46f));
+            pnlContent.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            pnlContent.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
 
-            // Left Card: Subscriptions by Status
-            _pnlChart = new Panel
+            // Left Card: Subscriptions by Tier
+            _pnlTierDist = new Panel
             {
                 Dock = DockStyle.Fill,
                 BackColor = Theme.Surface,
                 Padding = new Padding(22),
                 Margin = new Padding(0, 0, 10, 0)
             };
-            UiRadiusHelper.StyleCard(_pnlChart, 8);
+            UiRadiusHelper.StyleCard(_pnlTierDist, 8);
 
-            var lblChartTitle = new Label
+            var pnlTierHeader = new Panel
             {
-                Text = "Subscriptions by Status",
-                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
-                ForeColor = Theme.TextPrimary,
                 Dock = DockStyle.Top,
-                Height = 26
+                Height = 52,
+                BackColor = Color.Transparent
             };
-            var lblChartSub = new Label
+            var lblTierHeader = new Label
             {
-                Text = "Active · Expiring This Month · Expired (Platform Aggregate)",
+                Text = "Subscriptions by Tier",
+                Font = new Font("Segoe UI", 12f, FontStyle.Bold),
+                ForeColor = Theme.TextPrimary,
+                Location = new Point(0, 0),
+                AutoSize = true
+            };
+            var lblTierSub = new Label
+            {
+                Text = "Active client organizations distributed across plan tiers (Tenant A, B, C)",
                 Font = new Font("Segoe UI", 8.5f),
                 ForeColor = Theme.TextSecondary,
-                Dock = DockStyle.Top,
-                Height = 20
+                Location = new Point(0, 24),
+                AutoSize = true
             };
-            _pnlChart.Controls.Add(lblChartSub);
-            _pnlChart.Controls.Add(lblChartTitle);
+            pnlTierHeader.Controls.Add(lblTierHeader);
+            pnlTierHeader.Controls.Add(lblTierSub);
+            _pnlTierDist.Controls.Add(pnlTierHeader);
 
-            // Right Card: Tenant Tier Distribution
-            _pnlTierDist = new Panel
+            _pnlTierDist.SizeChanged += (_, _) =>
+            {
+                if (_lastSnapshot != null)
+                    RenderTierDistribution(_lastSnapshot);
+            };
+
+            // Right Card: Recent Platform Activity
+            _pnlActivity = new Panel
             {
                 Dock = DockStyle.Fill,
                 BackColor = Theme.Surface,
                 Padding = new Padding(22),
                 Margin = new Padding(10, 0, 0, 0)
             };
-            UiRadiusHelper.StyleCard(_pnlTierDist, 8);
+            UiRadiusHelper.StyleCard(_pnlActivity, 8);
 
-            var lblTierTitle = new Label
+            var pnlActivityHeader = new Panel
             {
-                Text = "Tenant Tier Distribution",
-                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
-                ForeColor = Theme.TextPrimary,
                 Dock = DockStyle.Top,
-                Height = 26
+                Height = 48,
+                BackColor = Color.Transparent
             };
-            var lblTierSub = new Label
+
+            var lblActivityTitle = new Label
             {
-                Text = "Current client count by tier plan (Tenant A / B / C)",
+                Text = "Recent Platform Activity",
+                Font = new Font("Segoe UI", 12f, FontStyle.Bold),
+                ForeColor = Theme.TextPrimary,
+                Location = new Point(0, 0),
+                AutoSize = true
+            };
+            var lblActivitySub = new Label
+            {
+                Text = "Live audit stream of administrative events across tenants",
                 Font = new Font("Segoe UI", 8.5f),
                 ForeColor = Theme.TextSecondary,
-                Dock = DockStyle.Top,
-                Height = 20
+                Location = new Point(0, 24),
+                AutoSize = true
             };
-            _pnlTierDist.Controls.Add(lblTierSub);
-            _pnlTierDist.Controls.Add(lblTierTitle);
+            var lnkViewAllAudit = new Label
+            {
+                Text = "View full log →",
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                ForeColor = Theme.Primary,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                AutoSize = true,
+                Cursor = Cursors.Hand
+            };
+            lnkViewAllAudit.Click += (_, _) => NavigateToAuditLog?.Invoke();
+            lnkViewAllAudit.Location = new Point(_pnlActivity.Width - 140, 6);
+            _pnlActivity.SizeChanged += (_, _) => lnkViewAllAudit.Location = new Point(_pnlActivity.Width - 140, 6);
 
-            pnlCharts.Controls.Add(_pnlChart, 0, 0);
-            pnlCharts.Controls.Add(_pnlTierDist, 1, 0);
+            pnlActivityHeader.Controls.Add(lblActivityTitle);
+            pnlActivityHeader.Controls.Add(lblActivitySub);
+            pnlActivityHeader.Controls.Add(lnkViewAllAudit);
+            _pnlActivity.Controls.Add(pnlActivityHeader);
 
-            // IMPORTANT WINFORMS DOCKING ORDER:
-            // To dock top-to-bottom (Header -> KPIs -> BackupBar -> Charts),
-            // add in REVERSE order so pnlPageHeader is added LAST (index 0):
-            scrollHost.Controls.Add(pnlCharts);
-            scrollHost.Controls.Add(pnlBackupBar);
+            pnlContent.Controls.Add(_pnlTierDist, 0, 0);
+            pnlContent.Controls.Add(_pnlActivity, 1, 0);
+
+            // WinForms docking reverse order
+            scrollHost.Controls.Add(pnlContent);
             scrollHost.Controls.Add(pnlKpis);
             scrollHost.Controls.Add(pnlPageHeader);
         }
 
-        private async Task LoadDataAsync()
+        public async Task LoadDataAsync()
         {
             try
             {
@@ -269,29 +287,25 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
                 ConfigureKpi(_kpiTenants, "TOTAL TENANTS", snap.TotalTenants,
                     $"{snap.ActiveTenants} Active Organizations", Theme.Primary, KpiIconType.Building);
-                _kpiTenants.SetAction(() => ShowDrillDown("Total Tenants", $"{snap.TotalTenants} organizations registered across the platform (Active: {snap.ActiveTenants})."));
 
                 ConfigureKpi(_kpiActiveSubs, "ACTIVE SUBSCRIPTIONS", snap.ActiveSubscriptions,
                     "Current active paid plans", Theme.StatusSuccess, KpiIconType.Target);
-                _kpiActiveSubs.SetAction(() => ShowDrillDown("Active Subscriptions", $"{snap.ActiveSubscriptions} active paid subscription plans in good standing."));
 
                 ConfigureKpi(_kpiExpiring, "EXPIRING THIS MONTH", snap.ExpiringThisMonth,
                     snap.ExpiringThisMonth > 0 ? "Requires renewal outreach" : "All plans in good standing",
                     snap.ExpiringThisMonth > 0 ? Theme.StatusPending : Theme.StatusSuccess,
                     KpiIconType.Clock);
-                _kpiExpiring.SetAction(() => ShowDrillDown("Expiring Subscriptions", snap.ExpiringThisMonth > 0 ? $"{snap.ExpiringThisMonth} subscriptions requiring renewal outreach within 30 days." : "All tenant plans are in good standing with zero expiring accounts."));
 
-                ConfigureKpi(_kpiMrr, "TOTAL MRR", $"₱{snap.TotalMrr:N0}",
-                    "Monthly recurring revenue", Theme.PrimaryDark, KpiIconType.Currency);
-                _kpiMrr.SetAction(() => ShowDrillDown("Platform MRR", $"Total platform monthly recurring revenue is ₱{snap.TotalMrr:N0} across all active subscriptions."));
+                string backupDisplay = string.IsNullOrWhiteSpace(snap.LastBackupStatus) || snap.LastBackupStatus == "None"
+                    ? "Normal" : snap.LastBackupStatus;
+                string backupDate = snap.LastBackupDate.HasValue
+                    ? snap.LastBackupDate.Value.ToLocalTime().ToString("MMM dd  h:mm tt")
+                    : "No backups";
+                ConfigureKpi(_kpiBackup, "LAST BACKUP STATUS", backupDisplay,
+                    $"Last: {backupDate}", Theme.PrimaryDark, KpiIconType.Refresh);
 
-                _stBackupStatus.SetStatus(snap.LastBackupStatus);
-                _lblLastBackupDate.Text = snap.LastBackupDate.HasValue
-                    ? $"  ·  Completed on {snap.LastBackupDate.Value.ToLocalTime():MMM dd, yyyy  h:mm tt}"
-                    : "  ·  No recent backups recorded";
-
-                RenderStatusChart(snap);
                 RenderTierDistribution(snap);
+                await RenderRecentActivityAsync();
             }
             catch (Exception ex)
             {
@@ -310,187 +324,230 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             card.SetIcon(icon, accent);
         }
 
-        private void RenderStatusChart(PlatformSnapshotDto snap)
-        {
-            var old = _pnlChart.Controls.Cast<Control>()
-                .Where(c => c.Tag?.ToString() == "bar").ToList();
-            foreach (var c in old) _pnlChart.Controls.Remove(c);
-
-            int total = Math.Max(1, snap.ActiveSubscriptions + snap.ExpiringThisMonth + snap.ExpiredSubscriptions);
-
-            var bars = new (string Label, int Count, Color Color)[]
-            {
-                ("Active", snap.ActiveSubscriptions, Theme.StatusSuccess),
-                ("Expiring", snap.ExpiringThisMonth, Theme.StatusPending),
-                ("Expired", snap.ExpiredSubscriptions, Theme.StatusAlert)
-            };
-
-            int y = 62;
-            int barAreaWidth = Math.Max(180, _pnlChart.Width - 60);
-
-            foreach (var (label, count, color) in bars)
-            {
-                int pct = (int)((float)count / total * 100);
-
-                var lblName = new Label
-                {
-                    Text = $"{label} Subscriptions",
-                    Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                    ForeColor = Theme.TextPrimary,
-                    Location = new Point(20, y),
-                    AutoSize = true,
-                    Tag = "bar"
-                };
-
-                var lblCountAndPct = new Label
-                {
-                    Text = $"{count}  ({pct}%)",
-                    Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                    ForeColor = color,
-                    Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                    Location = new Point(barAreaWidth - 80, y),
-                    Size = new Size(100, 20),
-                    TextAlign = ContentAlignment.MiddleRight,
-                    Tag = "bar"
-                };
-
-                _pnlChart.Controls.Add(lblName);
-                _pnlChart.Controls.Add(lblCountAndPct);
-
-                var pnlBarBg = new Panel
-                {
-                    Location = new Point(20, y + 24),
-                    Size = new Size(barAreaWidth, 14),
-                    Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                    BackColor = Color.FromArgb(241, 245, 249),
-                    Tag = "bar"
-                };
-                UiRadiusHelper.StyleCard(pnlBarBg, 7);
-
-                int fillPx = count == 0 ? 0 : Math.Max(16, (int)((float)count / total * barAreaWidth));
-                var pnlFill = new Panel
-                {
-                    Location = new Point(0, 0),
-                    Size = new Size(fillPx, 14),
-                    BackColor = color
-                };
-                UiRadiusHelper.StyleCard(pnlFill, 7);
-                pnlBarBg.Controls.Add(pnlFill);
-                _pnlChart.Controls.Add(pnlBarBg);
-
-                // Make progress bar clickable
-                pnlBarBg.Cursor = Cursors.Hand;
-                lblName.Cursor = Cursors.Hand;
-                Action barClick = () => ShowDrillDown($"{label} Subscriptions", $"{count} out of {total} subscriptions are in '{label}' status ({pct}%).");
-                pnlBarBg.Click += (_, _) => barClick();
-                pnlFill.Click += (_, _) => barClick();
-                lblName.Click += (_, _) => barClick();
-
-                y += 68;
-            }
-
-            var lblNote = new Label
-            {
-                Text = "⚡ Source: MasterCrmsDbContext.Subscriptions — aggregate counts only",
-                Font = new Font("Segoe UI", 8f, FontStyle.Italic),
-                ForeColor = Color.FromArgb(148, 163, 184),
-                Location = new Point(20, y + 10),
-                AutoSize = true,
-                Tag = "bar"
-            };
-            _pnlChart.Controls.Add(lblNote);
-        }
+        private PlatformSnapshotDto? _lastSnapshot;
 
         private void RenderTierDistribution(PlatformSnapshotDto snap)
         {
+            _lastSnapshot = snap;
             var old = _pnlTierDist.Controls.Cast<Control>()
                 .Where(c => c.Tag?.ToString() == "tier").ToList();
             foreach (var c in old) _pnlTierDist.Controls.Remove(c);
 
             int total = Math.Max(1, snap.TenantACount + snap.TenantBCount + snap.TenantCCount);
 
-            var tiers = new (string Name, int Count, Color Color, string Description)[]
+            var tiers = new (string Name, int Count, Color Color, string Subtitle)[]
             {
-                ("Tenant C — Enterprise", snap.TenantCCount, Color.FromArgb(124, 58, 237), "Multi-Branching + BI + Automations"),
-                ("Tenant B — Professional", snap.TenantBCount, Color.FromArgb(14, 165, 233), "Business Intelligence + Actions"),
-                ("Tenant A — Starter", snap.TenantACount, Color.FromArgb(100, 116, 139), "Base Transactions & Data Collection")
+                ("Tenant C (Enterprise)", snap.TenantCCount, Color.FromArgb(124, 58, 237), "Multi-Branching · Full BI · Workflows"),
+                ("Tenant B (Professional)", snap.TenantBCount, Color.FromArgb(14, 165, 233), "Business Intelligence · Actions"),
+                ("Tenant A (Starter)", snap.TenantACount, Color.FromArgb(100, 116, 139), "Base CRM & Data Collection")
             };
 
-            int y = 62;
-            foreach (var (name, count, color, desc) in tiers)
+            int y = 64;
+            int availableWidth = Math.Max(200, _pnlTierDist.ClientSize.Width - 44);
+
+            foreach (var (name, count, color, subtitle) in tiers)
             {
                 int pct = (int)((float)count / total * 100);
-
-                var pnlRow = new Panel
-                {
-                    Location = new Point(20, y),
-                    Size = new Size(_pnlTierDist.Width - 44, 56),
-                    Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                    BackColor = Color.FromArgb(248, 250, 252),
-                    Cursor = Cursors.Hand,
-                    Tag = "tier"
-                };
-                UiRadiusHelper.StyleCard(pnlRow, 6);
-
-                var dot = new Panel
-                {
-                    Location = new Point(14, 18),
-                    Size = new Size(16, 16),
-                    BackColor = color
-                };
-                UiRadiusHelper.StyleCard(dot, 8);
 
                 var lblName = new Label
                 {
                     Text = name,
                     Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                     ForeColor = Theme.TextPrimary,
-                    Location = new Point(38, 8),
+                    Location = new Point(22, y),
                     AutoSize = true,
-                    Cursor = Cursors.Hand
-                };
-                var lblDesc = new Label
-                {
-                    Text = desc,
-                    Font = new Font("Segoe UI", 8.5f),
-                    ForeColor = Theme.TextSecondary,
-                    Location = new Point(38, 28),
-                    AutoSize = true,
-                    Cursor = Cursors.Hand
+                    Tag = "tier"
                 };
 
                 var lblCountAndPct = new Label
                 {
-                    Text = $"{count} tenant{(count != 1 ? "s" : "")}  ·  {pct}%",
-                    Font = new Font("Segoe UI", 10.5f, FontStyle.Bold),
+                    Text = $"{count} ({pct}%)",
+                    Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                     ForeColor = color,
                     Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                    Location = new Point(pnlRow.Width - 170, 16),
-                    Size = new Size(155, 24),
+                    Location = new Point(_pnlTierDist.ClientSize.Width - 22 - 100, y),
+                    Size = new Size(100, 20),
                     TextAlign = ContentAlignment.MiddleRight,
-                    Cursor = Cursors.Hand
+                    Tag = "tier"
                 };
 
-                pnlRow.Controls.Add(dot);
-                pnlRow.Controls.Add(lblName);
-                pnlRow.Controls.Add(lblDesc);
-                pnlRow.Controls.Add(lblCountAndPct);
+                _pnlTierDist.Controls.Add(lblName);
+                _pnlTierDist.Controls.Add(lblCountAndPct);
 
-                Action rowClick = () => ShowDrillDown(name, $"{count} tenant organization(s) on this plan tier ({pct}% platform share).\n\nFeatures: {desc}");
-                pnlRow.Click += (_, _) => rowClick();
-                lblName.Click += (_, _) => rowClick();
-                lblDesc.Click += (_, _) => rowClick();
-                lblCountAndPct.Click += (_, _) => rowClick();
+                var pnlBarBg = new Panel
+                {
+                    Location = new Point(22, y + 24),
+                    Size = new Size(availableWidth, 12),
+                    Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                    BackColor = Color.FromArgb(241, 245, 249),
+                    Tag = "tier",
+                    Cursor = Cursors.Hand
+                };
+                UiRadiusHelper.StyleCard(pnlBarBg, 6);
 
-                _pnlTierDist.Controls.Add(pnlRow);
+                int fillPx = count == 0 ? 0 : Math.Max(16, (int)((float)count / total * availableWidth));
+                var pnlFill = new Panel
+                {
+                    Location = new Point(0, 0),
+                    Size = new Size(0, 12), // starts at 0 for entrance growth
+                    BackColor = color
+                };
+                UiRadiusHelper.StyleCard(pnlFill, 6);
+                pnlBarBg.Controls.Add(pnlFill);
+                _pnlTierDist.Controls.Add(pnlBarBg);
 
-                y += 68;
+                // Smooth bar fill entrance growth (~320ms EaseOutCubic)
+                if (fillPx > 0)
+                {
+                    var animTimer = new System.Windows.Forms.Timer { Interval = 16 };
+                    var startTime = DateTime.UtcNow;
+                    animTimer.Tick += (s, e) =>
+                    {
+                        if (pnlFill.IsDisposed)
+                        {
+                            animTimer.Stop();
+                            animTimer.Dispose();
+                            return;
+                        }
+                        double elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
+                        double progress = Math.Min(1.0, elapsed / 320.0);
+                        double ease = 1.0 - Math.Pow(1.0 - progress, 3);
+                        pnlFill.Width = Math.Max(4, (int)(fillPx * ease));
+                        if (progress >= 1.0)
+                        {
+                            pnlFill.Width = fillPx;
+                            animTimer.Stop();
+                            animTimer.Dispose();
+                        }
+                    };
+                    animTimer.Start();
+                }
+
+                var lblDesc = new Label
+                {
+                    Text = subtitle,
+                    Font = new Font("Segoe UI", 8f),
+                    ForeColor = Color.FromArgb(148, 163, 184),
+                    Location = new Point(22, y + 42),
+                    Size = new Size(availableWidth, 18),
+                    Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                    AutoEllipsis = true,
+                    Tag = "tier"
+                };
+                _pnlTierDist.Controls.Add(lblDesc);
+
+                pnlBarBg.Click += (_, _) => NavigateToSubscriptions?.Invoke();
+                lblName.Click += (_, _) => NavigateToSubscriptions?.Invoke();
+
+                y += 74;
             }
         }
 
-        private static void ShowDrillDown(string title, string details)
+        private async Task RenderRecentActivityAsync()
         {
-            MessageBox.Show(details, $"Platform Analytics — {title}", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            var old = _pnlActivity.Controls.Cast<Control>()
+                .Where(c => c.Tag?.ToString() == "act").ToList();
+            foreach (var c in old) _pnlActivity.Controls.Remove(c);
+
+            try
+            {
+                var logs = await _syncController.GetRecentAuditLogsAsync(6);
+
+                if (logs.Count == 0)
+                {
+                    var lblEmpty = new Label
+                    {
+                        Text = "No platform activity recorded yet.",
+                        Font = new Font("Segoe UI", 9.5f, FontStyle.Italic),
+                        ForeColor = Theme.TextSecondary,
+                        Location = new Point(20, 70),
+                        AutoSize = true,
+                        Tag = "act"
+                    };
+                    _pnlActivity.Controls.Add(lblEmpty);
+                    return;
+                }
+
+                int y = 56;
+                foreach (var log in logs)
+                {
+                    var rowPanel = new Panel
+                    {
+                        Location = new Point(14, y),
+                        Size = new Size(_pnlActivity.ClientSize.Width - 28, 52),
+                        Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                        BackColor = Color.FromArgb(249, 250, 251),
+                        Tag = "act"
+                    };
+                    UiRadiusHelper.StyleCard(rowPanel, 6);
+
+                    // Circular Avatar with deterministic initials
+                    var avatarPanel = new Panel
+                    {
+                        Location = new Point(10, 10),
+                        Size = new Size(32, 32),
+                        BackColor = Color.Transparent
+                    };
+                    var (bg, fg) = AvatarLabel.GetDeterministicAvatarColors(log.PerformedByName);
+                    string initials = AvatarLabel.GetInitials(log.PerformedByName);
+                    avatarPanel.Paint += (s, e) =>
+                    {
+                        e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                        using var b = new SolidBrush(bg);
+                        e.Graphics.FillEllipse(b, 0, 0, 32, 32);
+                        using var f = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+                        TextRenderer.DrawText(e.Graphics, initials, f, new Rectangle(0, 0, 32, 32), fg,
+                            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                    };
+                    rowPanel.Controls.Add(avatarPanel);
+
+                    // Action description line 1: Name and Action Type
+                    var lblUserAction = new Label
+                    {
+                        Text = $"{log.PerformedByName} · {log.ActionType}",
+                        Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                        ForeColor = Theme.TextPrimary,
+                        Location = new Point(50, 7),
+                        Size = new Size(Math.Max(50, rowPanel.Width - 190), 18),
+                        Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                        AutoEllipsis = true
+                    };
+                    rowPanel.Controls.Add(lblUserAction);
+
+                    // Action description line 2: Detail
+                    var lblDetail = new Label
+                    {
+                        Text = log.Detail,
+                        Font = new Font("Segoe UI", 8.5f),
+                        ForeColor = Theme.TextSecondary,
+                        Location = new Point(50, 27),
+                        Size = new Size(Math.Max(50, rowPanel.Width - 190), 18),
+                        Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                        AutoEllipsis = true
+                    };
+                    rowPanel.Controls.Add(lblDetail);
+
+                    // Timestamp
+                    var lblTime = new Label
+                    {
+                        Text = log.CreatedAt.ToLocalTime().ToString("MMM dd  h:mm tt"),
+                        Font = new Font("Segoe UI", 8f),
+                        ForeColor = Color.FromArgb(100, 116, 139),
+                        Location = new Point(rowPanel.Width - 134, 16),
+                        Size = new Size(124, 20),
+                        TextAlign = ContentAlignment.MiddleRight,
+                        Anchor = AnchorStyles.Top | AnchorStyles.Right
+                    };
+                    rowPanel.Controls.Add(lblTime);
+
+                    _pnlActivity.Controls.Add(rowPanel);
+                    y += 58;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Recent activity render error: {ex.Message}");
+            }
         }
     }
 }

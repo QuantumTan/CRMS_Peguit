@@ -42,8 +42,9 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("my")]
         public async Task<IActionResult> GetMy([FromQuery] int? userId = null, [FromQuery] int take = 50)
         {
-            int resolvedUserId = (userId.HasValue && userId.Value > 0) ? userId.Value : CurrentUser.UserId;
-            if (resolvedUserId <= 0) return BadRequest("A valid userId is required.");
+            // Ignore client userId; always use authenticated user
+            int resolvedUserId = CurrentUser.UserId;
+            if (resolvedUserId <= 0) return Unauthorized();
 
             var items = await _db.Notifications
                 .AsNoTracking()
@@ -58,8 +59,9 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("unread-count")]
         public async Task<IActionResult> GetUnreadCount([FromQuery] int? userId = null)
         {
-            int resolvedUserId = (userId.HasValue && userId.Value > 0) ? userId.Value : CurrentUser.UserId;
-            if (resolvedUserId <= 0) return BadRequest("A valid userId is required.");
+            // Ignore client userId; always use authenticated user
+            int resolvedUserId = CurrentUser.UserId;
+            if (resolvedUserId <= 0) return Unauthorized();
 
             var count = await _db.Notifications
                 .AsNoTracking()
@@ -71,8 +73,16 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPut("{id:int}/read")]
         public async Task<IActionResult> MarkAsRead(int id)
         {
+            if (CurrentUser.UserId <= 0) return Unauthorized();
+
             var item = await _db.Notifications.SingleOrDefaultAsync(n => n.NotificationId == id);
             if (item == null) return NotFound();
+
+            // Verify recipient
+            if (item.RecipientUserId != CurrentUser.UserId)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, "You can only mark your own notifications as read.");
+            }
 
             if (!item.IsRead)
             {
@@ -87,8 +97,9 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPut("read-all")]
         public async Task<IActionResult> MarkAllAsRead([FromQuery] int? userId = null)
         {
-            int resolvedUserId = (userId.HasValue && userId.Value > 0) ? userId.Value : CurrentUser.UserId;
-            if (resolvedUserId <= 0) return BadRequest("A valid userId is required.");
+            // Ignore client userId; always use authenticated user
+            int resolvedUserId = CurrentUser.UserId;
+            if (resolvedUserId <= 0) return Unauthorized();
 
             var unread = await _db.Notifications
                 .Where(n => n.RecipientUserId == resolvedUserId && !n.IsRead)
@@ -108,8 +119,9 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("preferences")]
         public async Task<IActionResult> GetPreferences([FromQuery] int? userId = null)
         {
-            int resolvedUserId = (userId.HasValue && userId.Value > 0) ? userId.Value : CurrentUser.UserId;
-            if (resolvedUserId <= 0) return BadRequest("A valid userId is required.");
+            // Ignore client userId; always use authenticated user
+            int resolvedUserId = CurrentUser.UserId;
+            if (resolvedUserId <= 0) return Unauthorized();
 
             var rows = await _db.NotificationPreferences
                 .AsNoTracking()
@@ -129,8 +141,9 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPut("preferences")]
         public async Task<IActionResult> UpdatePreferences([FromBody] Dictionary<string, bool> preferences, [FromQuery] int? userId = null)
         {
-            int resolvedUserId = (userId.HasValue && userId.Value > 0) ? userId.Value : CurrentUser.UserId;
-            if (resolvedUserId <= 0) return BadRequest("A valid userId is required.");
+            // Ignore client userId; always use authenticated user
+            int resolvedUserId = CurrentUser.UserId;
+            if (resolvedUserId <= 0) return Unauthorized();
 
             var existing = await _db.NotificationPreferences
                 .Where(p => p.UserId == resolvedUserId)
@@ -261,8 +274,9 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPost("prune")]
         public async Task<IActionResult> PruneOld([FromQuery] int? userId = null, [FromQuery] int daysOld = 90)
         {
-            int resolvedUserId = (userId.HasValue && userId.Value > 0) ? userId.Value : CurrentUser.UserId;
-            if (resolvedUserId <= 0) return BadRequest("A valid userId is required.");
+            // Ignore client userId; always use authenticated user
+            int resolvedUserId = CurrentUser.UserId;
+            if (resolvedUserId <= 0) return Unauthorized();
 
             var cutoff = DateTime.UtcNow.AddDays(-daysOld);
             var oldNotifications = await _db.Notifications

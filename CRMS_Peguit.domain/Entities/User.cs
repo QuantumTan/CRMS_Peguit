@@ -7,79 +7,16 @@ namespace CRMS_Peguit.domain.entities
     public class User
     {
         public int UserId { get; set; }
-        public int PersonId { get; set; }
 
-        private string? _firstName;
-        private string? _middleName;
-        private string? _lastName;
-        private string? _suffix;
-        private string? _email;
-
-        public string FirstName
-        {
-            get => Person?.FirstName ?? _firstName ?? string.Empty;
-            set
-            {
-                _firstName = value;
-                if (Person != null) Person.FirstName = value;
-            }
-        }
-
-        public string? MiddleName
-        {
-            get => Person?.MiddleName ?? _middleName;
-            set
-            {
-                _middleName = value;
-                if (Person != null) Person.MiddleName = value;
-            }
-        }
-
-        public string LastName
-        {
-            get => Person?.LastName ?? _lastName ?? string.Empty;
-            set
-            {
-                _lastName = value;
-                if (Person != null) Person.LastName = value;
-            }
-        }
-
-        public string? Suffix
-        {
-            get => Person?.Suffix ?? _suffix;
-            set
-            {
-                _suffix = value;
-                if (Person != null) Person.Suffix = value;
-            }
-        }
-
-        public string Email
-        {
-            get => Person?.Email ?? _email ?? string.Empty;
-            set
-            {
-                _email = value;
-                if (Person != null) Person.Email = value;
-            }
-        }
-
-        private string? _phone;
-        [NotMapped]
-        public string? Phone
-        {
-            get => Person?.Phone ?? _phone;
-            set
-            {
-                _phone = value;
-                if (Person != null) Person.Phone = value;
-            }
-        }
+        public string FirstName { get; set; } = string.Empty;
+        public string? MiddleName { get; set; }
+        public string LastName { get; set; } = string.Empty;
+        public string? Suffix { get; set; }
+        public string Email { get; set; } = string.Empty;
+        public string? Phone { get; set; }
 
         [NotMapped]
         public string FullName =>
-            Person?.FullName ??
             string.Join(" ", new[] { FirstName, MiddleName, LastName, Suffix }.Where(v => !string.IsNullOrWhiteSpace(v)));
 
         public string PasswordHash { get; set; } = string.Empty;
@@ -88,7 +25,37 @@ namespace CRMS_Peguit.domain.entities
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public int? BranchId { get; set; }
 
-        public virtual Person Person { get; set; } = null!;
+        [NotMapped]
+        public int PersonId { get => UserId; set { } }
+
+        [NotMapped]
+        public virtual Person? Person
+        {
+            get => new Person
+            {
+                PersonId = UserId,
+                FirstName = FirstName,
+                MiddleName = MiddleName,
+                LastName = LastName,
+                Suffix = Suffix,
+                Email = Email,
+                Phone = Phone,
+                CreatedAt = CreatedAt
+            };
+            set
+            {
+                if (value != null)
+                {
+                    FirstName = value.FirstName;
+                    MiddleName = value.MiddleName;
+                    LastName = value.LastName;
+                    Suffix = value.Suffix;
+                    Email = value.Email ?? string.Empty;
+                    Phone = value.Phone;
+                }
+            }
+        }
+
         public virtual Role Role { get; set; } = null!;
         public virtual Branch? Branch { get; set; }
     }

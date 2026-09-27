@@ -37,7 +37,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
             this.lblSecondaryFilter = new System.Windows.Forms.Label();
             this.cboSecondaryFilter = new System.Windows.Forms.ComboBox();
             this.btnRunReport = new System.Windows.Forms.Button();
-            this.btnExportCsv = new System.Windows.Forms.Button();
+            this.btnExportExcel = new System.Windows.Forms.Button();
             this.btnExportPdf = new System.Windows.Forms.Button();
 
             this.btnViewBoth = new System.Windows.Forms.Button();
@@ -145,7 +145,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
             this.pnlFilters.Controls.Add(this.lblSecondaryFilter);
             this.pnlFilters.Controls.Add(this.cboSecondaryFilter);
             this.pnlFilters.Controls.Add(this.btnRunReport);
-            this.pnlFilters.Controls.Add(this.btnExportCsv);
+            this.pnlFilters.Controls.Add(this.btnExportExcel);
             this.pnlFilters.Controls.Add(this.btnExportPdf);
             this.pnlFilters.Dock = System.Windows.Forms.DockStyle.Top;
             this.pnlFilters.Location = new System.Drawing.Point(0, 72);
@@ -289,20 +289,20 @@ namespace CRMS_Peguit.winforms.Views.Reports
             this.btnRunReport.UseVisualStyleBackColor = false;
 
             // 
-            // btnExportCsv
+            // btnExportExcel
             // 
-            this.btnExportCsv.BackColor = System.Drawing.Color.FromArgb(241, 245, 249);
-            this.btnExportCsv.FlatAppearance.BorderSize = 1;
-            this.btnExportCsv.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnExportCsv.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnExportCsv.Font = new System.Drawing.Font("Segoe UI Semibold", 9F);
-            this.btnExportCsv.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
-            this.btnExportCsv.Location = new System.Drawing.Point(160, 72);
-            this.btnExportCsv.Name = "btnExportCsv";
-            this.btnExportCsv.Size = new System.Drawing.Size(110, 32);
-            this.btnExportCsv.TabIndex = 12;
-            this.btnExportCsv.Text = "📥 Export CSV";
-            this.btnExportCsv.UseVisualStyleBackColor = false;
+            this.btnExportExcel.BackColor = System.Drawing.Color.FromArgb(241, 245, 249);
+            this.btnExportExcel.FlatAppearance.BorderSize = 1;
+            this.btnExportExcel.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(203, 213, 225);
+            this.btnExportExcel.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnExportExcel.Font = new System.Drawing.Font("Segoe UI Semibold", 9F);
+            this.btnExportExcel.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
+            this.btnExportExcel.Location = new System.Drawing.Point(160, 72);
+            this.btnExportExcel.Name = "btnExportExcel";
+            this.btnExportExcel.Size = new System.Drawing.Size(120, 32);
+            this.btnExportExcel.TabIndex = 12;
+            this.btnExportExcel.Text = "📊 Export Excel";
+            this.btnExportExcel.UseVisualStyleBackColor = false;
 
             // 
             // btnExportPdf
@@ -313,7 +313,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
             this.btnExportPdf.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnExportPdf.Font = new System.Drawing.Font("Segoe UI Semibold", 9F);
             this.btnExportPdf.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
-            this.btnExportPdf.Location = new System.Drawing.Point(280, 72);
+            this.btnExportPdf.Location = new System.Drawing.Point(290, 72);
             this.btnExportPdf.Name = "btnExportPdf";
             this.btnExportPdf.Size = new System.Drawing.Size(110, 32);
             this.btnExportPdf.TabIndex = 13;
@@ -622,7 +622,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
         private System.Windows.Forms.Label lblSecondaryFilter;
         private System.Windows.Forms.ComboBox cboSecondaryFilter;
         private System.Windows.Forms.Button btnRunReport;
-        private System.Windows.Forms.Button btnExportCsv;
+        private System.Windows.Forms.Button btnExportExcel;
         private System.Windows.Forms.Button btnExportPdf;
 
         private System.Windows.Forms.Button btnViewBoth;

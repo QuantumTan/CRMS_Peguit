@@ -63,8 +63,8 @@ namespace CRMS_Peguit.api.Controllers
             }
 
             var rawFollowUps = await _db.TaskReminders.AsNoTracking()
-                .Include(r => r.RelatedCustomer).ThenInclude(c => c!.Person)
-                .Include(r => r.RelatedLead).ThenInclude(l => l!.Person)
+                .Include(r => r.RelatedCustomer)
+                .Include(r => r.RelatedLead)
                 .Where(r => r.AssignedToUserId == targetUserId && r.Status != "Completed" && r.DueDate >= today && r.DueDate < tomorrow)
                 .OrderBy(r => r.DueDate)
                 .Take(5)
@@ -83,8 +83,8 @@ namespace CRMS_Peguit.api.Controllers
             }).ToList();
 
             var rawActivities = await _db.Activities.AsNoTracking()
-                .Include(a => a.RelatedCustomer).ThenInclude(c => c!.Person)
-                .Include(a => a.RelatedLead).ThenInclude(l => l!.Person)
+                .Include(a => a.RelatedCustomer)
+                .Include(a => a.RelatedLead)
                 .Where(a => a.LoggedByAgentId == targetUserId)
                 .OrderByDescending(a => a.ActivityDate)
                 .Take(5)

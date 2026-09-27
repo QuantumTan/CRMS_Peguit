@@ -2,13 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.EntityFrameworkCore;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Controls;
+using CRMS_Peguit.winforms.Models.Roles;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
 
@@ -16,79 +19,101 @@ namespace CRMS_Peguit.winforms.Views.Marketing
 {
     public class ClientRetentionView : UserControl
     {
-        // Header Controls
+        private readonly RetentionController _retentionController;
+
+        // Top Header
         private Panel _pnlHeader = null!;
         private Label _lblTitle = null!;
         private Label _lblSubtitle = null!;
         private Button _btnRefresh = null!;
+        private Button _btnExportCsv = null!;
+        private Button _btnNewRequest = null!;
 
-        // Scrollable Body
-        private Panel _pnlContent = null!;
+        // Tab Navigation Strip
+        private Panel _pnlTabStrip = null!;
+        private readonly List<Button> _tabButtons = new();
+        private Button _activeTabButton = null!;
+        private Panel _pnlTabContainer = null!;
 
-        // 4 KPI Cards
-        private TableLayoutPanel _pnlKpiContainer = null!;
-        private KpiCard _kpiEnrolled = null!;
-        private KpiCard _kpiDelivered = null!;
-        private KpiCard _kpiEquity = null!;
-        private KpiCard _kpiStatus = null!;
+        // Tab 1: Dashboard & Segments
+        private Panel _tabSegments = null!;
+        private TableLayoutPanel _pnlKpis = null!;
+        private KpiCard _kpiTrackedClients = null!;
+        private KpiCard _kpiActiveQueue = null!;
+        private KpiCard _kpiPendingApprovals = null!;
+        private KpiCard _kpiDispatchedMonth = null!;
+        private Panel _pnlSegmentFilters = null!;
+        private FlowLayoutPanel _flpSegmentPills = null!;
+        private TextBox _txtSearchClients = null!;
+        private Button _btnRecalculateAll = null!;
+        private DataGridView _gridClients = null!;
+        private PaginationControl _paginationClients = null!;
+        private List<RetentionCustomerRow> _allClients = new();
+        private string _selectedSegmentFilter = "All";
 
-        // Left Card: Template Architecture & Settings
-        private Button _btnSegmentActive = null!;
-        private Button _btnSegmentPaused = null!;
-        private Button _btnSegmentStopped = null!;
-        private ComboBox _cboFrequency = null!;
-        private ComboBox _cboAudience = null!;
-        private ComboBox _cboFormat = null!;
+        // Tab 2: 1-to-1 Manual Outreach
+        private Panel _tabManualEmail = null!;
+        private TextBox _txtSearchOutreach = null!;
+        private ListBox _lstOutreachResults = null!;
+        private Panel _pnlOutreachClientCard = null!;
+        private Label _lblOutreachClientName = null!;
+        private Label _lblOutreachClientDetails = null!;
+        private Label _lblOutreachSegmentStatus = null!;
+        private Label _lblOutreachCooldownAlert = null!;
+        private ComboBox _cboOutreachTemplate = null!;
+        private TextBox _txtOutreachIncentive = null!;
+        private TextBox _txtOutreachSubject = null!;
+        private TextBox _txtOutreachBody = null!;
+        private Panel _pnlOutreachPreview = null!;
+        private Label _lblPreviewTo = null!;
+        private Label _lblPreviewSubject = null!;
+        private Label _lblPreviewBody = null!;
+        private Button _btnSendManualEmail = null!;
+        private Button _btnSendTestEmail = null!;
+        private RetentionCustomerRow? _selectedOutreachCustomer;
+        private List<EmailTemplate> _loadedRetentionTemplates = new();
+
+        // Tab 3: Requests & Approvals
+        private Panel _tabRequests = null!;
+        private ComboBox _cboRequestStatusFilter = null!;
+        private DateTimePicker _dtpRequestFrom = null!;
+        private DateTimePicker _dtpRequestTo = null!;
+        private Button _btnFilterRequests = null!;
+        private DataGridView _gridRequests = null!;
+        private PaginationControl _paginationRequests = null!;
+        private List<RetentionRequestRow> _allRequests = new();
+
+        // Tab 4: Campaign Queue & Dispatch
+        private Panel _tabQueue = null!;
+        private ComboBox _cboQueueStatusFilter = null!;
+        private DateTimePicker _dtpQueueFrom = null!;
+        private DateTimePicker _dtpQueueTo = null!;
+        private Button _btnFilterQueue = null!;
+        private DataGridView _gridQueue = null!;
+        private PaginationControl _paginationQueue = null!;
+        private List<RetentionQueueRow> _allQueueItems = new();
+        private Panel _pnlQueuePreviewCard = null!;
+        private Label _lblQueuePreviewSubject = null!;
+        private Label _lblQueuePreviewBody = null!;
+        private Button _btnDispatchSelected = null!;
+        private RetentionQueueRow? _selectedQueueRow;
+
+        // Tab 5: Automated Valuation & Settings
+        private Panel _tabSettings = null!;
         private NumericUpDown _numAppreciation = null!;
+        private ComboBox _cboFrequency = null!;
         private TextBox _txtBrokerageName = null!;
         private TextBox _txtCtaText = null!;
         private TextBox _txtSubjectTemplate = null!;
-        private TextBox _txtBodyTemplate = null!;
-
-        // Template System & RBAC Governance
-        private ComboBox _cboTemplates = null!;
-        private Label _lblTemplateBadge = null!;
-        private Button _btnNewTemplate = null!;
-        private Button _btnCloneTemplate = null!;
-        private Button _btnDeleteTemplate = null!;
-        private List<EmailTemplate> _loadedTemplates = new();
-        private EmailTemplate? _selectedTemplate;
-
-        // Right Column: Interactive Visual Preview & Test Dispatch
-        private ComboBox _cboClientPicker = null!;
-        private Panel _pnlPreviewContainer = null!;
-        private Label _lblPreviewHeader = null!;
-        private Label _lblPreviewBody = null!;
-        private Panel _pnlPreviewMetricsBox = null!;
-        private Label _lblMetricAcq = null!;
-        private Label _lblMetricEst = null!;
-        private Label _lblMetricGain = null!;
-        private Button _btnPreviewCtaMockup = null!;
-        private Label _lblPreviewFooter = null!;
-
-        private Button _btnOpenHtmlBrowser = null!;
-        private TextBox _txtTestEmail = null!;
-        private Button _btnSendTestEmail = null!;
-        private Button _btnRunBatchNow = null!;
-        private Button _btnSaveSettings = null!;
-        private Button _btnResetSettings = null!;
-        private Label _lblLastRunInfo = null!;
-
-        // Bottom Card: Audit Trail
-        private DataGridView _gridAuditHistory = null!;
-        private PaginationControl _paginationAudit = null!;
-        private List<MarketUpdateLog> _allAuditLogs = new();
-        private string? _auditFilterStatus = null;
-
-        // Model State
-        private AutomatedEmailSettings _currentSettings = null!;
-        private ValuationMetrics? _latestPreviewMetrics = null!;
-        private bool _isLoadingSettings;
+        private Button _btnSaveValuationSettings = null!;
+        private AutomatedEmailSettings _currentValuationSettings = null!;
 
         public ClientRetentionView()
         {
+            _retentionController = new RetentionController();
+
             InitializeComponentLayout();
-            _ = LoadAutomatedSettingsAsync();
+            _ = LoadInitialDataAsync();
         }
 
         private void InitializeComponentLayout()
@@ -97,2164 +122,1898 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             this.BackColor = Theme.Background;
             this.Dock = DockStyle.Fill;
 
-            // ── TOP HEADER ──
+            // Security check: SuperAdmin is strictly blocked from tenant customer data
+            if (RbacService.IsSuperAdmin)
+            {
+                BuildSuperAdminBlockedLayout();
+                this.ResumeLayout(true);
+                return;
+            }
+
+            BuildHeader();
+            BuildTabStrip();
+
+            _pnlTabContainer = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Theme.Background
+            };
+            this.Controls.Add(_pnlTabContainer);
+
+            // Build all 5 tabs
+            BuildTab1Segments();
+            BuildTab2ManualEmail();
+            BuildTab3Requests();
+            BuildTab4Queue();
+            BuildTab5Settings();
+
+            // Set initial tab
+            SwitchTab(0);
+
+            this.ResumeLayout(true);
+        }
+
+        #region SuperAdmin Blocked Layout
+
+        private void BuildSuperAdminBlockedLayout()
+        {
+            var pnlLock = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.White,
+                Padding = new Padding(40)
+            };
+
+            var lblLock = new Label
+            {
+                Text = "🔒 Access Restricted — Tenant Business Data\n\n" +
+                       "Super Admin accounts manage platform infrastructure only and are restricted from accessing " +
+                       "tenant operational client data, email retention campaigns, and discretionary pricing concessions.",
+                Font = new Font("Segoe UI", 12f, FontStyle.Regular),
+                ForeColor = Color.FromArgb(100, 116, 139),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Dock = DockStyle.Fill
+            };
+
+            pnlLock.Controls.Add(lblLock);
+            this.Controls.Add(pnlLock);
+        }
+
+        #endregion
+
+        #region Header & Tabs Navigation
+
+        private void BuildHeader()
+        {
             _pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 84,
+                Height = 80,
                 BackColor = Color.White,
-                Padding = new Padding(28, 16, 28, 16)
+                Padding = new Padding(28, 14, 28, 14)
             };
 
             _lblTitle = new Label
             {
-                Text = "Client Retention",
-                Font = new Font("Segoe UI", 16f, FontStyle.Bold),
+                Text = "Customer Retention & Email Campaigns",
+                Font = new Font("Segoe UI", 15f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(15, 23, 42),
-                Location = new Point(30, 14),
+                Location = new Point(28, 12),
                 AutoSize = true
             };
 
             _lblSubtitle = new Label
             {
-                Text = "Automated property equity updates, marketing templates & client retention campaigns",
+                Text = "Lifecycle retention segments, service incentive governance & human-in-the-loop email campaigns",
                 Font = new Font("Segoe UI", 9.5f),
                 ForeColor = Color.FromArgb(100, 116, 139),
-                Location = new Point(30, 48),
+                Location = new Point(28, 44),
                 AutoSize = true
             };
+
+            _btnNewRequest = new Button
+            {
+                Text = "➕ New Request",
+                Size = new Size(130, 38),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(this.Width - 410, 20),
+                BackColor = Theme.SidebarAccent,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            _btnNewRequest.FlatAppearance.BorderSize = 0;
+            UiRadiusHelper.StyleButton(_btnNewRequest, 8);
+            _btnNewRequest.Click += (s, e) => ShowNewRequestModal();
+
+            _btnExportCsv = new Button
+            {
+                Text = "📥 Export CSV",
+                Size = new Size(110, 38),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(this.Width - 270, 20),
+                BackColor = Color.White,
+                ForeColor = Color.FromArgb(71, 85, 105),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9f),
+                Cursor = Cursors.Hand
+            };
+            _btnExportCsv.FlatAppearance.BorderColor = Color.FromArgb(226, 232, 240);
+            UiRadiusHelper.StyleButton(_btnExportCsv, 8);
+            _btnExportCsv.Click += (s, e) => ExportCurrentViewToCsv();
 
             _btnRefresh = new Button
             {
                 Text = "↻ Refresh",
+                Size = new Size(95, 38),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(this.Width - 150, 20),
                 BackColor = Color.White,
-                Cursor = Cursors.Hand,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 9.5f),
                 ForeColor = Color.FromArgb(71, 85, 105),
-                Location = new Point(Math.Max(500, this.Width - 140), 20),
-                Size = new Size(110, 40)
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9f),
+                Cursor = Cursors.Hand
             };
             _btnRefresh.FlatAppearance.BorderColor = Color.FromArgb(226, 232, 240);
             UiRadiusHelper.StyleButton(_btnRefresh, 8);
-            _btnRefresh.Click += (_, _) =>
-            {
-                RefreshAutomatedKpis();
-                PopulateClientPicker();
-                LoadAuditHistory();
-                UpdateLivePreview();
-            };
+            _btnRefresh.Click += async (s, e) => await RefreshCurrentTabAsync();
 
             _pnlHeader.Controls.Add(_lblTitle);
             _pnlHeader.Controls.Add(_lblSubtitle);
+            _pnlHeader.Controls.Add(_btnNewRequest);
+            _pnlHeader.Controls.Add(_btnExportCsv);
             _pnlHeader.Controls.Add(_btnRefresh);
             this.Controls.Add(_pnlHeader);
+        }
 
-            // ── SCROLLABLE BODY ──
-            _pnlContent = new Panel
+        private void BuildTabStrip()
+        {
+            _pnlTabStrip = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 44,
+                BackColor = Color.FromArgb(248, 250, 252),
+                Padding = new Padding(28, 0, 28, 0)
+            };
+
+            var tabTitles = new[]
+            {
+                "📊 Dashboard & Segments",
+                "✉️ 1-to-1 Manual Outreach",
+                "✓ Requests & Approvals",
+                "🚀 Campaign Queue & Dispatch",
+                "⚙️ Valuation & Templates"
+            };
+
+            int x = 28;
+            for (int i = 0; i < tabTitles.Length; i++)
+            {
+                int tabIndex = i;
+                var btn = new Button
+                {
+                    Text = tabTitles[i],
+                    Location = new Point(x, 4),
+                    Size = new Size(185, 36),
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = Color.Transparent,
+                    ForeColor = Color.FromArgb(100, 116, 139),
+                    Font = new Font("Segoe UI", 9f, FontStyle.Regular),
+                    Cursor = Cursors.Hand,
+                    TextAlign = ContentAlignment.MiddleCenter
+                };
+                btn.FlatAppearance.BorderSize = 0;
+                btn.Click += (s, e) => SwitchTab(tabIndex);
+
+                _tabButtons.Add(btn);
+                _pnlTabStrip.Controls.Add(btn);
+                x += 190;
+            }
+
+            this.Controls.Add(_pnlTabStrip);
+        }
+
+        private void SwitchTab(int index)
+        {
+            for (int i = 0; i < _tabButtons.Count; i++)
+            {
+                var b = _tabButtons[i];
+                if (i == index)
+                {
+                    _activeTabButton = b;
+                    b.BackColor = Color.White;
+                    b.ForeColor = Theme.SidebarAccent;
+                    b.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+                }
+                else
+                {
+                    b.BackColor = Color.Transparent;
+                    b.ForeColor = Color.FromArgb(100, 116, 139);
+                    b.Font = new Font("Segoe UI", 9f, FontStyle.Regular);
+                }
+            }
+
+            _pnlTabContainer.Controls.Clear();
+            Control activeView = index switch
+            {
+                0 => _tabSegments,
+                1 => _tabManualEmail,
+                2 => _tabRequests,
+                3 => _tabQueue,
+                4 => _tabSettings,
+                _ => _tabSegments
+            };
+            activeView.Dock = DockStyle.Fill;
+            _pnlTabContainer.Controls.Add(activeView);
+
+            _ = RefreshCurrentTabAsync();
+        }
+
+        private async Task RefreshCurrentTabAsync()
+        {
+            if (_activeTabButton == null) return;
+            int idx = _tabButtons.IndexOf(_activeTabButton);
+
+            try
+            {
+                if (idx == 0)
+                {
+                    await LoadSegmentsDataAsync();
+                }
+                else if (idx == 1)
+                {
+                    await LoadManualEmailDataAsync();
+                }
+                else if (idx == 2)
+                {
+                    await LoadRequestsDataAsync();
+                }
+                else if (idx == 3)
+                {
+                    await LoadQueueDataAsync();
+                }
+                else if (idx == 4)
+                {
+                    await LoadValuationSettingsDataAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ClientRetentionView] Refresh error: {ex.Message}");
+            }
+        }
+
+        #endregion
+
+        #region Tab 1: Dashboard & Segments
+
+        private void BuildTab1Segments()
+        {
+            _tabSegments = new Panel
             {
                 Dock = DockStyle.Fill,
                 BackColor = Theme.Background,
-                Padding = new Padding(30, 16, 30, 24),
+                Padding = new Padding(28, 16, 28, 16),
                 AutoScroll = true
             };
 
-            // ── TOP SECTION: 4 KPI CARDS ──
-            _pnlKpiContainer = new TableLayoutPanel
+            // 4 KPI Cards Container
+            _pnlKpis = new TableLayoutPanel
             {
                 Dock = DockStyle.Top,
-                Height = 106,
+                Height = 104,
                 ColumnCount = 4,
                 RowCount = 1,
                 BackColor = Color.Transparent,
-                Margin = new Padding(0, 0, 0, 16)
+                Margin = new Padding(0, 0, 0, 14)
             };
-            _pnlKpiContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            _pnlKpiContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            _pnlKpiContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            _pnlKpiContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            _pnlKpiContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            _pnlKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
+            _pnlKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
+            _pnlKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
+            _pnlKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
+            _pnlKpis.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
-            _kpiEnrolled = new KpiCard("ENROLLED CLIENTS", "clients", Color.FromArgb(15, 23, 42), KpiIconType.Users, "Past clients tracked")
+            _kpiTrackedClients = new KpiCard("TRACKED CLIENTS", "0", Color.FromArgb(15, 23, 42), KpiIconType.Users, "Assigned past clients")
             {
                 Dock = DockStyle.Fill,
                 Margin = new Padding(0, 0, 8, 0),
                 ClickMode = KpiClickMode.InPlaceFilter
             };
-            _kpiDelivered = new KpiCard("UPDATES DELIVERED", "delivered", Color.FromArgb(15, 23, 42), KpiIconType.Briefcase, "0 emails sent this cycle")
+            _kpiActiveQueue = new KpiCard("ACTIVE QUEUE", "0", Color.FromArgb(217, 119, 6), KpiIconType.Clock, "Awaiting dispatch")
             {
                 Dock = DockStyle.Fill,
                 Margin = new Padding(4, 0, 6, 0),
                 ClickMode = KpiClickMode.InPlaceFilter
             };
-            _kpiEquity = new KpiCard("AVG. EQUITY SHOWN", "equity", Color.FromArgb(22, 163, 74), KpiIconType.Currency, "₱0 avg gain")
+            _kpiPendingApprovals = new KpiCard("PENDING APPROVALS", "0", Color.FromArgb(220, 38, 38), KpiIconType.Briefcase, "Incentive requests pending")
             {
                 Dock = DockStyle.Fill,
                 Margin = new Padding(6, 0, 4, 0),
                 ClickMode = KpiClickMode.InPlaceFilter
             };
-            _kpiStatus = new KpiCard("AUTOMATION STATUS", "status", Color.FromArgb(217, 119, 6), KpiIconType.Clock, "Scheduled dispatch paused")
+            _kpiDispatchedMonth = new KpiCard("DISPATCHED (MONTH)", "0", Color.FromArgb(22, 163, 74), KpiIconType.Currency, "Delivered retention emails")
             {
                 Dock = DockStyle.Fill,
                 Margin = new Padding(8, 0, 0, 0),
                 ClickMode = KpiClickMode.InPlaceFilter
             };
 
-            _kpiEnrolled.Click += (_, _) => FilterAuditTrail(null);
-            _kpiDelivered.Click += (_, _) => FilterAuditTrail("Sent");
-            _kpiEquity.Click += (_, _) =>
-            {
-                FilterAuditTrail(null);
-                _numAppreciation.Focus();
-                _numAppreciation.Select(0, _numAppreciation.Text.Length);
-            };
-            _kpiStatus.Click += (_, _) => FilterAuditTrail("Success");
+            _kpiTrackedClients.Click += (_, _) => FilterSegmentsByPill("All");
+            _kpiActiveQueue.Click += (_, _) => SwitchTab(3);
+            _kpiPendingApprovals.Click += (_, _) => SwitchTab(2);
 
-            _pnlKpiContainer.Controls.Add(_kpiEnrolled, 0, 0);
-            _pnlKpiContainer.Controls.Add(_kpiDelivered, 1, 0);
-            _pnlKpiContainer.Controls.Add(_kpiEquity, 2, 0);
-            _pnlKpiContainer.Controls.Add(_kpiStatus, 3, 0);
+            _pnlKpis.Controls.Add(_kpiTrackedClients, 0, 0);
+            _pnlKpis.Controls.Add(_kpiActiveQueue, 1, 0);
+            _pnlKpis.Controls.Add(_kpiPendingApprovals, 2, 0);
+            _pnlKpis.Controls.Add(_kpiDispatchedMonth, 3, 0);
+            _tabSegments.Controls.Add(_pnlKpis);
 
-            // ── MIDDLE SECTION: 2 Balanced Columns (50% / 50%) ──
-            var tableSplit = new TableLayoutPanel
+            // Filter Bar
+            _pnlSegmentFilters = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 790,
+                Height = 52,
+                BackColor = Color.White,
+                Padding = new Padding(16, 8, 16, 8),
+                Margin = new Padding(0, 14, 0, 14)
+            };
+            UiRadiusHelper.StyleCard(_pnlSegmentFilters, 8);
+
+            _flpSegmentPills = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Left,
+                Width = 720,
+                Height = 36,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoScroll = false
+            };
+
+            var pillNames = new[] { "All", "Repeat Client", "New Client", "Recent Client", "At Risk", "Inactive", "Prospective Client" };
+            foreach (var name in pillNames)
+            {
+                var pill = new Button
+                {
+                    Text = name,
+                    Height = 32,
+                    AutoSize = true,
+                    BackColor = name == "All" ? Theme.SidebarAccent : Color.FromArgb(241, 245, 249),
+                    ForeColor = name == "All" ? Color.White : Color.FromArgb(71, 85, 105),
+                    FlatStyle = FlatStyle.Flat,
+                    Font = new Font("Segoe UI", 8.5f, name == "All" ? FontStyle.Bold : FontStyle.Regular),
+                    Cursor = Cursors.Hand,
+                    Margin = new Padding(0, 2, 6, 0)
+                };
+                pill.FlatAppearance.BorderSize = 0;
+                UiRadiusHelper.StyleButton(pill, 16);
+                pill.Click += (s, e) => FilterSegmentsByPill(name);
+                _flpSegmentPills.Controls.Add(pill);
+            }
+
+            _txtSearchClients = new TextBox
+            {
+                Dock = DockStyle.Right,
+                Width = 220,
+                Font = new Font("Segoe UI", 9.5f),
+                PlaceholderText = "Search by name, email, phone..."
+            };
+            _txtSearchClients.TextChanged += (s, e) => ApplyClientFilters();
+
+            _btnRecalculateAll = new Button
+            {
+                Text = "⚡ Recalculate All",
+                Dock = DockStyle.Right,
+                Width = 130,
+                BackColor = Color.White,
+                ForeColor = Theme.SidebarAccent,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Margin = new Padding(0, 0, 10, 0)
+            };
+            _btnRecalculateAll.FlatAppearance.BorderColor = Theme.SidebarAccent;
+            UiRadiusHelper.StyleButton(_btnRecalculateAll, 6);
+            _btnRecalculateAll.Click += async (s, e) => await OnRecalculateAllSegmentsAsync();
+
+            _pnlSegmentFilters.Controls.Add(_flpSegmentPills);
+            _pnlSegmentFilters.Controls.Add(_btnRecalculateAll);
+            _pnlSegmentFilters.Controls.Add(_txtSearchClients);
+            _tabSegments.Controls.Add(_pnlSegmentFilters);
+
+            // Clients DataGridView Card
+            var pnlGridCard = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.White,
+                Padding = new Padding(16),
+                Margin = new Padding(0, 14, 0, 0)
+            };
+            UiRadiusHelper.StyleCard(pnlGridCard, 10);
+
+            _gridClients = new DataGridView
+            {
+                Dock = DockStyle.Fill,
+                BackgroundColor = Color.White,
+                BorderStyle = BorderStyle.None,
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                ReadOnly = true,
+                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                MultiSelect = false,
+                RowHeadersVisible = false,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
+            };
+            UiGridHelper.ApplyModernGridStyle(_gridClients, 48);
+            ConfigureClientsGridColumns();
+
+            _paginationClients = new PaginationControl
+            {
+                Dock = DockStyle.Bottom,
+                Height = 44
+            };
+            _paginationClients.SetItemLabel("clients");
+            _paginationClients.PageChanged += (_, _) => RenderPagedClients(resetPage: false);
+            _paginationClients.PageSizeChanged += (_, _) => RenderPagedClients(resetPage: true);
+
+            pnlGridCard.Controls.Add(_gridClients);
+            pnlGridCard.Controls.Add(_paginationClients);
+            _tabSegments.Controls.Add(pnlGridCard);
+        }
+
+        private void ConfigureClientsGridColumns()
+        {
+            _gridClients.Columns.Clear();
+
+            _gridClients.Columns.Add(new DataGridViewTextBoxColumn { Name = "CustomerId", HeaderText = "ID", FillWeight = 30 });
+            _gridClients.Columns.Add(new DataGridViewTextBoxColumn { Name = "CustomerName", HeaderText = "Client Name", FillWeight = 110 });
+            _gridClients.Columns.Add(new DataGridViewTextBoxColumn { Name = "Contact", HeaderText = "Email / Phone", FillWeight = 120 });
+            _gridClients.Columns.Add(new DataGridViewTextBoxColumn { Name = "Segment", HeaderText = "Retention Segment", FillWeight = 95 });
+            _gridClients.Columns.Add(new DataGridViewTextBoxColumn { Name = "LastClosed", HeaderText = "Last Closed Deal", FillWeight = 75 });
+            _gridClients.Columns.Add(new DataGridViewTextBoxColumn { Name = "LastActivity", HeaderText = "Last Activity", FillWeight = 75 });
+            _gridClients.Columns.Add(new DataGridViewTextBoxColumn { Name = "AssignedAgent", HeaderText = "Assigned Advisor", FillWeight = 95 });
+            _gridClients.Columns.Add(new DataGridViewTextBoxColumn { Name = "Cooldown", HeaderText = "Cooldown Policy", FillWeight = 85 });
+
+            UiGridHelper.AddActionsColumn(_gridClients, 64);
+
+            _gridClients.CellPainting += GridClients_CellPainting;
+            _gridClients.CellContentClick += GridClients_CellContentClick;
+        }
+
+        private void GridClients_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
+        {
+            if (e.RowIndex < 0) return;
+
+            // Avatar painting for Client Name & Assigned Agent
+            int nameIdx = _gridClients.Columns["CustomerName"]?.Index ?? -1;
+            int agentIdx = _gridClients.Columns["AssignedAgent"]?.Index ?? -1;
+            int segIdx = _gridClients.Columns["Segment"]?.Index ?? -1;
+            int coolIdx = _gridClients.Columns["Cooldown"]?.Index ?? -1;
+
+            if (e.ColumnIndex == nameIdx || e.ColumnIndex == agentIdx)
+            {
+                string text = e.Value?.ToString() ?? string.Empty;
+                UiGridHelper.PaintAvatarCell(_gridClients, e, text);
+            }
+            // StatusText for Retention Segment & Cooldown
+            else if (e.ColumnIndex == segIdx || e.ColumnIndex == coolIdx)
+            {
+                string text = e.Value?.ToString() ?? string.Empty;
+                UiGridHelper.PaintStatusText(_gridClients, e, text);
+            }
+        }
+
+        private void GridClients_CellContentClick(object? sender, DataGridViewCellEventArgs e)
+        {
+            int actionIdx = _gridClients.Columns["Actions"]?.Index ?? -1;
+            if (e.RowIndex < 0 || e.ColumnIndex != actionIdx) return;
+
+            var row = _gridClients.Rows[e.RowIndex];
+            int customerId = Convert.ToInt32(row.Cells["CustomerId"].Value);
+            var customer = _allClients.FirstOrDefault(c => c.CustomerId == customerId);
+            if (customer == null) return;
+
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("✉ Quick Retention Email", null, (s, ev) =>
+            {
+                _selectedOutreachCustomer = customer;
+                SwitchTab(1);
+            });
+
+            menu.Items.Add("➕ Create Retention Request", null, async (s, ev) =>
+            {
+                var custObj = await _retentionController.GetCustomerByIdAsync(customer.CustomerId);
+                var dlg = new RetentionRequestDialog(_retentionController, custObj);
+                dlg.ShowDialog(this);
+                if (dlg.WasActionTaken) await RefreshCurrentTabAsync();
+            });
+
+            menu.Items.Add("⚡ Recalculate Segment", null, async (s, ev) =>
+            {
+                using var db = LocalDb.CreateContext(CurrentSession.TenantId);
+                await RetentionCalculationService.RecalculateCustomerAsync(db, customer.CustomerId);
+                await RefreshCurrentTabAsync();
+            });
+
+            var rect = _gridClients.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, true);
+            menu.Show(_gridClients, new Point(rect.Right - 150, rect.Bottom));
+        }
+
+        private void FilterSegmentsByPill(string pillName)
+        {
+            _selectedSegmentFilter = pillName;
+            foreach (Control c in _flpSegmentPills.Controls)
+            {
+                if (c is Button b)
+                {
+                    bool isSelected = b.Text == pillName;
+                    b.BackColor = isSelected ? Theme.SidebarAccent : Color.FromArgb(241, 245, 249);
+                    b.ForeColor = isSelected ? Color.White : Color.FromArgb(71, 85, 105);
+                    b.Font = new Font("Segoe UI", 8.5f, isSelected ? FontStyle.Bold : FontStyle.Regular);
+                }
+            }
+            ApplyClientFilters();
+        }
+
+        private void ApplyClientFilters()
+        {
+            string search = _txtSearchClients.Text.Trim().ToLowerInvariant();
+            var filtered = _allClients.AsEnumerable();
+
+            if (_selectedSegmentFilter != "All")
+            {
+                filtered = filtered.Where(c => c.CurrentSegment.Equals(_selectedSegmentFilter, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                filtered = filtered.Where(c =>
+                    c.FullName.ToLower().Contains(search) ||
+                    c.Email.ToLower().Contains(search) ||
+                    c.Phone.Contains(search) ||
+                    c.AssignedAgentName.ToLower().Contains(search));
+            }
+
+            int total = filtered.Count();
+            _paginationClients.UpdatePagination(total, _paginationClients.CurrentPage, _paginationClients.PageSize);
+            RenderPagedClients(resetPage: true);
+        }
+
+        private void RenderPagedClients(bool resetPage = false)
+        {
+            if (resetPage) _paginationClients.ResetPage();
+
+            string search = _txtSearchClients.Text.Trim().ToLowerInvariant();
+            var filtered = _allClients.AsEnumerable();
+
+            if (_selectedSegmentFilter != "All")
+            {
+                filtered = filtered.Where(c => c.CurrentSegment.Equals(_selectedSegmentFilter, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                filtered = filtered.Where(c =>
+                    c.FullName.ToLower().Contains(search) ||
+                    c.Email.ToLower().Contains(search) ||
+                    c.Phone.Contains(search) ||
+                    c.AssignedAgentName.ToLower().Contains(search));
+            }
+
+            int pSize = _paginationClients.PageSize;
+            int page = _paginationClients.CurrentPage;
+
+            var paged = filtered.Skip((page - 1) * pSize).Take(pSize).ToList();
+
+            _gridClients.Rows.Clear();
+            foreach (var c in paged)
+            {
+                string cooldownText = c.IsOnCooldown ? $"Cooldown ({c.DaysUntilCooldownExpires}d)" : "Ready";
+
+                _gridClients.Rows.Add(
+                    c.CustomerId,
+                    c.FullName,
+                    $"{c.Email} • {c.Phone}",
+                    c.CurrentSegment,
+                    c.LastClosedDate?.ToString("MMM dd, yyyy") ?? "None",
+                    c.LastActivityDate?.ToString("MMM dd, yyyy") ?? "None",
+                    c.AssignedAgentName,
+                    cooldownText
+                );
+            }
+        }
+
+        private async Task LoadSegmentsDataAsync()
+        {
+            var summary = await _retentionController.GetSummaryAsync();
+            _kpiTrackedClients.SetValue(summary.TotalTrackedCustomers);
+            _kpiActiveQueue.SetValue(summary.ActiveQueueCount);
+            _kpiPendingApprovals.SetValue(summary.PendingApprovalsCount);
+            _kpiDispatchedMonth.SetValue(summary.DispatchedThisMonthCount);
+
+            _allClients = await _retentionController.GetCustomersAsync();
+            _paginationClients.UpdatePagination(_allClients.Count, _paginationClients.CurrentPage, _paginationClients.PageSize);
+            RenderPagedClients(resetPage: true);
+        }
+
+        private async Task OnRecalculateAllSegmentsAsync()
+        {
+            _btnRecalculateAll.Enabled = false;
+            _btnRecalculateAll.Text = "Calculating...";
+
+            try
+            {
+                using var db = LocalDb.CreateContext(CurrentSession.TenantId);
+                int changed = await RetentionCalculationService.RecalculateAllCustomersAsync(db, CurrentSession.TenantId);
+                MessageBox.Show($"Recalculation completed. {changed} customer retention segments updated.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                await LoadSegmentsDataAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Recalculation failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _btnRecalculateAll.Enabled = true;
+                _btnRecalculateAll.Text = "⚡ Recalculate All";
+            }
+        }
+
+        #endregion
+
+        #region Tab 2: 1-to-1 Manual Outreach
+
+        private void BuildTab2ManualEmail()
+        {
+            _tabManualEmail = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Theme.Background,
+                Padding = new Padding(28, 16, 28, 16),
+                AutoScroll = true
+            };
+
+            var tableSplit = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
                 ColumnCount = 2,
                 RowCount = 1,
-                BackColor = Color.Transparent,
-                Margin = new Padding(0, 16, 0, 0)
+                BackColor = Color.Transparent
             };
-            tableSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tableSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tableSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45F));
+            tableSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55F));
             tableSplit.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
-            // ── LEFT CARD: Campaign Template Architecture ──
+            // Left Card: Controls & Customer Search
             var leftCard = new Panel
             {
                 Dock = DockStyle.Fill,
                 BackColor = Color.White,
-                Padding = new Padding(24),
-                Margin = new Padding(0, 0, 8, 0),
+                Padding = new Padding(20),
+                Margin = new Padding(0, 0, 10, 0),
                 AutoScroll = true
             };
-            UiRadiusHelper.StyleCard(leftCard, 12);
+            UiRadiusHelper.StyleCard(leftCard, 10);
 
-            var lblLeftTitle = new Label
+            var lblSearchTitle = new Label { Text = "Select Target Client *", Font = new Font("Segoe UI", 9.5f, FontStyle.Bold), Location = new Point(14, 12), AutoSize = true };
+            _txtSearchOutreach = new TextBox
             {
-                Text = "Campaign Template Architecture",
-                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(15, 23, 42),
-                Location = new Point(24, 18),
-                AutoSize = true
-            };
-
-            var lblLeftSubtitle = new Label
-            {
-                Text = "Configure automated equity updates, marketing templates, and client retention campaigns.",
-                Font = new Font("Segoe UI", 8.5f),
-                ForeColor = Color.FromArgb(100, 116, 139),
-                Location = new Point(24, 42),
-                AutoSize = true
-            };
-
-            // 3-Segment Pill Control in Card Header (Fully sized so no text is cut off)
-            var pnlSegments = new Panel
-            {
-                Location = new Point(leftCard.Width - 245, 18),
-                Size = new Size(226, 28),
-                BackColor = Color.FromArgb(241, 245, 249)
-            };
-            UiRadiusHelper.ApplyRoundedCorners(pnlSegments, 6);
-
-            _btnSegmentActive = new Button
-            {
-                Text = "ACTIVE",
-                Location = new Point(2, 2),
-                Size = new Size(72, 24),
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 7.5f, FontStyle.Regular),
-                BackColor = Color.Transparent,
-                ForeColor = Color.FromArgb(148, 163, 184)
-            };
-            _btnSegmentActive.FlatAppearance.BorderSize = 0;
-            UiRadiusHelper.ApplyRoundedCorners(_btnSegmentActive, 4);
-            _btnSegmentActive.Click += (_, _) => SetAutomationEngineState("ACTIVE");
-
-            _btnSegmentPaused = new Button
-            {
-                Text = "PAUSED",
-                Location = new Point(76, 2),
-                Size = new Size(72, 24),
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-                BackColor = Color.FromArgb(217, 119, 6),
-                ForeColor = Color.White
-            };
-            _btnSegmentPaused.FlatAppearance.BorderSize = 0;
-            UiRadiusHelper.ApplyRoundedCorners(_btnSegmentPaused, 4);
-            _btnSegmentPaused.Click += (_, _) => SetAutomationEngineState("PAUSED");
-
-            _btnSegmentStopped = new Button
-            {
-                Text = "STOPPED",
-                Location = new Point(150, 2),
-                Size = new Size(74, 24),
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 7.5f, FontStyle.Regular),
-                BackColor = Color.Transparent,
-                ForeColor = Color.FromArgb(148, 163, 184)
-            };
-            _btnSegmentStopped.FlatAppearance.BorderSize = 0;
-            UiRadiusHelper.ApplyRoundedCorners(_btnSegmentStopped, 4);
-            _btnSegmentStopped.Click += (_, _) => SetAutomationEngineState("STOPPED");
-
-            pnlSegments.Controls.Add(_btnSegmentActive);
-            pnlSegments.Controls.Add(_btnSegmentPaused);
-            pnlSegments.Controls.Add(_btnSegmentStopped);
-
-            var pnlDivider = new Panel
-            {
-                Location = new Point(24, 68),
-                Size = new Size(leftCard.Width - 48, 1),
-                BackColor = Color.FromArgb(241, 245, 249)
-            };
-
-            // CAMPAIGN EMAIL TEMPLATE
-            var lblTemplate = new Label
-            {
-                Text = "CAMPAIGN EMAIL TEMPLATE",
-                Location = new Point(24, 80),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(100, 116, 139)
-            };
-
-            _cboTemplates = new ComboBox
-            {
-                Location = new Point(24, 102),
-                Size = new Size(leftCard.Width - 175, 32),
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                Font = new Font("Segoe UI", 9.5f)
-            };
-            _cboTemplates.SelectedIndexChanged += CboTemplates_SelectedIndexChanged;
-
-            _btnNewTemplate = new Button
-            {
-                Text = "+",
-                Location = new Point(_cboTemplates.Right + 6, 101),
-                Size = new Size(34, 32),
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 12f, FontStyle.Bold),
-                BackColor = Color.White,
-                ForeColor = Color.FromArgb(71, 85, 105)
-            };
-            _btnNewTemplate.FlatAppearance.BorderColor = Color.FromArgb(226, 232, 240);
-            UiRadiusHelper.ApplyRoundedCorners(_btnNewTemplate, 6);
-            _btnNewTemplate.Click += BtnNewTemplate_Click;
-
-            _btnCloneTemplate = new Button
-            {
-                Text = "✏",
-                Location = new Point(_btnNewTemplate.Right + 6, 101),
-                Size = new Size(34, 32),
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand,
+                Location = new Point(14, 34),
+                Width = 360,
                 Font = new Font("Segoe UI", 9.5f),
-                BackColor = Color.White,
-                ForeColor = Color.FromArgb(71, 85, 105)
+                PlaceholderText = "Search by client name, email, or phone..."
             };
-            _btnCloneTemplate.FlatAppearance.BorderColor = Color.FromArgb(226, 232, 240);
-            UiRadiusHelper.ApplyRoundedCorners(_btnCloneTemplate, 6);
-            _btnCloneTemplate.Click += BtnCloneTemplate_Click;
+            _txtSearchOutreach.TextChanged += (s, e) => FilterOutreachSearchResults();
 
-            _btnDeleteTemplate = new Button
+            _lstOutreachResults = new ListBox
             {
-                Text = "🗑",
-                Location = new Point(_btnCloneTemplate.Right + 6, 101),
-                Size = new Size(34, 32),
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 9.5f),
-                BackColor = Color.White,
-                ForeColor = Color.FromArgb(220, 38, 38)
+                Location = new Point(14, 66),
+                Width = 360,
+                Height = 80,
+                Font = new Font("Segoe UI", 9f),
+                Visible = false
             };
-            _btnDeleteTemplate.FlatAppearance.BorderColor = Color.FromArgb(254, 202, 202);
-            UiRadiusHelper.ApplyRoundedCorners(_btnDeleteTemplate, 6);
-            _btnDeleteTemplate.Click += BtnDeleteTemplate_Click;
+            _lstOutreachResults.SelectedIndexChanged += (s, e) => OnOutreachClientSelected();
 
-            _lblTemplateBadge = new Label
+            // Client Info Card
+            _pnlOutreachClientCard = new Panel
             {
-                Text = "Protected system template — Clone it to customize.",
-                Location = new Point(24, 138),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 8f),
-                ForeColor = Color.FromArgb(217, 119, 6)
+                Location = new Point(14, 70),
+                Width = 360,
+                Height = 110,
+                BackColor = Color.FromArgb(248, 250, 252),
+                Padding = new Padding(12)
             };
+            UiRadiusHelper.StyleCard(_pnlOutreachClientCard, 6);
 
-            // TARGET AUDIENCE & EMAIL PRESENTATION FORMAT
-            var lblAudience = new Label
-            {
-                Text = "TARGET AUDIENCE",
-                Location = new Point(24, 168),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(100, 116, 139)
-            };
+            _lblOutreachClientName = new Label { Text = "No Client Selected", Font = new Font("Segoe UI", 10.5f, FontStyle.Bold), Location = new Point(12, 10), AutoSize = true };
+            _lblOutreachClientDetails = new Label { Text = "Search above to select a client for 1-to-1 retention outreach", Font = new Font("Segoe UI", 9f), ForeColor = Color.FromArgb(100, 116, 139), Location = new Point(12, 34), AutoSize = true };
+            _lblOutreachSegmentStatus = new Label { Text = "Segment: None", Font = new Font("Segoe UI", 9f, FontStyle.Bold), ForeColor = Theme.SidebarAccent, Location = new Point(12, 58), AutoSize = true };
+            _lblOutreachCooldownAlert = new Label { Text = "Policy: Ready", Font = new Font("Segoe UI", 9f, FontStyle.Bold), ForeColor = Color.FromArgb(22, 163, 74), Location = new Point(12, 80), AutoSize = true };
 
-            _cboAudience = new ComboBox
+            _pnlOutreachClientCard.Controls.Add(_lblOutreachClientName);
+            _pnlOutreachClientCard.Controls.Add(_lblOutreachClientDetails);
+            _pnlOutreachClientCard.Controls.Add(_lblOutreachSegmentStatus);
+            _pnlOutreachClientCard.Controls.Add(_lblOutreachCooldownAlert);
+
+            // Template Selector
+            var lblTpl = new Label { Text = "Retention Email Template *", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(14, 190), AutoSize = true };
+            _cboOutreachTemplate = new ComboBox
             {
-                Location = new Point(24, 188),
-                Size = new Size(220, 32),
+                Location = new Point(14, 212),
+                Width = 360,
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 9.5f)
             };
-            _cboAudience.Items.AddRange(new object[] { "All Past Clients", "Buyers Only", "Sellers Only" });
-            _cboAudience.SelectedIndex = 0;
-            _cboAudience.SelectedIndexChanged += (_, _) =>
-            {
-                PopulateClientPicker();
-                RefreshAutomatedKpis();
-                if (!_isLoadingSettings && _selectedTemplate == null)
-                {
-                    string aud = _cboAudience.SelectedItem?.ToString() ?? "All Past Clients";
-                    PromptLoadAudiencePreTemplate(aud);
-                }
-            };
+            _cboOutreachTemplate.SelectedIndexChanged += (s, e) => ApplySelectedOutreachTemplate();
 
-            var lblFormat = new Label
+            // Service Incentive
+            var lblInc = new Label { Text = "Proposed Incentive (Service-Based):", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(14, 250), AutoSize = true };
+            _txtOutreachIncentive = new TextBox
             {
-                Text = "EMAIL PRESENTATION FORMAT",
-                Location = new Point(260, 168),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(100, 116, 139)
-            };
-
-            _cboFormat = new ComboBox
-            {
-                Location = new Point(260, 188),
-                Size = new Size(220, 32),
-                DropDownStyle = ComboBoxStyle.DropDownList,
+                Location = new Point(14, 272),
+                Width = 360,
                 Font = new Font("Segoe UI", 9.5f)
             };
-            _cboFormat.Items.AddRange(new object[] { "Branded Client Report (Visual)", "1-on-1 Personal Note (Plain Text)" });
-            _cboFormat.SelectedIndex = 0;
-            _cboFormat.SelectedIndexChanged += (_, _) => UpdateLivePreview();
+            _txtOutreachIncentive.TextChanged += (s, e) => UpdateOutreachPreview();
 
-            // SENDING INTERVAL PER CLIENT & EST. ANNUAL GROWTH (%)
-            var lblFreq = new Label
+            // Subject
+            var lblSubj = new Label { Text = "Subject *", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(14, 308), AutoSize = true };
+            _txtOutreachSubject = new TextBox
             {
-                Text = "SENDING INTERVAL PER CLIENT",
-                Location = new Point(24, 230),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(100, 116, 139)
-            };
-
-            _cboFrequency = new ComboBox
-            {
-                Location = new Point(24, 250),
-                Size = new Size(220, 32),
-                DropDownStyle = ComboBoxStyle.DropDownList,
+                Location = new Point(14, 330),
+                Width = 360,
                 Font = new Font("Segoe UI", 9.5f)
             };
-            _cboFrequency.Items.AddRange(new object[]
-            {
-                "Every 30 Days (Monthly Check-in)",
-                "Every 90 Days (Quarterly Valuation)",
-                "Every 180 Days (Semi-Annual)",
-                "Every 365 Days (Annual Anniversary)"
-            });
-            _cboFrequency.SelectedIndex = 2;
+            _txtOutreachSubject.TextChanged += (s, e) => UpdateOutreachPreview();
 
-            var lblRate = new Label
+            // Body
+            var lblBody = new Label { Text = "Email Message Body *", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(14, 366), AutoSize = true };
+            _txtOutreachBody = new TextBox
             {
-                Text = "EST. ANNUAL GROWTH (%)",
-                Location = new Point(260, 230),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(100, 116, 139)
-            };
-
-            _numAppreciation = new NumericUpDown
-            {
-                Location = new Point(260, 250),
-                Size = new Size(220, 32),
-                DecimalPlaces = 1,
-                Minimum = 0.5m,
-                Maximum = 50.0m,
-                Value = 5.0m,
-                Font = new Font("Segoe UI", 9.5f)
-            };
-            _numAppreciation.ValueChanged += (_, _) =>
-            {
-                UpdateLivePreview();
-                RefreshAutomatedKpis();
-            };
-
-            // BROKERAGE BANNER / TITLE & ACTION BUTTON LABEL
-            var lblBroker = new Label
-            {
-                Text = "BROKERAGE BANNER / TITLE",
-                Location = new Point(24, 292),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(100, 116, 139)
-            };
-
-            _txtBrokerageName = new TextBox
-            {
-                Location = new Point(24, 312),
-                Size = new Size(220, 28),
-                Font = new Font("Segoe UI", 9.5f)
-            };
-            _txtBrokerageName.TextChanged += (_, _) => UpdateLivePreview();
-
-            var lblCta = new Label
-            {
-                Text = "ACTION BUTTON LABEL",
-                Location = new Point(260, 292),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(100, 116, 139)
-            };
-
-            _txtCtaText = new TextBox
-            {
-                Location = new Point(260, 312),
-                Size = new Size(220, 28),
-                Font = new Font("Segoe UI", 9.5f)
-            };
-            _txtCtaText.TextChanged += (_, _) => UpdateLivePreview();
-
-            // EMAIL SUBJECT LINE
-            var lblSubj = new Label
-            {
-                Text = "EMAIL SUBJECT LINE",
-                Location = new Point(24, 354),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(100, 116, 139)
-            };
-
-            _txtSubjectTemplate = new TextBox
-            {
-                Location = new Point(24, 374),
-                Size = new Size(460, 28),
-                Font = new Font("Segoe UI", 9.5f)
-            };
-            _txtSubjectTemplate.TextChanged += (_, _) => UpdateLivePreview();
-
-            // DYNAMIC PERSONALIZATION TOKENS (WrapContents = true so none cut off)
-            var lblTokens = new Label
-            {
-                Text = "DYNAMIC PERSONALIZATION TOKENS — click to insert at cursor",
-                Location = new Point(24, 414),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(100, 116, 139)
-            };
-
-            var pnlTokens = new FlowLayoutPanel
-            {
-                Location = new Point(24, 434),
-                Size = new Size(460, 56),
-                BackColor = Color.Transparent,
-                WrapContents = true,
-                AutoScroll = false
-            };
-
-            var tokens = new[]
-            {
-                "{CustomerName}", "{FirstName}", "{PropertyAddress}",
-                "{PropertyType}", "{OriginalPrice}", "{EstimatedValue}",
-                "{EquityGain}", "{YearsOwned}"
-            };
-
-            foreach (var t in tokens)
-            {
-                var chip = new Button
-                {
-                    Text = t,
-                    AutoSize = true,
-                    Height = 24,
-                    FlatStyle = FlatStyle.Flat,
-                    Cursor = Cursors.Hand,
-                    Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                    BackColor = Color.FromArgb(239, 246, 255),
-                    ForeColor = Color.FromArgb(29, 78, 216),
-                    Padding = new Padding(6, 0, 6, 0),
-                    Margin = new Padding(0, 0, 6, 4)
-                };
-                chip.FlatAppearance.BorderSize = 0;
-                UiRadiusHelper.ApplyPillShape(chip);
-
-                string tokText = t;
-                chip.Click += (_, _) =>
-                {
-                    if (_txtBodyTemplate.ReadOnly) return;
-                    int sel = _txtBodyTemplate.SelectionStart;
-                    _txtBodyTemplate.Text = _txtBodyTemplate.Text.Insert(sel, tokText);
-                    _txtBodyTemplate.SelectionStart = sel + tokText.Length;
-                    _txtBodyTemplate.Focus();
-                };
-                pnlTokens.Controls.Add(chip);
-            }
-
-            // EMAIL COPY TEMPLATE
-            var lblBody = new Label
-            {
-                Text = "EMAIL COPY TEMPLATE (Plain Text Body)",
-                Location = new Point(24, 498),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(100, 116, 139)
-            };
-
-            _txtBodyTemplate = new TextBox
-            {
-                Location = new Point(24, 520),
-                Size = new Size(460, 140),
+                Location = new Point(14, 388),
+                Width = 360,
+                Height = 150,
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
-                Font = new Font("Segoe UI", 9f),
-                BackColor = Color.FromArgb(248, 250, 252),
-                BorderStyle = BorderStyle.FixedSingle
+                Font = new Font("Segoe UI", 9.5f)
             };
-            _txtBodyTemplate.TextChanged += (_, _) => UpdateLivePreview();
+            _txtOutreachBody.TextChanged += (s, e) => UpdateOutreachPreview();
 
-            // Action Buttons
-            _btnSaveSettings = new Button
+            // Dispatch Buttons
+            _btnSendManualEmail = new Button
             {
-                Text = "Save Configuration",
-                Location = new Point(24, 672),
-                Size = new Size(160, 38),
+                Text = "✉ Dispatch Retention Email Now",
+                Location = new Point(14, 550),
+                Size = new Size(240, 40),
+                BackColor = Theme.SidebarAccent,
+                ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                BackColor = Color.FromArgb(11, 48, 86),
-                ForeColor = Color.White
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                Cursor = Cursors.Hand
             };
-            UiRadiusHelper.StyleButton(_btnSaveSettings, 8);
-            _btnSaveSettings.Click += BtnSaveSettings_Click;
+            _btnSendManualEmail.FlatAppearance.BorderSize = 0;
+            UiRadiusHelper.StyleButton(_btnSendManualEmail, 8);
+            _btnSendManualEmail.Click += async (s, e) => await OnSendManualRetentionEmailAsync();
 
-            _btnResetSettings = new Button
+            _btnSendTestEmail = new Button
             {
-                Text = "Reset Default",
-                Location = new Point(194, 672),
-                Size = new Size(120, 38),
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 9f),
+                Text = "Send Test",
+                Location = new Point(265, 550),
+                Size = new Size(110, 40),
                 BackColor = Color.White,
-                ForeColor = Color.FromArgb(71, 85, 105)
+                ForeColor = Color.FromArgb(71, 85, 105),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9f),
+                Cursor = Cursors.Hand
             };
-            _btnResetSettings.FlatAppearance.BorderColor = Color.FromArgb(203, 213, 225);
-            UiRadiusHelper.StyleButton(_btnResetSettings, 8);
-            _btnResetSettings.Click += (_, _) => ResetToDefaultTemplate();
+            _btnSendTestEmail.FlatAppearance.BorderColor = Color.FromArgb(226, 232, 240);
+            UiRadiusHelper.StyleButton(_btnSendTestEmail, 8);
+            _btnSendTestEmail.Click += async (s, e) => await OnSendTestEmailAsync();
 
-            leftCard.Controls.Add(lblLeftTitle);
-            leftCard.Controls.Add(lblLeftSubtitle);
-            leftCard.Controls.Add(pnlSegments);
-            leftCard.Controls.Add(pnlDivider);
-            leftCard.Controls.Add(lblTemplate);
-            leftCard.Controls.Add(_cboTemplates);
-            leftCard.Controls.Add(_btnNewTemplate);
-            leftCard.Controls.Add(_btnCloneTemplate);
-            leftCard.Controls.Add(_btnDeleteTemplate);
-            leftCard.Controls.Add(_lblTemplateBadge);
-            leftCard.Controls.Add(lblAudience);
-            leftCard.Controls.Add(_cboAudience);
-            leftCard.Controls.Add(lblFormat);
-            leftCard.Controls.Add(_cboFormat);
-            leftCard.Controls.Add(lblFreq);
-            leftCard.Controls.Add(_cboFrequency);
-            leftCard.Controls.Add(lblRate);
-            leftCard.Controls.Add(_numAppreciation);
-            leftCard.Controls.Add(lblBroker);
-            leftCard.Controls.Add(_txtBrokerageName);
-            leftCard.Controls.Add(lblCta);
-            leftCard.Controls.Add(_txtCtaText);
+            leftCard.Controls.Add(lblSearchTitle);
+            leftCard.Controls.Add(_txtSearchOutreach);
+            leftCard.Controls.Add(_lstOutreachResults);
+            leftCard.Controls.Add(_pnlOutreachClientCard);
+            leftCard.Controls.Add(lblTpl);
+            leftCard.Controls.Add(_cboOutreachTemplate);
+            leftCard.Controls.Add(lblInc);
+            leftCard.Controls.Add(_txtOutreachIncentive);
             leftCard.Controls.Add(lblSubj);
-            leftCard.Controls.Add(_txtSubjectTemplate);
-            leftCard.Controls.Add(lblTokens);
-            leftCard.Controls.Add(pnlTokens);
+            leftCard.Controls.Add(_txtOutreachSubject);
             leftCard.Controls.Add(lblBody);
-            leftCard.Controls.Add(_txtBodyTemplate);
-            leftCard.Controls.Add(_btnSaveSettings);
-            leftCard.Controls.Add(_btnResetSettings);
+            leftCard.Controls.Add(_txtOutreachBody);
+            leftCard.Controls.Add(_btnSendManualEmail);
+            leftCard.Controls.Add(_btnSendTestEmail);
+            tableSplit.Controls.Add(leftCard, 0, 0);
 
-            // ── RIGHT COLUMN: Two Stacked Cards ──
-            var pnlRightColumn = new Panel
+            // Right Card: Live Preview
+            _pnlOutreachPreview = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = Color.Transparent,
-                Margin = new Padding(8, 0, 0, 0),
+                BackColor = Color.White,
+                Padding = new Padding(24),
+                Margin = new Padding(10, 0, 0, 0),
                 AutoScroll = true
             };
+            UiRadiusHelper.StyleCard(_pnlOutreachPreview, 10);
 
-            // CARD 1: Interactive Client Valuation Preview (Non-Editable / Non-Clickable Preview Container)
-            var cardPreview = new Panel
+            var lblPrevHeader = new Label
             {
-                Location = new Point(0, 0),
-                Size = new Size(490, 520),
-                BackColor = Color.White,
-                Padding = new Padding(20)
-            };
-            UiRadiusHelper.StyleCard(cardPreview, 12);
-
-            var lblRightTitle = new Label
-            {
-                Text = "Interactive Client Valuation Preview",
-                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
+                Text = "Live Formatted Email Preview",
+                Font = new Font("Segoe UI", 12f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(15, 23, 42),
                 Location = new Point(20, 16),
                 AutoSize = true
             };
 
-            var lblRightSubtitle = new Label
+            _lblPreviewTo = new Label
             {
-                Text = "Select any past transaction to inspect custom appreciation and layout.",
-                Font = new Font("Segoe UI", 8.5f),
-                ForeColor = Color.FromArgb(100, 116, 139),
-                Location = new Point(20, 38),
-                AutoSize = true
-            };
-
-            _cboClientPicker = new ComboBox
-            {
-                Location = new Point(20, 62),
-                Size = new Size(450, 32),
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                DropDownWidth = 750,
-                DrawMode = DrawMode.OwnerDrawFixed,
-                ItemHeight = 22,
-                Font = new Font("Segoe UI", 9.5f)
-            };
-            _cboClientPicker.DrawItem += (sender, e) =>
-            {
-                if (e.Index < 0) return;
-                e.DrawBackground();
-                bool isSelected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
-                using var textBrush = new SolidBrush(isSelected ? Color.White : Color.FromArgb(15, 23, 42));
-                using var sf = new StringFormat
-                {
-                    Trimming = StringTrimming.EllipsisCharacter,
-                    FormatFlags = StringFormatFlags.NoWrap,
-                    LineAlignment = StringAlignment.Center
-                };
-                string itemText = _cboClientPicker.Items[e.Index]?.ToString() ?? "";
-                var textRect = new Rectangle(e.Bounds.Left + 4, e.Bounds.Top, e.Bounds.Width - 8, e.Bounds.Height);
-                e.Graphics.DrawString(itemText, e.Font ?? _cboClientPicker.Font, textBrush, textRect, sf);
-                e.DrawFocusRectangle();
-            };
-            var pickerTip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 350 };
-            _cboClientPicker.SelectedIndexChanged += (_, _) =>
-            {
-                if (_cboClientPicker.SelectedItem != null)
-                    pickerTip.SetToolTip(_cboClientPicker, _cboClientPicker.SelectedItem.ToString());
-                UpdateLivePreview();
-            };
-
-            // Non-clickable, beautifully formatted Preview Mockup Panel
-            _pnlPreviewContainer = new Panel
-            {
-                Location = new Point(20, 100),
-                Size = new Size(450, 365),
-                AutoScroll = true,
-                BackColor = Color.FromArgb(248, 250, 252),
-                Padding = new Padding(16),
-                Cursor = Cursors.Default
-            };
-            UiRadiusHelper.ApplyRoundedCorners(_pnlPreviewContainer, 8);
-            _pnlPreviewContainer.Paint += (s, e) =>
-            {
-                using var borderPen = new Pen(Color.FromArgb(226, 232, 240), 1);
-                e.Graphics.DrawRectangle(borderPen, 0, 0, _pnlPreviewContainer.Width - 1, _pnlPreviewContainer.Height - 1);
-            };
-
-            _lblPreviewHeader = new Label
-            {
-                Location = new Point(12, 12),
-                Font = new Font("Segoe UI", 8.5f),
+                Text = "To: (Recipient will appear here)",
+                Font = new Font("Segoe UI", 9f),
                 ForeColor = Color.FromArgb(71, 85, 105),
-                Cursor = Cursors.Default,
-                AutoSize = true
+                Location = new Point(20, 48),
+                Size = new Size(500, 20)
+            };
+
+            _lblPreviewSubject = new Label
+            {
+                Text = "Subject: (Subject will appear here)",
+                Font = new Font("Segoe UI", 10.5f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(15, 23, 42),
+                Location = new Point(20, 74),
+                Size = new Size(500, 24)
+            };
+
+            var pnlDivider = new Panel
+            {
+                Location = new Point(20, 104),
+                Size = new Size(500, 1),
+                BackColor = Color.FromArgb(226, 232, 240)
             };
 
             _lblPreviewBody = new Label
             {
-                Location = new Point(12, 84),
-                Font = new Font("Segoe UI", 9f),
-                ForeColor = Color.FromArgb(15, 23, 42),
-                Cursor = Cursors.Default,
-                AutoSize = true
+                Text = "Select a client and template to preview the personalized outreach message.",
+                Font = new Font("Segoe UI", 10f),
+                ForeColor = Color.FromArgb(30, 41, 59),
+                Location = new Point(20, 116),
+                Size = new Size(500, 420)
             };
 
-            _pnlPreviewMetricsBox = new Panel
-            {
-                Location = new Point(12, 168),
-                Size = new Size(410, 60),
-                BackColor = Color.White,
-                Cursor = Cursors.Default
-            };
-            UiRadiusHelper.ApplyRoundedCorners(_pnlPreviewMetricsBox, 6);
-            _pnlPreviewMetricsBox.Paint += (s, e) =>
-            {
-                using var p = new Pen(Color.FromArgb(203, 213, 225), 1);
-                e.Graphics.DrawRectangle(p, 0, 0, _pnlPreviewMetricsBox.Width - 1, _pnlPreviewMetricsBox.Height - 1);
-            };
+            _pnlOutreachPreview.Controls.Add(lblPrevHeader);
+            _pnlOutreachPreview.Controls.Add(_lblPreviewTo);
+            _pnlOutreachPreview.Controls.Add(_lblPreviewSubject);
+            _pnlOutreachPreview.Controls.Add(pnlDivider);
+            _pnlOutreachPreview.Controls.Add(_lblPreviewBody);
+            tableSplit.Controls.Add(_pnlOutreachPreview, 1, 0);
 
-            _lblMetricAcq = new Label { Location = new Point(6, 6), Size = new Size(125, 48), Font = new Font("Segoe UI", 8f), Cursor = Cursors.Default };
-            _lblMetricEst = new Label { Location = new Point(135, 6), Size = new Size(125, 48), Font = new Font("Segoe UI", 8f), Cursor = Cursors.Default };
-            _lblMetricGain = new Label { Location = new Point(265, 6), Size = new Size(135, 48), Font = new Font("Segoe UI", 8f), Cursor = Cursors.Default };
-            _pnlPreviewMetricsBox.Controls.AddRange(new Control[] { _lblMetricAcq, _lblMetricEst, _lblMetricGain });
-
-            _btnPreviewCtaMockup = new Button
-            {
-                Location = new Point(12, 236),
-                Size = new Size(410, 34),
-                FlatStyle = FlatStyle.Flat,
-                Enabled = false,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                BackColor = Color.FromArgb(11, 48, 86),
-                ForeColor = Color.White,
-                Cursor = Cursors.Default
-            };
-            _btnPreviewCtaMockup.FlatAppearance.BorderSize = 0;
-            UiRadiusHelper.ApplyRoundedCorners(_btnPreviewCtaMockup, 6);
-
-            _lblPreviewFooter = new Label
-            {
-                Location = new Point(12, 278),
-                Font = new Font("Segoe UI", 8.5f),
-                ForeColor = Color.FromArgb(100, 116, 139),
-                Cursor = Cursors.Default,
-                AutoSize = true
-            };
-
-            // Seamless mouse-wheel scrolling on hover without requiring explicit focus click
-            void FocusPreviewContainer(object? s, EventArgs e)
-            {
-                if (!_pnlPreviewContainer.Focused && _pnlPreviewContainer.CanFocus)
-                    _pnlPreviewContainer.Focus();
-            }
-
-            _pnlPreviewContainer.MouseEnter += FocusPreviewContainer;
-            _lblPreviewHeader.MouseEnter += FocusPreviewContainer;
-            _lblPreviewBody.MouseEnter += FocusPreviewContainer;
-            _pnlPreviewMetricsBox.MouseEnter += FocusPreviewContainer;
-            _lblMetricAcq.MouseEnter += FocusPreviewContainer;
-            _lblMetricEst.MouseEnter += FocusPreviewContainer;
-            _lblMetricGain.MouseEnter += FocusPreviewContainer;
-            _btnPreviewCtaMockup.MouseEnter += FocusPreviewContainer;
-            _lblPreviewFooter.MouseEnter += FocusPreviewContainer;
-
-            _pnlPreviewContainer.Controls.AddRange(new Control[]
-            {
-                _lblPreviewHeader, _lblPreviewBody, _pnlPreviewMetricsBox, _btnPreviewCtaMockup, _lblPreviewFooter
-            });
-
-            _btnOpenHtmlBrowser = new Button
-            {
-                Text = "🌐 Open Rendered HTML in Browser",
-                Location = new Point(20, 474),
-                Size = new Size(290, 32),
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-                BackColor = Color.White,
-                ForeColor = Color.FromArgb(2, 132, 199)
-            };
-            _btnOpenHtmlBrowser.FlatAppearance.BorderSize = 0;
-            _btnOpenHtmlBrowser.Click += BtnOpenHtmlBrowser_Click;
-
-            cardPreview.Controls.Add(lblRightTitle);
-            cardPreview.Controls.Add(lblRightSubtitle);
-            cardPreview.Controls.Add(_cboClientPicker);
-            cardPreview.Controls.Add(_pnlPreviewContainer);
-            cardPreview.Controls.Add(_btnOpenHtmlBrowser);
-
-            // CARD 2: Instant Test Sample Dispatch
-            var cardTestDispatch = new Panel
-            {
-                Location = new Point(0, 536),
-                Size = new Size(490, 190),
-                BackColor = Color.White,
-                Padding = new Padding(20)
-            };
-            UiRadiusHelper.StyleCard(cardTestDispatch, 12);
-
-            var lblTestSec = new Label
-            {
-                Text = "⚡ Instant Test Sample Dispatch",
-                Font = new Font("Segoe UI", 10f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(15, 23, 42),
-                Location = new Point(20, 16),
-                AutoSize = true
-            };
-
-            _txtTestEmail = new TextBox
-            {
-                Location = new Point(20, 44),
-                Size = new Size(300, 32),
-                Font = new Font("Segoe UI", 9.5f),
-                PlaceholderText = "admin@nexacrm.com"
-            };
-
-            _btnSendTestEmail = new Button
-            {
-                Text = "Send Test Email",
-                Location = new Point(_txtTestEmail.Right + 10, 43),
-                Size = new Size(130, 34),
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                BackColor = Color.FromArgb(11, 48, 86),
-                ForeColor = Color.White
-            };
-            UiRadiusHelper.StyleButton(_btnSendTestEmail, 6);
-            _btnSendTestEmail.Click += BtnSendTestEmail_Click;
-
-            _btnRunBatchNow = new Button
-            {
-                Text = "🚀 Run Automated Batch Now (Force Send All)",
-                Location = new Point(20, 88),
-                Size = new Size(440, 38),
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                BackColor = Color.FromArgb(22, 163, 74),
-                ForeColor = Color.White
-            };
-            UiRadiusHelper.StyleButton(_btnRunBatchNow, 8);
-            _btnRunBatchNow.Click += BtnRunBatchNow_Click;
-
-            _lblLastRunInfo = new Label
-            {
-                Location = new Point(20, 134),
-                Size = new Size(440, 36),
-                Font = new Font("Segoe UI", 8.5f),
-                ForeColor = Color.FromArgb(100, 116, 139),
-                Text = "Last batch run: Never (Engine ready)",
-                TextAlign = ContentAlignment.MiddleCenter
-            };
-
-            cardTestDispatch.Controls.Add(lblTestSec);
-            cardTestDispatch.Controls.Add(_txtTestEmail);
-            cardTestDispatch.Controls.Add(_btnSendTestEmail);
-            cardTestDispatch.Controls.Add(_btnRunBatchNow);
-            cardTestDispatch.Controls.Add(_lblLastRunInfo);
-
-            pnlRightColumn.Controls.Add(cardPreview);
-            pnlRightColumn.Controls.Add(cardTestDispatch);
-
-            tableSplit.Controls.Add(leftCard, 0, 0);
-            tableSplit.Controls.Add(pnlRightColumn, 1, 0);
-
-            // ── BOTTOM SECTION: Delivery Audit & History Trail ──
-            var pnlAuditCard = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 330,
-                BackColor = Color.White,
-                Padding = new Padding(24),
-                Margin = new Padding(0, 18, 0, 24)
-            };
-            UiRadiusHelper.StyleCard(pnlAuditCard, 12);
-
-            var lblAuditTitle = new Label
-            {
-                Text = "📋 Delivery Audit & History Trail",
-                Font = new Font("Segoe UI", 12f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(15, 23, 42),
-                Location = new Point(24, 18),
-                AutoSize = true
-            };
-
-            var lblAuditSubtitle = new Label
-            {
-                Text = "Comprehensive audit log of all automated and manual valuation touchpoints.",
-                Font = new Font("Segoe UI", 8.5f),
-                ForeColor = Color.FromArgb(100, 116, 139),
-                Location = new Point(24, 44),
-                AutoSize = true
-            };
-
-            var btnRefreshAudit = new Button
-            {
-                Text = "↻ Refresh Trail",
-                Location = new Point(840, 16),
-                Size = new Size(120, 32),
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-                BackColor = Color.White,
-                ForeColor = Color.FromArgb(71, 85, 105),
-                Cursor = Cursors.Hand
-            };
-            btnRefreshAudit.FlatAppearance.BorderColor = Color.FromArgb(203, 213, 225);
-            UiRadiusHelper.StyleButton(btnRefreshAudit, 6);
-            btnRefreshAudit.Click += (_, _) => LoadAuditHistory();
-
-            _gridAuditHistory = new DataGridView
-            {
-                Location = new Point(24, 72),
-                Size = new Size(936, 230),
-                AllowUserToAddRows = false,
-                AllowUserToDeleteRows = false,
-                ReadOnly = true,
-                RowHeadersVisible = false,
-                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-                BackgroundColor = Color.White,
-                BorderStyle = BorderStyle.None,
-                CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
-                GridColor = Color.FromArgb(241, 245, 249),
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                ScrollBars = ScrollBars.Both
-            };
-            UiGridHelper.ApplyModernGridStyle(_gridAuditHistory, 44);
-            _gridAuditHistory.CellPainting += GridAuditHistory_CellPainting;
-
-            pnlAuditCard.Controls.Add(lblAuditTitle);
-            pnlAuditCard.Controls.Add(lblAuditSubtitle);
-            pnlAuditCard.Controls.Add(btnRefreshAudit);
-            pnlAuditCard.Controls.Add(_gridAuditHistory);
-
-            _paginationAudit = new PaginationControl();
-            _paginationAudit.SetItemLabel("audit logs");
-            _paginationAudit.PageChanged += (_, _) => RenderPagedAuditLogs(resetPage: false);
-            _paginationAudit.PageSizeChanged += (_, _) => RenderPagedAuditLogs(resetPage: true);
-            pnlAuditCard.Controls.Add(_paginationAudit);
-            _paginationAudit.BringToFront();
-
-            _pnlContent.Controls.Add(pnlAuditCard);
-            _pnlContent.Controls.Add(tableSplit);
-            _pnlContent.Controls.Add(_pnlKpiContainer);
-
-            this.Controls.Add(_pnlContent);
-
-            // ── IMPORTANT: Enforce proper Dock Order so Header does NOT overlap Content ──
-            _pnlHeader.SendToBack();
-            _pnlContent.BringToFront();
-
-            // Responsive layout adjustments
-            this.Resize += (_, _) =>
-            {
-                int fullW = _pnlContent.ClientSize.Width - 60;
-                if (fullW > 400)
-                {
-                    pnlAuditCard.Width = fullW;
-                    _gridAuditHistory.Width = pnlAuditCard.ClientSize.Width - 48;
-                    btnRefreshAudit.Left = pnlAuditCard.ClientSize.Width - 144;
-                }
-
-                int leftW = leftCard.ClientSize.Width - 48;
-                if (leftW > 200)
-                {
-                    pnlSegments.Left = Math.Max(20, leftCard.ClientSize.Width - 24 - pnlSegments.Width);
-                    pnlDivider.Width = leftW;
-                    _cboTemplates.Width = Math.Max(120, leftW - 120);
-                    _btnNewTemplate.Left = _cboTemplates.Right + 6;
-                    _btnCloneTemplate.Left = _btnNewTemplate.Right + 6;
-                    _btnDeleteTemplate.Left = _btnCloneTemplate.Right + 6;
-
-                    int colW = Math.Max(100, (leftW - 16) / 2);
-                    _cboAudience.Width = colW;
-                    lblFormat.Left = 24 + colW + 16;
-                    _cboFormat.Left = 24 + colW + 16;
-                    _cboFormat.Width = colW;
-
-                    _cboFrequency.Width = colW;
-                    lblRate.Left = 24 + colW + 16;
-                    _numAppreciation.Left = 24 + colW + 16;
-                    _numAppreciation.Width = colW;
-
-                    _txtBrokerageName.Width = colW;
-                    lblCta.Left = 24 + colW + 16;
-                    _txtCtaText.Left = 24 + colW + 16;
-                    _txtCtaText.Width = colW;
-
-                    _txtSubjectTemplate.Width = leftW;
-                    pnlTokens.Width = leftW;
-                    _txtBodyTemplate.Width = leftW;
-                }
-
-                int rightW = pnlRightColumn.ClientSize.Width;
-                if (rightW > 200)
-                {
-                    cardPreview.Width = rightW;
-                    cardTestDispatch.Width = rightW;
-
-                    int cardW = cardPreview.ClientSize.Width - 40;
-                    _cboClientPicker.Width = cardW;
-                    _pnlPreviewContainer.Width = cardW;
-
-                    _txtTestEmail.Width = Math.Max(100, cardW - 140);
-                    _btnSendTestEmail.Left = _txtTestEmail.Right + 10;
-                    _btnRunBatchNow.Width = cardW;
-                    _lblLastRunInfo.Width = cardW;
-
-                    LayoutPreviewControls();
-                }
-            };
-
-            this.ResumeLayout(false);
+            _tabManualEmail.Controls.Add(tableSplit);
         }
 
-        private async Task LoadAutomatedSettingsAsync()
+        private async Task LoadManualEmailDataAsync()
         {
-            await Task.Yield();
-            LoadAutomatedSettings();
-        }
+            using var db = LocalDb.CreateContext(CurrentSession.TenantId);
+            _loadedRetentionTemplates = db.EmailTemplates
+                .AsNoTracking()
+                .Where(t => t.Category == "Retention" && t.IsActive)
+                .OrderBy(t => t.Name)
+                .ToList();
 
-        private void RefreshAutomatedKpis()
-        {
-            try
+            _cboOutreachTemplate.Items.Clear();
+            foreach (var t in _loadedRetentionTemplates)
             {
-                int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
-                var kpis = MarketUpdateBackgroundService.Instance.GetAnalyticsKpis(tenantId);
-
-                bool isAgent = RbacService.IsAgent;
-                _kpiEnrolled.SetValue(kpis.EnrolledClientsCount.ToString("N0"));
-                _kpiEnrolled.SetValueColor(Color.FromArgb(15, 23, 42));
-                _kpiEnrolled.SetSubtitle(isAgent ? $"{kpis.EnrolledClientsCount} of your past clients" : $"{kpis.EnrolledClientsCount} past clients tracked");
-
-                _kpiDelivered.SetValue(kpis.LifetimeDeliveredCount.ToString("N0"));
-                _kpiDelivered.SetValueColor(Color.FromArgb(15, 23, 42));
-                _kpiDelivered.SetSubtitle(isAgent ? $"{kpis.LifetimeDeliveredCount} updates sent" : $"{kpis.LifetimeDeliveredCount} emails sent this cycle");
-
-                _kpiEquity.SetValue($"₱{kpis.AvgClientEquityGain / 1_000_000m:F2}M");
-                _kpiEquity.SetValueColor(Color.FromArgb(22, 163, 74));
-                _kpiEquity.SetSubtitle($"₱{kpis.AvgClientEquityGain:N0} avg gain");
-
-                if (kpis.IsActive)
-                {
-                    _kpiStatus.SetValue("ACTIVE");
-                    _kpiStatus.SetValueColor(Color.FromArgb(22, 163, 74));
-                    _kpiStatus.SetSubtitle("Scheduled dispatch active");
-                }
-                else
-                {
-                    _kpiStatus.SetValue("PAUSED");
-                    _kpiStatus.SetValueColor(Color.FromArgb(217, 119, 6));
-                    _kpiStatus.SetSubtitle("Scheduled dispatch paused");
-                }
-            }
-            catch { }
-        }
-
-        private void PopulateClientPicker()
-        {
-            int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
-            var clients = MarketUpdateBackgroundService.Instance.GetEligibleClients(tenantId);
-
-            _cboClientPicker.Items.Clear();
-
-            if (clients.Count == 0)
-            {
-                bool isAgent = RbacService.IsAgent;
-                _cboClientPicker.Items.Add(new ClientPickerItem
-                {
-                    CustomerId = 0,
-                    FullName = isAgent ? "No Closed Deals Yet" : "Maria Santos (Sample Mock Data)",
-                    PropertyAddress = isAgent ? "Close deals to automatically enroll your past clients" : "Unit 1204, One Serendra, BGC, Taguig"
-                });
-            }
-            else
-            {
-                foreach (var c in clients)
-                {
-                    _cboClientPicker.Items.Add(c);
-                }
+                _cboOutreachTemplate.Items.Add(t.Name);
             }
 
-            if (_cboClientPicker.Items.Count > 0)
-                _cboClientPicker.SelectedIndex = 0;
-        }
-
-        private void FilterAuditTrail(string? status)
-        {
-            if (string.Equals(_auditFilterStatus, status, StringComparison.OrdinalIgnoreCase))
+            if (_selectedOutreachCustomer != null)
             {
-                _auditFilterStatus = null;
+                PopulateOutreachCustomerView(_selectedOutreachCustomer);
             }
-            else
+            else if (_allClients.Count > 0)
             {
-                _auditFilterStatus = status;
-            }
-
-            _kpiEnrolled.SetSelected(_auditFilterStatus == null);
-            _kpiDelivered.SetSelected(string.Equals(_auditFilterStatus, "Sent", StringComparison.OrdinalIgnoreCase));
-            _kpiEquity.SetSelected(false);
-            _kpiStatus.SetSelected(string.Equals(_auditFilterStatus, "Success", StringComparison.OrdinalIgnoreCase));
-
-            LoadAuditHistory();
-        }
-
-        private void LoadAuditHistory(bool resetPage = false)
-        {
-            try
-            {
-                int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
-                var history = MarketUpdateBackgroundService.Instance.GetDeliveryHistory(tenantId);
-
-                if (!string.IsNullOrEmpty(_auditFilterStatus))
-                {
-                    history = history.Where(h => h.Status.Equals(_auditFilterStatus, StringComparison.OrdinalIgnoreCase)
-                                              || (string.Equals(_auditFilterStatus, "Sent", StringComparison.OrdinalIgnoreCase) && (h.Status == "Sent" || h.Status == "Success"))).ToList();
-                }
-
-                _allAuditLogs = history;
-                RenderPagedAuditLogs(resetPage);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[LoadAuditHistory] Error: {ex.Message}");
+                PopulateOutreachCustomerView(_allClients[0]);
             }
         }
 
-        private void RenderPagedAuditLogs(bool resetPage = false)
+        private void FilterOutreachSearchResults()
         {
-            int total = _allAuditLogs.Count;
-            int page = resetPage ? 1 : (_paginationAudit?.CurrentPage ?? 1);
-            int pageSize = _paginationAudit?.PageSize ?? 25;
-
-            _paginationAudit?.UpdatePagination(total, page, pageSize);
-
-            _gridAuditHistory.Columns.Clear();
-
-            if (total == 0)
+            string s = _txtSearchOutreach.Text.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(s))
             {
-                _gridAuditHistory.DataSource = null;
+                _lstOutreachResults.Visible = false;
                 return;
             }
 
-            int effectivePage = _paginationAudit?.CurrentPage ?? 1;
-            var pageItems = _allAuditLogs.Skip((effectivePage - 1) * pageSize).Take(pageSize).ToList();
+            var matches = _allClients.Where(c =>
+                c.FullName.ToLower().Contains(s) ||
+                c.Email.ToLower().Contains(s) ||
+                c.Phone.Contains(s)).Take(5).ToList();
 
-            _gridAuditHistory.DataSource = pageItems.Select(h => new
+            _lstOutreachResults.Items.Clear();
+            foreach (var m in matches)
             {
-                h.LogId,
-                Status = h.Status,
-                Client = h.CustomerName,
-                RecipientEmail = h.RecipientEmail,
-                Property = h.PropertyAddress,
-                Original = $"₱{h.OriginalPrice:N0}",
-                Valuation = $"₱{h.EstimatedValue:N0}",
-                EquityGrowth = $"+₱{h.EquityGainAmount:N0} (+{h.EquityGainPercent:F1}%)",
-                Format = h.EmailFormat,
-                Trigger = h.TriggerType,
-                Date = h.SentAt.ToLocalTime().ToString("MMM dd, yyyy HH:mm")
-            }).ToList();
+                _lstOutreachResults.Items.Add(new OutreachComboItem(m));
+            }
 
-            _gridAuditHistory.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.False;
-
-            if (_gridAuditHistory.Columns["LogId"] is DataGridViewColumn idCol)
-                idCol.Visible = false;
-
-            if (_gridAuditHistory.Columns["Status"] is DataGridViewColumn stCol)
+            if (_lstOutreachResults.Items.Count > 0)
             {
-                stCol.HeaderText = "STATUS";
-                stCol.MinimumWidth = 95;
-                stCol.FillWeight = 95;
+                _lstOutreachResults.BringToFront();
+                _lstOutreachResults.Visible = true;
             }
-            if (_gridAuditHistory.Columns["Client"] is DataGridViewColumn clCol)
+            else
             {
-                clCol.HeaderText = "CLIENT NAME";
-                clCol.MinimumWidth = 140;
-                clCol.FillWeight = 140;
-            }
-            if (_gridAuditHistory.Columns["RecipientEmail"] is DataGridViewColumn emCol)
-            {
-                emCol.HeaderText = "RECIPIENT EMAIL";
-                emCol.MinimumWidth = 160;
-                emCol.FillWeight = 160;
-            }
-            if (_gridAuditHistory.Columns["Property"] is DataGridViewColumn prCol)
-            {
-                prCol.HeaderText = "ASSET REFERENCE";
-                prCol.MinimumWidth = 200;
-                prCol.FillWeight = 200;
-            }
-            if (_gridAuditHistory.Columns["Original"] is DataGridViewColumn orCol)
-            {
-                orCol.HeaderText = "ACQUISITION";
-                orCol.MinimumWidth = 110;
-                orCol.FillWeight = 110;
-                orCol.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight;
-                orCol.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-            }
-            if (_gridAuditHistory.Columns["Valuation"] is DataGridViewColumn valCol)
-            {
-                valCol.HeaderText = "APPRAISED VAL";
-                valCol.MinimumWidth = 110;
-                valCol.FillWeight = 110;
-                valCol.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight;
-                valCol.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-            }
-            if (_gridAuditHistory.Columns["EquityGrowth"] is DataGridViewColumn eqCol)
-            {
-                eqCol.HeaderText = "EST. EQUITY GAIN";
-                eqCol.MinimumWidth = 150;
-                eqCol.FillWeight = 150;
-                eqCol.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight;
-                eqCol.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-            }
-            if (_gridAuditHistory.Columns["Format"] is DataGridViewColumn fmCol)
-            {
-                fmCol.HeaderText = "FORMAT";
-                fmCol.MinimumWidth = 85;
-                fmCol.FillWeight = 85;
-            }
-            if (_gridAuditHistory.Columns["Trigger"] is DataGridViewColumn trCol)
-            {
-                trCol.HeaderText = "TRIGGER";
-                trCol.MinimumWidth = 90;
-                trCol.FillWeight = 90;
-            }
-            if (_gridAuditHistory.Columns["Date"] is DataGridViewColumn dtCol)
-            {
-                dtCol.HeaderText = "DISPATCH DATE";
-                dtCol.MinimumWidth = 135;
-                dtCol.FillWeight = 135;
-                dtCol.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight;
-                dtCol.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+                _lstOutreachResults.Visible = false;
             }
         }
 
-        private void GridAuditHistory_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
+        private void OnOutreachClientSelected()
         {
-            if (e.RowIndex < 0 || e.Graphics is null) return;
-            string colName = _gridAuditHistory.Columns[e.ColumnIndex].Name;
-
-            if (colName == "Status" && e.Value != null)
+            if (_lstOutreachResults.SelectedItem is OutreachComboItem item)
             {
-                string status = e.Value.ToString() ?? "";
-                UiGridHelper.PaintStatusIndicator(_gridAuditHistory, e, status, center: false);
-            }
-            else if (colName == "EquityGrowth" && e.Value != null)
-            {
-                string valStr = e.Value.ToString() ?? "-";
-                using var font = new Font("Segoe UI", 9f, FontStyle.Bold);
-                UiGridHelper.PaintTextCell(_gridAuditHistory, e, valStr, font, Color.FromArgb(16, 185, 129),
-                    TextFormatFlags.Right | TextFormatFlags.VerticalCenter, leftPadding: 8, rightPadding: 12);
+                _selectedOutreachCustomer = item.Customer;
+                _lstOutreachResults.Visible = false;
+                _txtSearchOutreach.Text = item.Customer.FullName;
+                PopulateOutreachCustomerView(item.Customer);
             }
         }
 
-        private void LoadAutomatedSettings()
+        private void PopulateOutreachCustomerView(RetentionCustomerRow cust)
         {
-            _isLoadingSettings = true;
-            try
+            _selectedOutreachCustomer = cust;
+            _lblOutreachClientName.Text = cust.FullName;
+            _lblOutreachClientDetails.Text = $"{cust.Email}  •  {cust.Phone}  •  Advisor: {cust.AssignedAgentName}";
+            _lblOutreachSegmentStatus.Text = $"Segment: {cust.CurrentSegment.ToUpper()}";
+
+            if (cust.IsOnCooldown)
             {
-                int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
-                _currentSettings = MarketUpdateBackgroundService.Instance.GetSettings(tenantId);
+                _lblOutreachCooldownAlert.Text = $"⚠ 30-Day Cooldown Active ({cust.DaysUntilCooldownExpires} days remaining)";
+                _lblOutreachCooldownAlert.ForeColor = Color.FromArgb(217, 119, 6);
+            }
+            else
+            {
+                _lblOutreachCooldownAlert.Text = "✓ Ready for Outreach (No active cooldown)";
+                _lblOutreachCooldownAlert.ForeColor = Color.FromArgb(22, 163, 74);
+            }
 
-                UpdateToggleStateDisplay();
+            _txtOutreachIncentive.Text = RetentionCalculationService.GetRecommendedIncentive(cust.CurrentSegment);
 
-                _numAppreciation.Value = Math.Clamp(_currentSettings.AnnualAppreciationRatePercent, 0.5m, 50m);
-                _txtBrokerageName.Text = _currentSettings.BrokerageName;
-                _txtCtaText.Text = _currentSettings.CallToActionText;
-                _txtSubjectTemplate.Text = _currentSettings.SubjectTemplate;
-                _txtBodyTemplate.Text = _currentSettings.BodyTemplate;
-
-                _cboAudience.SelectedItem = _currentSettings.TargetAudience switch
+            // Auto-select template matching segment
+            int tplIdx = -1;
+            for (int i = 0; i < _loadedRetentionTemplates.Count; i++)
+            {
+                if (_loadedRetentionTemplates[i].Name.Contains(cust.CurrentSegment, StringComparison.OrdinalIgnoreCase))
                 {
-                    "Buyers" => "Buyers Only",
-                    "Sellers" => "Sellers Only",
-                    _ => "All Past Clients"
-                };
+                    tplIdx = i;
+                    break;
+                }
+            }
 
-                _cboFormat.SelectedIndex = _currentSettings.EmailFormat == "PlainText" ? 1 : 0;
+            if (tplIdx >= 0)
+            {
+                _cboOutreachTemplate.SelectedIndex = tplIdx;
+            }
+            else if (_cboOutreachTemplate.Items.Count > 0)
+            {
+                _cboOutreachTemplate.SelectedIndex = 0;
+            }
 
-                if (_currentSettings.FrequencyDays <= 30) _cboFrequency.SelectedIndex = 0;
-                else if (_currentSettings.FrequencyDays <= 90) _cboFrequency.SelectedIndex = 1;
-                else if (_currentSettings.FrequencyDays <= 180) _cboFrequency.SelectedIndex = 2;
-                else _cboFrequency.SelectedIndex = 3;
+            UpdateOutreachPreview();
+        }
 
-                _lblLastRunInfo.Text = _currentSettings.LastBatchRunAt.HasValue
-                    ? $"Last batch run: {_currentSettings.LastBatchRunAt.Value.ToLocalTime():g}\r\nSummary: {_currentSettings.LastBatchStatus ?? "Complete"}"
-                    : "Last batch run: Never (Engine ready)";
+        private void ApplySelectedOutreachTemplate()
+        {
+            if (_cboOutreachTemplate.SelectedIndex < 0 || _cboOutreachTemplate.SelectedIndex >= _loadedRetentionTemplates.Count)
+                return;
 
-                if (CurrentSession.CurrentUser != null && !string.IsNullOrWhiteSpace(CurrentSession.CurrentUser.Email))
+            var tpl = _loadedRetentionTemplates[_cboOutreachTemplate.SelectedIndex];
+            _txtOutreachSubject.Text = tpl.Subject;
+            _txtOutreachBody.Text = tpl.Body;
+
+            UpdateOutreachPreview();
+        }
+
+        private void UpdateOutreachPreview()
+        {
+            if (_selectedOutreachCustomer == null) return;
+
+            string clientFirstName = _selectedOutreachCustomer.FirstName;
+            string clientFullName = _selectedOutreachCustomer.FullName;
+            string incentive = _txtOutreachIncentive.Text.Trim();
+            string advisor = _selectedOutreachCustomer.AssignedAgentName;
+
+            string subject = _txtOutreachSubject.Text
+                .Replace("{{customer_name}}", clientFirstName)
+                .Replace("{{first_name}}", clientFirstName)
+                .Replace("{{proposed_incentive}}", incentive);
+
+            string body = _txtOutreachBody.Text
+                .Replace("{{customer_name}}", clientFirstName)
+                .Replace("{{first_name}}", clientFirstName)
+                .Replace("{{customer_full_name}}", clientFullName)
+                .Replace("{{proposed_incentive}}", incentive)
+                .Replace("{{agent_name}}", advisor);
+
+            _lblPreviewTo.Text = $"To: {clientFullName} <{_selectedOutreachCustomer.Email}>";
+            _lblPreviewSubject.Text = $"Subject: {subject}";
+            _lblPreviewBody.Text = body;
+        }
+
+        private async Task OnSendManualRetentionEmailAsync()
+        {
+            if (_selectedOutreachCustomer == null)
+            {
+                MessageBox.Show("Please select a target client first.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_txtOutreachSubject.Text) || string.IsNullOrWhiteSpace(_txtOutreachBody.Text))
+            {
+                MessageBox.Show("Subject and email body are required.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            bool overrideCooldown = false;
+            string? overrideReason = null;
+
+            // Anti-fatigue check
+            if (_selectedOutreachCustomer.IsOnCooldown)
+            {
+                var overrideDlg = new CooldownOverrideDialog(
+                    _selectedOutreachCustomer.FullName,
+                    _selectedOutreachCustomer.LastRetentionEmailSentAt,
+                    _selectedOutreachCustomer.DaysUntilCooldownExpires);
+
+                if (overrideDlg.ShowDialog(this) != DialogResult.OK)
                 {
-                    _txtTestEmail.Text = CurrentSession.CurrentUser.Email;
+                    return; // Cancelled
                 }
 
-                LoadTemplatesList(_currentSettings.ActiveTemplateId);
-                PopulateClientPicker();
-                RefreshAutomatedKpis();
-                UpdateLivePreview();
-                ApplyRbacPermissions();
+                overrideCooldown = true;
+                overrideReason = overrideDlg.OverrideReason;
             }
-            catch { }
+
+            try
+            {
+                _btnSendManualEmail.Enabled = false;
+                _btnSendManualEmail.Text = "Sending...";
+
+                string subject = _txtOutreachSubject.Text.Trim();
+                string body = _txtOutreachBody.Text.Trim();
+                string? incentive = string.IsNullOrWhiteSpace(_txtOutreachIncentive.Text) ? null : _txtOutreachIncentive.Text.Trim();
+
+                await _retentionController.SendManualRetentionEmailAsync(
+                    _selectedOutreachCustomer.CustomerId,
+                    subject,
+                    body,
+                    incentive,
+                    overrideCooldown,
+                    overrideReason);
+
+                MessageBox.Show("Retention email sent successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                await LoadSegmentsDataAsync();
+                await LoadManualEmailDataAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to send retention email: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
             finally
             {
-                _isLoadingSettings = false;
+                _btnSendManualEmail.Enabled = true;
+                _btnSendManualEmail.Text = "✉ Dispatch Retention Email Now";
             }
         }
 
-        private void LoadTemplatesList(int? selectTemplateId = null)
+        private async Task OnSendTestEmailAsync()
         {
-            try
+            string userEmail = CurrentSession.CurrentUser?.Email ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(userEmail))
             {
-                int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
-                _loadedTemplates = EmailTemplateService.Instance.GetActiveTemplates(tenantId);
-
-                _cboTemplates.Items.Clear();
-                int selectIndex = 0;
-
-                for (int i = 0; i < _loadedTemplates.Count; i++)
-                {
-                    var t = _loadedTemplates[i];
-                    string prefix = t.IsSystem ? "[SYSTEM]" : $"[{t.CreatedByRole.ToUpperInvariant()}]";
-                    string display = $"{prefix} {t.Name} ({t.Category})";
-                    _cboTemplates.Items.Add(display);
-
-                    if (selectTemplateId.HasValue && t.TemplateId == selectTemplateId.Value)
-                    {
-                        selectIndex = i;
-                    }
-                    else if (!selectTemplateId.HasValue && _currentSettings?.ActiveTemplateId.HasValue == true && t.TemplateId == _currentSettings.ActiveTemplateId.Value)
-                    {
-                        selectIndex = i;
-                    }
-                }
-
-                if (_cboTemplates.Items.Count > 0)
-                {
-                    _cboTemplates.SelectedIndex = selectIndex;
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ClientRetentionView] Error loading templates: {ex.Message}");
-            }
-        }
-
-        private void CboTemplates_SelectedIndexChanged(object? sender, EventArgs e)
-        {
-            if (_cboTemplates.SelectedIndex < 0 || _cboTemplates.SelectedIndex >= _loadedTemplates.Count)
-                return;
-
-            _selectedTemplate = _loadedTemplates[_cboTemplates.SelectedIndex];
-            if (_selectedTemplate == null) return;
-
-            bool isAgent = RbacService.IsAgent;
-
-            // Load template content into editors
-            _txtSubjectTemplate.Text = _selectedTemplate.Subject;
-            _txtBodyTemplate.Text = _selectedTemplate.Body;
-            if (!string.IsNullOrWhiteSpace(_selectedTemplate.CallToActionText))
-            {
-                _txtCtaText.Text = _selectedTemplate.CallToActionText;
-            }
-
-            // Sync presentation format
-            _cboFormat.SelectedIndex = _selectedTemplate.EmailFormat.Equals("PlainText", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
-
-            // Sync target audience
-            string aud = _selectedTemplate.TargetAudience;
-            if (aud.Equals("Buyers", StringComparison.OrdinalIgnoreCase)) _cboAudience.SelectedIndex = 1;
-            else if (aud.Equals("Sellers", StringComparison.OrdinalIgnoreCase)) _cboAudience.SelectedIndex = 2;
-            else _cboAudience.SelectedIndex = 0;
-
-            // RBAC Access Control & Visual State
-            if (isAgent)
-            {
-                // Sales Agent: Read-Only for ALL master and system templates
-                _txtSubjectTemplate.ReadOnly = true;
-                _txtSubjectTemplate.BackColor = Color.FromArgb(248, 250, 252);
-                _txtBodyTemplate.ReadOnly = true;
-                _txtBodyTemplate.BackColor = Color.FromArgb(248, 250, 252);
-                _txtCtaText.ReadOnly = true;
-                _txtCtaText.BackColor = Color.FromArgb(248, 250, 252);
-                _cboAudience.Enabled = false;
-                _cboFormat.Enabled = false;
-
-                _lblTemplateBadge.Text = "Protected organizational template (Read-only for agents)";
-                _lblTemplateBadge.ForeColor = Color.FromArgb(100, 116, 139);
-
-                _btnNewTemplate.Visible = false;
-                _btnCloneTemplate.Visible = false;
-                _btnDeleteTemplate.Visible = false;
-            }
-            else if (_selectedTemplate.IsSystem)
-            {
-                // Admin or Manager viewing System-generated template: protected against direct overwrite
-                _txtSubjectTemplate.ReadOnly = true;
-                _txtSubjectTemplate.BackColor = Color.FromArgb(248, 250, 252);
-                _txtBodyTemplate.ReadOnly = true;
-                _txtBodyTemplate.BackColor = Color.FromArgb(248, 250, 252);
-                _txtCtaText.ReadOnly = true;
-                _txtCtaText.BackColor = Color.FromArgb(248, 250, 252);
-                _cboAudience.Enabled = false;
-                _cboFormat.Enabled = false;
-
-                _lblTemplateBadge.Text = "Protected system template — Clone it to customize.";
-                _lblTemplateBadge.ForeColor = Color.FromArgb(217, 119, 6);
-
-                _btnNewTemplate.Visible = true;
-                _btnCloneTemplate.Visible = true;
-                _btnCloneTemplate.Enabled = true;
-                _btnDeleteTemplate.Visible = true;
-                _btnDeleteTemplate.Enabled = false; // System templates cannot be deleted
-            }
-            else
-            {
-                // Admin or Manager viewing Custom Template: Full Edit Access
-                _txtSubjectTemplate.ReadOnly = false;
-                _txtSubjectTemplate.BackColor = Color.White;
-                _txtBodyTemplate.ReadOnly = false;
-                _txtBodyTemplate.BackColor = Color.White;
-                _txtCtaText.ReadOnly = false;
-                _txtCtaText.BackColor = Color.White;
-                _cboAudience.Enabled = true;
-                _cboFormat.Enabled = true;
-
-                _lblTemplateBadge.Text = $"Custom template ({_selectedTemplate.CreatedByRole} created) — Fully editable.";
-                _lblTemplateBadge.ForeColor = Color.FromArgb(22, 163, 74);
-
-                _btnNewTemplate.Visible = true;
-                _btnCloneTemplate.Visible = true;
-                _btnCloneTemplate.Enabled = true;
-                _btnDeleteTemplate.Visible = true;
-                _btnDeleteTemplate.Enabled = true;
-            }
-
-            if (_currentSettings != null)
-            {
-                _currentSettings.ActiveTemplateId = _selectedTemplate.TemplateId;
-            }
-
-            UpdateLivePreview();
-        }
-
-        private void BtnNewTemplate_Click(object? sender, EventArgs e)
-        {
-            if (RbacService.IsAgent)
-            {
-                MessageBox.Show("Sales agents are not authorized to create organizational email templates.", "Access Denied", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            using var dlg = new Form
-            {
-                Text = "Create New Real Estate Marketing / Retention Template",
-                Size = new Size(540, 580),
-                StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MaximizeBox = false,
-                MinimizeBox = false,
-                BackColor = Color.White
-            };
-
-            var lblName = new Label { Text = "Template Name *:", Location = new Point(24, 20), AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
-            var txtName = new TextBox { Location = new Point(24, 42), Size = new Size(475, 26), Font = new Font("Segoe UI", 9.5f) };
-
-            var lblCat = new Label { Text = "Marketing Category *:", Location = new Point(24, 76), AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
-            var cboCat = new ComboBox { Location = new Point(24, 98), Size = new Size(230, 26), DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 9.5f) };
-            cboCat.Items.AddRange(new object[] { "Equity Retention", "Listing CMA", "Client Milestone", "New Listing", "Showing VIP" });
-            cboCat.SelectedIndex = 0;
-
-            var lblAud = new Label { Text = "Target Audience *:", Location = new Point(269, 76), AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
-            var cboAud = new ComboBox { Location = new Point(269, 98), Size = new Size(230, 26), DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 9.5f) };
-            cboAud.Items.AddRange(new object[] { "All Past Clients", "Buyers Only", "Sellers Only" });
-            cboAud.SelectedIndex = 0;
-
-            var lblFmt = new Label { Text = "Format *:", Location = new Point(24, 134), AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
-            var cboFmt = new ComboBox { Location = new Point(24, 156), Size = new Size(230, 26), DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 9.5f) };
-            cboFmt.Items.AddRange(new object[] { "Branded HTML", "Plain Text" });
-            cboFmt.SelectedIndex = 0;
-
-            var lblCta = new Label { Text = "Call To Action Text:", Location = new Point(269, 134), AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
-            var txtCta = new TextBox { Location = new Point(269, 156), Size = new Size(230, 26), Text = "Schedule Valuation Consultation", Font = new Font("Segoe UI", 9.5f) };
-
-            var lblSubj = new Label { Text = "Email Subject Line *:", Location = new Point(24, 192), AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
-            var txtSubj = new TextBox { Location = new Point(24, 214), Size = new Size(475, 26), Font = new Font("Segoe UI", 9.5f) };
-
-            var lblBody = new Label { Text = "Email Copy Body *:", Location = new Point(24, 250), AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
-            var txtBody = new TextBox { Location = new Point(24, 272), Size = new Size(475, 180), Multiline = true, ScrollBars = ScrollBars.Vertical, Font = new Font("Segoe UI", 9.5f) };
-
-            var btnCancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(275, 476), Size = new Size(100, 36), BackColor = Color.White, ForeColor = Color.FromArgb(71, 85, 105), FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9f) };
-            btnCancel.FlatAppearance.BorderColor = Color.FromArgb(203, 213, 225);
-            UiRadiusHelper.StyleButton(btnCancel, 6);
-
-            var btnSave = new Button { Text = "Save Template", DialogResult = DialogResult.OK, Location = new Point(385, 476), Size = new Size(114, 36), BackColor = Color.FromArgb(15, 91, 158), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
-            UiRadiusHelper.StyleButton(btnSave, 6);
-
-            dlg.Controls.AddRange(new Control[] { lblName, txtName, lblCat, cboCat, lblAud, cboAud, lblFmt, cboFmt, lblCta, txtCta, lblSubj, txtSubj, lblBody, txtBody, btnCancel, btnSave });
-            dlg.AcceptButton = btnSave;
-            dlg.CancelButton = btnCancel;
-
-            if (dlg.ShowDialog(this) == DialogResult.OK)
-            {
-                string name = txtName.Text.Trim();
-                string subj = txtSubj.Text.Trim();
-                string body = txtBody.Text.Trim();
-
-                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(subj) || string.IsNullOrWhiteSpace(body))
-                {
-                    MessageBox.Show("Please provide a Template Name, Subject, and Body content.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
-                }
-
-                int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
-                var newTpl = new EmailTemplate
-                {
-                    TenantId = tenantId,
-                    Name = name,
-                    Category = cboCat.SelectedItem?.ToString() ?? "Equity Retention",
-                    TargetAudience = cboAud.SelectedIndex switch { 1 => "Buyers", 2 => "Sellers", _ => "All" },
-                    EmailFormat = cboFmt.SelectedIndex == 1 ? "PlainText" : "Html",
-                    Subject = subj,
-                    Body = body,
-                    CallToActionText = txtCta.Text.Trim(),
-                    CallToActionUrl = "https://nexacrm.local/cma-request",
-                    IsSystem = false,
-                    IsActive = true,
-                    CreatedByRole = RbacService.IsAdmin ? "Admin" : "Manager"
-                };
-
-                bool saved = EmailTemplateService.Instance.SaveTemplate(newTpl, tenantId, out string errMsg);
-                if (saved)
-                {
-                    MessageBox.Show($"Email template '{name}' was created successfully.", "Template Created", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    LoadTemplatesList(newTpl.TemplateId);
-                }
-                else
-                {
-                    MessageBox.Show(errMsg, "Save Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
-            }
-        }
-
-        private void BtnCloneTemplate_Click(object? sender, EventArgs e)
-        {
-            if (_selectedTemplate == null) return;
-
-            if (RbacService.IsAgent)
-            {
-                MessageBox.Show("Sales agents are not authorized to create or clone templates.", "Access Denied", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            using var promptForm = new Form
-            {
-                Text = "Clone Email Template",
-                Size = new Size(420, 180),
-                StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MaximizeBox = false,
-                MinimizeBox = false,
-                BackColor = Color.White
-            };
-
-            var lblPrompt = new Label { Text = "Enter name for cloned template:", Location = new Point(20, 16), AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
-            var txtPrompt = new TextBox { Text = $"{_selectedTemplate.Name} (Copy)", Location = new Point(20, 42), Size = new Size(360, 26), Font = new Font("Segoe UI", 9.5f) };
-            var btnOk = new Button { Text = "Clone", DialogResult = DialogResult.OK, Location = new Point(280, 88), Size = new Size(100, 32), BackColor = Color.FromArgb(15, 91, 158), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
-            var btnCancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(190, 88), Size = new Size(80, 32), BackColor = Color.White, ForeColor = Color.FromArgb(71, 85, 105), FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9f) };
-            btnCancel.FlatAppearance.BorderColor = Color.FromArgb(203, 213, 225);
-            UiRadiusHelper.StyleButton(btnOk, 6);
-            UiRadiusHelper.StyleButton(btnCancel, 6);
-
-            promptForm.Controls.AddRange(new Control[] { lblPrompt, txtPrompt, btnCancel, btnOk });
-            promptForm.AcceptButton = btnOk;
-            promptForm.CancelButton = btnCancel;
-
-            if (promptForm.ShowDialog(this) == DialogResult.OK && !string.IsNullOrWhiteSpace(txtPrompt.Text))
-            {
-                int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
-                var clone = EmailTemplateService.Instance.CloneAsCustom(_selectedTemplate.TemplateId, txtPrompt.Text.Trim(), tenantId, out string err);
-
-                if (clone != null)
-                {
-                    MessageBox.Show($"Template cloned successfully as '{clone.Name}'. You can now customize and edit this template.", "Clone Created", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    LoadTemplatesList(clone.TemplateId);
-                }
-                else
-                {
-                    MessageBox.Show(err, "Cloning Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
-            }
-        }
-
-        private void BtnDeleteTemplate_Click(object? sender, EventArgs e)
-        {
-            if (_selectedTemplate == null) return;
-
-            if (RbacService.IsAgent)
-            {
-                MessageBox.Show("Sales agents are not authorized to archive email templates.", "Access Denied", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (_selectedTemplate.IsSystem)
-            {
-                MessageBox.Show("Standard system factory templates cannot be deleted.", "Protected Template", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Your user profile does not have an email address configured for test delivery.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
             var confirm = MessageBox.Show(
-                $"Are you sure you want to archive template '{_selectedTemplate.Name}'?\n\nThis template will be soft-deleted. Past delivery audit logs will remain intact.",
-                "Confirm Archive Template",
+                $"Send a formatted test preview to your email ({userEmail})?",
+                "Send Test Dispatch",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
 
             if (confirm != DialogResult.Yes) return;
 
-            int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
-            bool ok = EmailTemplateService.Instance.SoftDeleteTemplate(_selectedTemplate.TemplateId, tenantId, out string err);
-
-            if (ok)
+            try
             {
-                MessageBox.Show("Template was archived successfully.", "Template Archived", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                LoadTemplatesList();
-            }
-            else
-            {
-                MessageBox.Show(err, "Archive Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-        }
+                _btnSendTestEmail.Enabled = false;
+                var res = await ContactEmailService.SendAsync(
+                    userEmail,
+                    "[TEST DISPATCH] " + _txtOutreachSubject.Text.Trim(),
+                    _lblPreviewBody.Text,
+                    isBodyHtml: true);
 
-        private void ApplyRbacPermissions()
-        {
-            bool isAgent = RbacService.IsAgent;
-            bool canManageGlobalSettings = RbacService.IsAdmin || RbacService.IsSuperAdmin;
-            bool canManageTemplates = RbacService.IsAdmin || RbacService.IsSuperAdmin || RbacService.IsManager;
-
-            if (_btnSegmentActive != null)
-            {
-                _btnSegmentActive.Enabled = !isAgent && canManageGlobalSettings;
-                _btnSegmentPaused.Enabled = !isAgent && canManageGlobalSettings;
-                _btnSegmentStopped.Enabled = !isAgent && canManageGlobalSettings;
-            }
-
-            if (isAgent)
-            {
-                // Brokerage title and interval frequency are global administrative settings
-                _txtBrokerageName.ReadOnly = true;
-                _txtBrokerageName.BackColor = Color.FromArgb(248, 250, 252);
-                _cboFrequency.Enabled = false;
-
-                // Template actions are disabled/hidden for agents
-                _btnNewTemplate.Visible = false;
-                _btnCloneTemplate.Visible = false;
-                _btnDeleteTemplate.Visible = false;
-
-                _txtSubjectTemplate.ReadOnly = true;
-                _txtSubjectTemplate.BackColor = Color.FromArgb(248, 250, 252);
-                _txtBodyTemplate.ReadOnly = true;
-                _txtBodyTemplate.BackColor = Color.FromArgb(248, 250, 252);
-                _txtCtaText.ReadOnly = true;
-                _txtCtaText.BackColor = Color.FromArgb(248, 250, 252);
-                _cboAudience.Enabled = false;
-                _cboFormat.Enabled = false;
-
-                // Save button disabled for agents so company-wide defaults are not overwritten
-                _btnSaveSettings.Enabled = false;
-                _btnSaveSettings.Text = "Master Settings (Admin/Manager Only)";
-                _btnSaveSettings.BackColor = Color.FromArgb(148, 163, 184);
-                _btnSaveSettings.Cursor = Cursors.Default;
-
-                _btnResetSettings.Enabled = false;
-                _btnResetSettings.Visible = false;
-
-                // Scoped batch trigger text
-                _btnRunBatchNow.Text = "🚀 Run Batch Update for My Clients Only";
-            }
-            else
-            {
-                _btnSaveSettings.Enabled = canManageTemplates;
-                _btnSaveSettings.Text = "Save Configuration";
-                _btnSaveSettings.BackColor = Color.FromArgb(11, 48, 86);
-                _btnSaveSettings.Cursor = canManageTemplates ? Cursors.Hand : Cursors.Default;
-
-                _btnResetSettings.Enabled = canManageTemplates;
-                _btnResetSettings.Visible = true;
-                _txtBrokerageName.ReadOnly = !canManageGlobalSettings;
-                _txtBrokerageName.BackColor = canManageGlobalSettings ? Color.White : Color.FromArgb(248, 250, 252);
-                _cboFrequency.Enabled = canManageGlobalSettings;
-
-                _btnNewTemplate.Visible = canManageTemplates;
-                _btnCloneTemplate.Visible = canManageTemplates;
-                _btnDeleteTemplate.Visible = canManageTemplates;
-
-                if (RbacService.IsManager)
+                if (res.Success)
                 {
-                    _btnRunBatchNow.Text = "🚀 Run Team Batch Update (Force Send)";
+                    MessageBox.Show($"Test email dispatched successfully to {userEmail}.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 else
                 {
-                    _btnRunBatchNow.Text = "🚀 Run Automated Batch Now (Force Send All)";
-                }
-            }
-        }
-
-        private void SetAutomationEngineState(string state)
-        {
-            if (RbacService.IsAgent)
-            {
-                MessageBox.Show("Sales agents are not authorized to toggle the retention engine state.", "Access Denied", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (!RbacService.IsAdmin && !RbacService.IsSuperAdmin)
-            {
-                MessageBox.Show(
-                    "Only system administrators can toggle the brokerage-wide automated retention engine.",
-                    "Access Denied",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (state == "ACTIVE")
-            {
-                _currentSettings.IsEnabled = true;
-            }
-            else
-            {
-                _currentSettings.IsEnabled = false;
-            }
-
-            UpdateSegmentButtonsDisplay(state);
-            int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
-            MarketUpdateBackgroundService.Instance.SaveSettings(_currentSettings, tenantId);
-            RefreshAutomatedKpis();
-        }
-
-        private void UpdateSegmentButtonsDisplay(string? state = null)
-        {
-            if (_btnSegmentActive == null || _btnSegmentPaused == null || _btnSegmentStopped == null) return;
-
-            string current = state ?? (_currentSettings != null && _currentSettings.IsEnabled ? "ACTIVE" : "PAUSED");
-
-            // ACTIVE button
-            if (current == "ACTIVE")
-            {
-                _btnSegmentActive.BackColor = Color.FromArgb(22, 163, 74);
-                _btnSegmentActive.ForeColor = Color.White;
-                _btnSegmentActive.Font = new Font("Segoe UI", 7.5f, FontStyle.Bold);
-            }
-            else
-            {
-                _btnSegmentActive.BackColor = Color.Transparent;
-                _btnSegmentActive.ForeColor = Color.FromArgb(148, 163, 184);
-                _btnSegmentActive.Font = new Font("Segoe UI", 7.5f, FontStyle.Regular);
-            }
-
-            // PAUSED button
-            if (current == "PAUSED")
-            {
-                _btnSegmentPaused.BackColor = Color.FromArgb(217, 119, 6);
-                _btnSegmentPaused.ForeColor = Color.White;
-                _btnSegmentPaused.Font = new Font("Segoe UI", 7.5f, FontStyle.Bold);
-            }
-            else
-            {
-                _btnSegmentPaused.BackColor = Color.Transparent;
-                _btnSegmentPaused.ForeColor = Color.FromArgb(148, 163, 184);
-                _btnSegmentPaused.Font = new Font("Segoe UI", 7.5f, FontStyle.Regular);
-            }
-
-            // STOPPED button
-            if (current == "STOPPED")
-            {
-                _btnSegmentStopped.BackColor = Color.FromArgb(100, 116, 139);
-                _btnSegmentStopped.ForeColor = Color.White;
-                _btnSegmentStopped.Font = new Font("Segoe UI", 7.5f, FontStyle.Bold);
-            }
-            else
-            {
-                _btnSegmentStopped.BackColor = Color.Transparent;
-                _btnSegmentStopped.ForeColor = Color.FromArgb(148, 163, 184);
-                _btnSegmentStopped.Font = new Font("Segoe UI", 7.5f, FontStyle.Regular);
-            }
-        }
-
-        private void UpdateToggleStateDisplay()
-        {
-            UpdateSegmentButtonsDisplay();
-            RefreshAutomatedKpis();
-        }
-
-        private void BtnSaveSettings_Click(object? sender, EventArgs e)
-        {
-            if (!RbacService.IsAdmin && !RbacService.IsSuperAdmin && !RbacService.IsManager)
-            {
-                MessageBox.Show(
-                    "Global company retention and template settings can only be saved by administrators or managers.",
-                    "Access Denied",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                return;
-            }
-
-            int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
-
-            // If a custom template is selected and editable, save template modifications as well
-            if (_selectedTemplate != null && !_selectedTemplate.IsSystem)
-            {
-                _selectedTemplate.Subject = _txtSubjectTemplate.Text.Trim();
-                _selectedTemplate.Body = _txtBodyTemplate.Text.Trim();
-                _selectedTemplate.CallToActionText = _txtCtaText.Text.Trim();
-                _selectedTemplate.TargetAudience = _cboAudience.SelectedIndex switch
-                {
-                    1 => "Buyers",
-                    2 => "Sellers",
-                    _ => "All"
-                };
-                _selectedTemplate.EmailFormat = _cboFormat.SelectedIndex == 1 ? "PlainText" : "Html";
-
-                EmailTemplateService.Instance.SaveTemplate(_selectedTemplate, tenantId, out _);
-            }
-
-            int freqDays = _cboFrequency.SelectedIndex switch
-            {
-                0 => 30,
-                1 => 90,
-                2 => 180,
-                3 => 365,
-                _ => 180
-            };
-
-            _currentSettings.FrequencyDays = freqDays;
-            _currentSettings.AnnualAppreciationRatePercent = _numAppreciation.Value;
-            _currentSettings.EmailFormat = _cboFormat.SelectedIndex == 1 ? "PlainText" : "Html";
-            _currentSettings.TargetAudience = _cboAudience.SelectedIndex switch
-            {
-                1 => "Buyers",
-                2 => "Sellers",
-                _ => "All"
-            };
-            _currentSettings.BrokerageName = _txtBrokerageName.Text.Trim();
-            _currentSettings.CallToActionText = _txtCtaText.Text.Trim();
-            _currentSettings.SubjectTemplate = _txtSubjectTemplate.Text.Trim();
-            _currentSettings.BodyTemplate = _txtBodyTemplate.Text.Trim();
-            _currentSettings.ActiveTemplateId = _selectedTemplate?.TemplateId;
-
-            bool saved = MarketUpdateBackgroundService.Instance.SaveSettings(_currentSettings, tenantId);
-
-            if (saved)
-            {
-                MessageBox.Show(
-                    "Automated market update configuration and template settings have been successfully saved.",
-                    "Configuration Saved",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-                RefreshAutomatedKpis();
-            }
-            else
-            {
-                MessageBox.Show(
-                    "Unable to save settings. Please verify database connection.",
-                    "Save Failed",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-            }
-
-            UpdateLivePreview();
-        }
-
-        private void PromptLoadAudiencePreTemplate(string audience)
-        {
-            var res = MessageBox.Show(
-                $"Would you like to automatically load the pre-written template tailored for '{audience}'?\n\nThis will update the subject, email copy, and call-to-action button specifically for this audience segment.",
-                "Load Tailored Pre-Template",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-
-            if (res == DialogResult.Yes)
-            {
-                LoadPreTemplateForAudience(audience, confirm: false);
-            }
-        }
-
-        private void LoadPreTemplateForAudience(string audience, bool confirm = false)
-        {
-            if (confirm)
-            {
-                var res = MessageBox.Show(
-                    $"Apply the pre-written template tailored for '{audience}'?\n\nThis will replace the current subject, email copy, and call-to-action button.",
-                    "Confirm Pre-Template",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Question);
-
-                if (res != DialogResult.Yes) return;
-            }
-
-            var (subj, body, cta, rate) = AutomatedEmailSettings.GetPreTemplate(audience);
-            _txtSubjectTemplate.Text = subj;
-            _txtBodyTemplate.Text = body;
-            _txtCtaText.Text = cta;
-            _numAppreciation.Value = rate;
-            UpdateLivePreview();
-        }
-
-        private void ResetToDefaultTemplate()
-        {
-            string audience = _cboAudience.SelectedItem?.ToString() ?? "All Past Clients";
-            LoadPreTemplateForAudience(audience, confirm: true);
-        }
-
-        private void UpdateLivePreview()
-        {
-            if (_pnlPreviewContainer == null) return;
-
-            try
-            {
-                int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
-                int? selectedCustId = (_cboClientPicker?.SelectedItem as ClientPickerItem)?.CustomerId;
-
-                // Sync UI fields
-                _currentSettings.EmailFormat = _cboFormat?.SelectedIndex == 1 ? "PlainText" : "Html";
-                _currentSettings.AnnualAppreciationRatePercent = _numAppreciation != null ? _numAppreciation.Value : 5.0m;
-                _currentSettings.BrokerageName = string.IsNullOrWhiteSpace(_txtBrokerageName?.Text) ? "NEXA Real Estate Advisory" : _txtBrokerageName.Text;
-                _currentSettings.CallToActionText = string.IsNullOrWhiteSpace(_txtCtaText?.Text) ? "Schedule Consultation" : _txtCtaText.Text;
-                _currentSettings.SubjectTemplate = string.IsNullOrWhiteSpace(_txtSubjectTemplate?.Text) ? "Market Valuation Update" : _txtSubjectTemplate.Text;
-                _currentSettings.BodyTemplate = string.IsNullOrWhiteSpace(_txtBodyTemplate?.Text) ? "Valuation update" : _txtBodyTemplate.Text;
-
-                var (subj, _, recipient, metrics) = MarketUpdateBackgroundService.Instance.GeneratePreview(tenantId, selectedCustId);
-                _latestPreviewMetrics = metrics;
-
-                string origStr = $"₱{metrics.OriginalPrice:N0}";
-                string estStr = $"₱{metrics.EstimatedValue:N0}";
-                string gainStr = $"+₱{metrics.EquityGain:N0} (+{metrics.EquityGainPercent:F1}%)";
-                string rateStr = metrics.AnnualRatePercent.ToString("F1");
-                string yearsStr = metrics.YearsOwned.ToString("F1");
-                string gainPercentStr = metrics.EquityGainPercent.ToString("F1");
-
-                string renderedSubject = MarketUpdateBackgroundService.ReplaceTokens(_currentSettings.SubjectTemplate, metrics.CustomerName, metrics.FirstName,
-                    metrics.PropertyAddress, metrics.PropertyType, origStr, estStr, gainStr, gainPercentStr, rateStr, yearsStr, metrics.AgentName);
-
-                string renderedBody = MarketUpdateBackgroundService.ReplaceTokens(_currentSettings.BodyTemplate, metrics.CustomerName, metrics.FirstName,
-                    metrics.PropertyAddress, metrics.PropertyType, origStr, estStr, gainStr, gainPercentStr, rateStr, yearsStr, metrics.AgentName);
-
-                string formatStr = _currentSettings.EmailFormat == "Html" ? "Branded Visual Report" : "Plain Text Note";
-
-                // Update non-editable visual card labels
-                _lblPreviewHeader.Text = $"TO: {recipient}\r\nSUBJECT: {renderedSubject}\r\nFORMAT: {formatStr}";
-
-                string bodyText = renderedBody?.Trim() ?? "";
-                if (!bodyText.StartsWith("Dear", StringComparison.OrdinalIgnoreCase) &&
-                    !bodyText.StartsWith("Hi", StringComparison.OrdinalIgnoreCase) &&
-                    !bodyText.StartsWith("Hello", StringComparison.OrdinalIgnoreCase))
-                {
-                    bodyText = $"Dear {metrics.FirstName},\r\n\r\n{bodyText}";
-                }
-                _lblPreviewBody.Text = bodyText;
-
-                _lblMetricAcq.Text = $"ACQUISITION\r\n{origStr}\r\n({metrics.PropertyType})";
-                _lblMetricAcq.ForeColor = Color.FromArgb(71, 85, 105);
-
-                _lblMetricEst.Text = $"CURRENT VALUATION\r\n{estStr}\r\n(+{metrics.AnnualRatePercent:F1}% p.a.)";
-                _lblMetricEst.ForeColor = Color.FromArgb(15, 23, 42);
-
-                _lblMetricGain.Text = $"EST. EQUITY GAIN\r\n{gainStr}\r\n({yearsStr} yrs owned)";
-                _lblMetricGain.ForeColor = Color.FromArgb(22, 163, 74);
-
-                _btnPreviewCtaMockup.Text = $"👉 {_currentSettings.CallToActionText}";
-                _lblPreviewFooter.Text = $"ADVISOR: {metrics.AgentName}\r\n{_currentSettings.BrokerageName} · Advisory Team";
-
-                _btnOpenHtmlBrowser.Visible = _currentSettings.EmailFormat == "Html";
-
-                LayoutPreviewControls();
-            }
-            catch (Exception ex)
-            {
-                _lblPreviewBody.Text = $"Preview generation note: {ex.Message}";
-                LayoutPreviewControls();
-            }
-        }
-
-        private void LayoutPreviewControls()
-        {
-            if (_pnlPreviewContainer == null || _lblPreviewHeader == null || _lblPreviewBody == null) return;
-
-            _pnlPreviewContainer.SuspendLayout();
-            try
-            {
-                // Reset scroll position before computing layout to prevent scroll offset distortion
-                _pnlPreviewContainer.AutoScrollPosition = new Point(0, 0);
-
-                int pad = 12;
-                int innerW = Math.Max(200, _pnlPreviewContainer.ClientSize.Width - (pad * 2));
-
-                _lblPreviewHeader.MaximumSize = new Size(innerW, 0);
-                _lblPreviewHeader.AutoSize = true;
-                _lblPreviewHeader.Width = innerW;
-                _lblPreviewHeader.Location = new Point(pad, pad);
-
-                _lblPreviewBody.MaximumSize = new Size(innerW, 0);
-                _lblPreviewBody.AutoSize = true;
-                _lblPreviewBody.Width = innerW;
-                _lblPreviewBody.Location = new Point(pad, _lblPreviewHeader.Bottom + 12);
-
-                _pnlPreviewMetricsBox.Width = innerW;
-                _pnlPreviewMetricsBox.Height = 60;
-                _pnlPreviewMetricsBox.Location = new Point(pad, _lblPreviewBody.Bottom + 12);
-
-                int mColW = Math.Max(50, (_pnlPreviewMetricsBox.ClientSize.Width - 24) / 3);
-                _lblMetricAcq.SetBounds(6, 6, mColW, 48);
-                _lblMetricEst.SetBounds(6 + mColW + 6, 6, mColW, 48);
-                _lblMetricGain.SetBounds(6 + (mColW + 6) * 2, 6, Math.Max(50, _pnlPreviewMetricsBox.ClientSize.Width - 12 - (mColW + 6) * 2), 48);
-
-                _btnPreviewCtaMockup.Width = innerW;
-                _btnPreviewCtaMockup.Height = 34;
-                _btnPreviewCtaMockup.Location = new Point(pad, _pnlPreviewMetricsBox.Bottom + 12);
-
-                _lblPreviewFooter.MaximumSize = new Size(innerW, 0);
-                _lblPreviewFooter.AutoSize = true;
-                _lblPreviewFooter.Width = innerW;
-                _lblPreviewFooter.Location = new Point(pad, _btnPreviewCtaMockup.Bottom + 12);
-            }
-            finally
-            {
-                _pnlPreviewContainer.ResumeLayout(true);
-            }
-        }
-
-        private void BtnOpenHtmlBrowser_Click(object? sender, EventArgs e)
-        {
-            if (_latestPreviewMetrics == null) return;
-
-            try
-            {
-                string path = MarketUpdateBackgroundService.SavePreviewHtmlToFile(_currentSettings, _latestPreviewMetrics);
-                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Could not open browser: {ex.Message}", "Browser Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-        }
-
-        private async void BtnSendTestEmail_Click(object? sender, EventArgs e)
-        {
-            string email = _txtTestEmail.Text.Trim();
-            if (!ContactEmailService.IsValidEmail(email))
-            {
-                MessageBox.Show(
-                    "Please enter a valid recipient email address.",
-                    "Invalid Email",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                _txtTestEmail.Focus();
-                return;
-            }
-
-            _btnSendTestEmail.Enabled = false;
-            _btnSendTestEmail.Text = "Sending...";
-
-            try
-            {
-                int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
-                int? selectedCustId = (_cboClientPicker?.SelectedItem as ClientPickerItem)?.CustomerId;
-
-                if (RbacService.IsAdmin || RbacService.IsSuperAdmin)
-                {
-                    BtnSaveSettings_Click(this, EventArgs.Empty);
-                }
-
-                var result = await MarketUpdateBackgroundService.Instance.SendTestEmailAsync(email, tenantId, selectedCustId);
-
-                LoadAuditHistory();
-                RefreshAutomatedKpis();
-
-                if (result.Success)
-                {
-                    MessageBox.Show(
-                        $"Test email was successfully dispatched to:\n{email}\n\nPlease check your inbox.",
-                        "Test Dispatch Succeeded",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
-                }
-                else
-                {
-                    MessageBox.Show(
-                        $"Test dispatch failed:\n\n{result.Message}",
-                        "Email Delivery Error",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning);
+                    MessageBox.Show($"Test email failed: {res.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Test email failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
                 _btnSendTestEmail.Enabled = true;
-                _btnSendTestEmail.Text = "Send Test Email";
             }
         }
 
-        private async void BtnRunBatchNow_Click(object? sender, EventArgs e)
+        #endregion
+
+        #region Tab 3: Requests & Approvals
+
+        private void BuildTab3Requests()
         {
-            bool isAgent = RbacService.IsAgent;
-            string promptText = isAgent
-                ? "Are you sure you want to trigger market updates for your assigned past clients right now?\n\nThis will evaluate only your closed transactions and dispatch personalized updates."
-                : "Are you sure you want to trigger the automated market update batch for all eligible clients right now?\n\nThis will evaluate your past client transactions and deliver market reports.";
+            _tabRequests = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Theme.Background,
+                Padding = new Padding(28, 16, 28, 16),
+                AutoScroll = true
+            };
+
+            // Top Filter Strip
+            var pnlTop = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 52,
+                BackColor = Color.White,
+                Padding = new Padding(16, 8, 16, 8),
+                Margin = new Padding(0, 0, 0, 14)
+            };
+            UiRadiusHelper.StyleCard(pnlTop, 8);
+
+            var lblStatus = new Label { Text = "Status:", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(14, 14), AutoSize = true };
+            _cboRequestStatusFilter = new ComboBox
+            {
+                Location = new Point(70, 10),
+                Width = 120,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = new Font("Segoe UI", 9f)
+            };
+            _cboRequestStatusFilter.Items.AddRange(new object[] { "All", "Pending", "Approved", "Rejected" });
+            _cboRequestStatusFilter.SelectedIndex = 0;
+
+            var lblDate = new Label { Text = "From:", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(210, 14), AutoSize = true };
+            _dtpRequestFrom = new DateTimePicker
+            {
+                Location = new Point(255, 10),
+                Width = 110,
+                Format = DateTimePickerFormat.Short,
+                Value = DateTime.Today.AddDays(-60)
+            };
+
+            var lblTo = new Label { Text = "To:", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(375, 14), AutoSize = true };
+            _dtpRequestTo = new DateTimePicker
+            {
+                Location = new Point(405, 10),
+                Width = 110,
+                Format = DateTimePickerFormat.Short,
+                Value = DateTime.Today
+            };
+
+            _btnFilterRequests = new Button
+            {
+                Text = "Filter",
+                Location = new Point(530, 9),
+                Size = new Size(80, 32),
+                BackColor = Theme.SidebarAccent,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            _btnFilterRequests.FlatAppearance.BorderSize = 0;
+            UiRadiusHelper.StyleButton(_btnFilterRequests, 6);
+            _btnFilterRequests.Click += async (s, e) => await LoadRequestsDataAsync();
+
+            pnlTop.Controls.Add(lblStatus);
+            pnlTop.Controls.Add(_cboRequestStatusFilter);
+            pnlTop.Controls.Add(lblDate);
+            pnlTop.Controls.Add(_dtpRequestFrom);
+            pnlTop.Controls.Add(lblTo);
+            pnlTop.Controls.Add(_dtpRequestTo);
+            pnlTop.Controls.Add(_btnFilterRequests);
+            _tabRequests.Controls.Add(pnlTop);
+
+            // Requests Grid Card
+            var pnlGridCard = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.White,
+                Padding = new Padding(16),
+                Margin = new Padding(0, 14, 0, 0)
+            };
+            UiRadiusHelper.StyleCard(pnlGridCard, 10);
+
+            _gridRequests = new DataGridView
+            {
+                Dock = DockStyle.Fill,
+                BackgroundColor = Color.White,
+                BorderStyle = BorderStyle.None,
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                ReadOnly = true,
+                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                MultiSelect = false,
+                RowHeadersVisible = false,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
+            };
+            UiGridHelper.ApplyModernGridStyle(_gridRequests, 48);
+            ConfigureRequestsGridColumns();
+
+            _paginationRequests = new PaginationControl
+            {
+                Dock = DockStyle.Bottom,
+                Height = 44
+            };
+            _paginationRequests.SetItemLabel("requests");
+            _paginationRequests.PageChanged += (_, _) => RenderPagedRequests(resetPage: false);
+            _paginationRequests.PageSizeChanged += (_, _) => RenderPagedRequests(resetPage: true);
+
+            pnlGridCard.Controls.Add(_gridRequests);
+            pnlGridCard.Controls.Add(_paginationRequests);
+            _tabRequests.Controls.Add(pnlGridCard);
+        }
+
+        private void ConfigureRequestsGridColumns()
+        {
+            _gridRequests.Columns.Clear();
+
+            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { Name = "RequestId", HeaderText = "REQ #", FillWeight = 35 });
+            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { Name = "CustomerName", HeaderText = "Client Name", FillWeight = 110 });
+            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { Name = "SubmitterName", HeaderText = "Submitted By", FillWeight = 100 });
+            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { Name = "TargetSegment", HeaderText = "Segment", FillWeight = 90 });
+            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { Name = "ProposedIncentive", HeaderText = "Proposed Incentive", FillWeight = 130 });
+            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { Name = "ReasonCategory", HeaderText = "Reason", FillWeight = 110 });
+            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { Name = "Status", HeaderText = "Status", FillWeight = 75 });
+            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { Name = "CreatedAt", HeaderText = "Submitted On", FillWeight = 85 });
+
+            UiGridHelper.AddActionsColumn(_gridRequests, 64);
+
+            _gridRequests.CellPainting += GridRequests_CellPainting;
+            _gridRequests.CellContentClick += GridRequests_CellContentClick;
+        }
+
+        private void GridRequests_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
+        {
+            if (e.RowIndex < 0) return;
+
+            int custIdx = _gridRequests.Columns["CustomerName"]?.Index ?? -1;
+            int subIdx = _gridRequests.Columns["SubmitterName"]?.Index ?? -1;
+            int statusIdx = _gridRequests.Columns["Status"]?.Index ?? -1;
+
+            if (e.ColumnIndex == custIdx || e.ColumnIndex == subIdx)
+            {
+                string text = e.Value?.ToString() ?? string.Empty;
+                UiGridHelper.PaintAvatarCell(_gridRequests, e, text);
+            }
+            else if (e.ColumnIndex == statusIdx)
+            {
+                string text = e.Value?.ToString() ?? string.Empty;
+                UiGridHelper.PaintStatusText(_gridRequests, e, text);
+            }
+        }
+
+        private void GridRequests_CellContentClick(object? sender, DataGridViewCellEventArgs e)
+        {
+            int actionIdx = _gridRequests.Columns["Actions"]?.Index ?? -1;
+            if (e.RowIndex < 0 || e.ColumnIndex != actionIdx) return;
+
+            var row = _gridRequests.Rows[e.RowIndex];
+            int reqId = Convert.ToInt32(row.Cells["RequestId"].Value);
+            var req = _allRequests.FirstOrDefault(r => r.RequestId == reqId);
+            if (req == null) return;
+
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("🔍 Review / View Details", null, async (s, ev) =>
+            {
+                var dlg = new RetentionRequestDialog(_retentionController, req);
+                dlg.ShowDialog(this);
+                if (dlg.WasActionTaken) await LoadRequestsDataAsync();
+            });
+
+            var rect = _gridRequests.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, true);
+            menu.Show(_gridRequests, new Point(rect.Right - 150, rect.Bottom));
+        }
+
+        private async Task LoadRequestsDataAsync()
+        {
+            string status = _cboRequestStatusFilter.SelectedItem?.ToString() ?? "All";
+            DateTime from = _dtpRequestFrom.Value.Date;
+            DateTime to = _dtpRequestTo.Value.Date;
+
+            _allRequests = await _retentionController.GetRetentionRequestsAsync(status, from, to);
+            _paginationRequests.UpdatePagination(_allRequests.Count, _paginationRequests.CurrentPage, _paginationRequests.PageSize);
+            RenderPagedRequests(resetPage: true);
+        }
+
+        private void RenderPagedRequests(bool resetPage = false)
+        {
+            if (resetPage) _paginationRequests.ResetPage();
+
+            int pSize = _paginationRequests.PageSize;
+            int page = _paginationRequests.CurrentPage;
+
+            var paged = _allRequests.Skip((page - 1) * pSize).Take(pSize).ToList();
+
+            _gridRequests.Rows.Clear();
+            foreach (var r in paged)
+            {
+                _gridRequests.Rows.Add(
+                    r.RequestId,
+                    r.CustomerName,
+                    $"{r.SubmitterName} ({r.SubmitterRole})",
+                    r.TargetSegment,
+                    r.ProposedIncentive,
+                    r.ReasonCategory,
+                    r.Status,
+                    r.CreatedAt.ToString("MMM dd, yyyy")
+                );
+            }
+        }
+
+        #endregion
+
+        #region Tab 4: Campaign Queue & Dispatch
+
+        private void BuildTab4Queue()
+        {
+            _tabQueue = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Theme.Background,
+                Padding = new Padding(28, 16, 28, 16),
+                AutoScroll = true
+            };
+
+            // Top Filter Strip
+            var pnlTop = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 52,
+                BackColor = Color.White,
+                Padding = new Padding(16, 8, 16, 8),
+                Margin = new Padding(0, 0, 0, 14)
+            };
+            UiRadiusHelper.StyleCard(pnlTop, 8);
+
+            var lblStatus = new Label { Text = "Status:", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(14, 14), AutoSize = true };
+            _cboQueueStatusFilter = new ComboBox
+            {
+                Location = new Point(70, 10),
+                Width = 120,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = new Font("Segoe UI", 9f)
+            };
+            _cboQueueStatusFilter.Items.AddRange(new object[] { "All", "Queued", "Dispatched", "Failed" });
+            _cboQueueStatusFilter.SelectedIndex = 0;
+
+            var lblDate = new Label { Text = "From:", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(210, 14), AutoSize = true };
+            _dtpQueueFrom = new DateTimePicker
+            {
+                Location = new Point(255, 10),
+                Width = 110,
+                Format = DateTimePickerFormat.Short,
+                Value = DateTime.Today.AddDays(-60)
+            };
+
+            var lblTo = new Label { Text = "To:", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(375, 14), AutoSize = true };
+            _dtpQueueTo = new DateTimePicker
+            {
+                Location = new Point(405, 10),
+                Width = 110,
+                Format = DateTimePickerFormat.Short,
+                Value = DateTime.Today
+            };
+
+            _btnFilterQueue = new Button
+            {
+                Text = "Filter",
+                Location = new Point(530, 9),
+                Size = new Size(80, 32),
+                BackColor = Theme.SidebarAccent,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            _btnFilterQueue.FlatAppearance.BorderSize = 0;
+            UiRadiusHelper.StyleButton(_btnFilterQueue, 6);
+            _btnFilterQueue.Click += async (s, e) => await LoadQueueDataAsync();
+
+            pnlTop.Controls.Add(lblStatus);
+            pnlTop.Controls.Add(_cboQueueStatusFilter);
+            pnlTop.Controls.Add(lblDate);
+            pnlTop.Controls.Add(_dtpQueueFrom);
+            pnlTop.Controls.Add(lblTo);
+            pnlTop.Controls.Add(_dtpQueueTo);
+            pnlTop.Controls.Add(_btnFilterQueue);
+            _tabQueue.Controls.Add(pnlTop);
+
+            var splitQueue = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                BackColor = Color.Transparent,
+                Margin = new Padding(0, 14, 0, 0)
+            };
+            splitQueue.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F));
+            splitQueue.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
+            splitQueue.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+            // Left Grid Card
+            var pnlGridCard = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.White,
+                Padding = new Padding(16),
+                Margin = new Padding(0, 0, 10, 0)
+            };
+            UiRadiusHelper.StyleCard(pnlGridCard, 10);
+
+            _gridQueue = new DataGridView
+            {
+                Dock = DockStyle.Fill,
+                BackgroundColor = Color.White,
+                BorderStyle = BorderStyle.None,
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                ReadOnly = true,
+                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                MultiSelect = false,
+                RowHeadersVisible = false,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
+            };
+            UiGridHelper.ApplyModernGridStyle(_gridQueue, 48);
+            ConfigureQueueGridColumns();
+
+            _paginationQueue = new PaginationControl
+            {
+                Dock = DockStyle.Bottom,
+                Height = 44
+            };
+            _paginationQueue.SetItemLabel("campaign emails");
+            _paginationQueue.PageChanged += (_, _) => RenderPagedQueue(resetPage: false);
+            _paginationQueue.PageSizeChanged += (_, _) => RenderPagedQueue(resetPage: true);
+
+            pnlGridCard.Controls.Add(_gridQueue);
+            pnlGridCard.Controls.Add(_paginationQueue);
+            splitQueue.Controls.Add(pnlGridCard, 0, 0);
+
+            // Right Preview & Dispatch Card
+            _pnlQueuePreviewCard = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.White,
+                Padding = new Padding(20),
+                Margin = new Padding(10, 0, 0, 0),
+                AutoScroll = true
+            };
+            UiRadiusHelper.StyleCard(_pnlQueuePreviewCard, 10);
+
+            var lblCardTitle = new Label { Text = "Campaign Dispatch Preview", Font = new Font("Segoe UI", 12f, FontStyle.Bold), ForeColor = Color.FromArgb(15, 23, 42), Location = new Point(14, 14), AutoSize = true };
+            _lblQueuePreviewSubject = new Label { Text = "Select a queue entry to review and dispatch", Font = new Font("Segoe UI", 10f, FontStyle.Bold), Location = new Point(14, 46), Size = new Size(340, 24) };
+            _lblQueuePreviewBody = new Label { Text = "", Font = new Font("Segoe UI", 9.5f), Location = new Point(14, 76), Size = new Size(340, 360) };
+
+            _btnDispatchSelected = new Button
+            {
+                Text = "🚀 Dispatch Retention Email Now",
+                Location = new Point(14, 450),
+                Size = new Size(260, 42),
+                BackColor = Theme.SidebarAccent,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Enabled = false
+            };
+            _btnDispatchSelected.FlatAppearance.BorderSize = 0;
+            UiRadiusHelper.StyleButton(_btnDispatchSelected, 8);
+            _btnDispatchSelected.Click += async (s, e) => await OnDispatchSelectedQueueEmailAsync();
+
+            _pnlQueuePreviewCard.Controls.Add(lblCardTitle);
+            _pnlQueuePreviewCard.Controls.Add(_lblQueuePreviewSubject);
+            _pnlQueuePreviewCard.Controls.Add(_lblQueuePreviewBody);
+            _pnlQueuePreviewCard.Controls.Add(_btnDispatchSelected);
+            splitQueue.Controls.Add(_pnlQueuePreviewCard, 1, 0);
+
+            _tabQueue.Controls.Add(splitQueue);
+        }
+
+        private void ConfigureQueueGridColumns()
+        {
+            _gridQueue.Columns.Clear();
+
+            _gridQueue.Columns.Add(new DataGridViewTextBoxColumn { Name = "EmailLogId", HeaderText = "ID", FillWeight = 30 });
+            _gridQueue.Columns.Add(new DataGridViewTextBoxColumn { Name = "CustomerName", HeaderText = "Client Name", FillWeight = 100 });
+            _gridQueue.Columns.Add(new DataGridViewTextBoxColumn { Name = "Segment", HeaderText = "Segment", FillWeight = 85 });
+            _gridQueue.Columns.Add(new DataGridViewTextBoxColumn { Name = "Subject", HeaderText = "Subject", FillWeight = 130 });
+            _gridQueue.Columns.Add(new DataGridViewTextBoxColumn { Name = "Status", HeaderText = "Status", FillWeight = 75 });
+            _gridQueue.Columns.Add(new DataGridViewTextBoxColumn { Name = "CreatedAt", HeaderText = "Queued On", FillWeight = 80 });
+
+            UiGridHelper.AddActionsColumn(_gridQueue, 64);
+
+            _gridQueue.CellPainting += GridQueue_CellPainting;
+            _gridQueue.CellContentClick += GridQueue_CellContentClick;
+            _gridQueue.SelectionChanged += GridQueue_SelectionChanged;
+        }
+
+        private void GridQueue_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
+        {
+            if (e.RowIndex < 0) return;
+
+            int nameIdx = _gridQueue.Columns["CustomerName"]?.Index ?? -1;
+            int statusIdx = _gridQueue.Columns["Status"]?.Index ?? -1;
+
+            if (e.ColumnIndex == nameIdx)
+            {
+                string text = e.Value?.ToString() ?? string.Empty;
+                UiGridHelper.PaintAvatarCell(_gridQueue, e, text);
+            }
+            else if (e.ColumnIndex == statusIdx)
+            {
+                string text = e.Value?.ToString() ?? string.Empty;
+                UiGridHelper.PaintStatusText(_gridQueue, e, text);
+            }
+        }
+
+        private void GridQueue_SelectionChanged(object? sender, EventArgs e)
+        {
+            if (_gridQueue.CurrentRow == null || _gridQueue.CurrentRow.Index < 0)
+            {
+                _selectedQueueRow = null;
+                _btnDispatchSelected.Enabled = false;
+                _lblQueuePreviewSubject.Text = "Select a queue entry to review and dispatch";
+                _lblQueuePreviewBody.Text = string.Empty;
+                return;
+            }
+
+            int logId = Convert.ToInt32(_gridQueue.CurrentRow.Cells["EmailLogId"].Value);
+            _selectedQueueRow = _allQueueItems.FirstOrDefault(q => q.EmailLogId == logId);
+            if (_selectedQueueRow != null)
+            {
+                _lblQueuePreviewSubject.Text = _selectedQueueRow.Subject;
+                _lblQueuePreviewBody.Text = $"To: {_selectedQueueRow.CustomerName} <{_selectedQueueRow.RecipientEmail}>\n" +
+                                            $"Segment: {_selectedQueueRow.Segment}\n" +
+                                            $"Incentive: {_selectedQueueRow.IncentiveOffered ?? "None"}\n\n" +
+                                            $"{_selectedQueueRow.Body}";
+
+                _btnDispatchSelected.Enabled = _selectedQueueRow.Status == "Queued" || _selectedQueueRow.Status == "Failed";
+            }
+        }
+
+        private void GridQueue_CellContentClick(object? sender, DataGridViewCellEventArgs e)
+        {
+            int actionIdx = _gridQueue.Columns["Actions"]?.Index ?? -1;
+            if (e.RowIndex < 0 || e.ColumnIndex != actionIdx) return;
+
+            var row = _gridQueue.Rows[e.RowIndex];
+            int logId = Convert.ToInt32(row.Cells["EmailLogId"].Value);
+            var item = _allQueueItems.FirstOrDefault(q => q.EmailLogId == logId);
+            if (item == null) return;
+
+            var menu = new ContextMenuStrip();
+            if (item.Status == "Queued" || item.Status == "Failed")
+            {
+                menu.Items.Add("🚀 Dispatch Email Now", null, async (s, ev) =>
+                {
+                    _selectedQueueRow = item;
+                    await OnDispatchSelectedQueueEmailAsync();
+                });
+            }
+
+            menu.Items.Add("📋 View Full Details", null, (s, ev) =>
+            {
+                MessageBox.Show(
+                    $"Campaign Item #{item.EmailLogId}\n" +
+                    $"Client: {item.CustomerName} ({item.RecipientEmail})\n" +
+                    $"Status: {item.Status}\n" +
+                    $"Source: {item.GenerationSource}\n" +
+                    $"Queued: {item.CreatedAt:g}\n" +
+                    $"Dispatched: {item.DispatchedAt?.ToString("g") ?? "Pending"}\n" +
+                    $"Error: {item.ErrorMessage ?? "None"}\n\n" +
+                    $"Subject: {item.Subject}\n\n" +
+                    $"Body:\n{item.Body}",
+                    "Campaign Entry Details",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            });
+
+            var rect = _gridQueue.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, true);
+            menu.Show(_gridQueue, new Point(rect.Right - 150, rect.Bottom));
+        }
+
+        private async Task LoadQueueDataAsync()
+        {
+            string status = _cboQueueStatusFilter.SelectedItem?.ToString() ?? "All";
+            DateTime from = _dtpQueueFrom.Value.Date;
+            DateTime to = _dtpQueueTo.Value.Date;
+
+            _allQueueItems = await _retentionController.GetCampaignQueueAsync(status, from, to);
+            _paginationQueue.UpdatePagination(_allQueueItems.Count, _paginationQueue.CurrentPage, _paginationQueue.PageSize);
+            RenderPagedQueue(resetPage: true);
+        }
+
+        private void RenderPagedQueue(bool resetPage = false)
+        {
+            if (resetPage) _paginationQueue.ResetPage();
+
+            int pSize = _paginationQueue.PageSize;
+            int page = _paginationQueue.CurrentPage;
+
+            var paged = _allQueueItems.Skip((page - 1) * pSize).Take(pSize).ToList();
+
+            _gridQueue.Rows.Clear();
+            foreach (var q in paged)
+            {
+                _gridQueue.Rows.Add(
+                    q.EmailLogId,
+                    q.CustomerName,
+                    q.Segment,
+                    q.Subject,
+                    q.Status,
+                    q.CreatedAt.ToString("MMM dd, yyyy")
+                );
+            }
+        }
+
+        private async Task OnDispatchSelectedQueueEmailAsync()
+        {
+            if (_selectedQueueRow == null) return;
 
             var confirm = MessageBox.Show(
-                promptText,
-                isAgent ? "Confirm Personal Client Batch" : "Confirm Batch Run",
+                $"Dispatch retention email #{_selectedQueueRow.EmailLogId} to {_selectedQueueRow.CustomerName} ({_selectedQueueRow.RecipientEmail})?",
+                "Confirm Dispatch",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
 
             if (confirm != DialogResult.Yes) return;
 
-            _btnRunBatchNow.Enabled = false;
-            _btnRunBatchNow.Text = "Processing Batch...";
-
             try
             {
-                int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
-                if (RbacService.IsAdmin || RbacService.IsSuperAdmin)
-                {
-                    BtnSaveSettings_Click(this, EventArgs.Empty);
-                }
+                _btnDispatchSelected.Enabled = false;
+                await _retentionController.DispatchQueuedEmailAsync(
+                    _selectedQueueRow.EmailLogId,
+                    _selectedQueueRow.Subject,
+                    _selectedQueueRow.Body);
 
-                int? scopedAgentId = isAgent ? CurrentSession.UserId : null;
-                var result = await MarketUpdateBackgroundService.Instance.RunBatchAsync(
-                    tenantId: tenantId,
-                    forceRunAll: true,
-                    triggerType: isAgent ? "AgentManualBatch" : "ManualBatch",
-                    scopedAgentId: scopedAgentId);
-
-                _lblLastRunInfo.Text = $"Last batch run: {DateTime.Now:g}\r\nSummary: {result.Summary}";
-
-                LoadAuditHistory();
-                RefreshAutomatedKpis();
-
-                MessageBox.Show(
-                    $"Batch Execution Completed!\n\n" +
-                    $"• Total Evaluated: {result.TotalEvaluated}\n" +
-                    $"• Successfully Sent: {result.SentCount}\n" +
-                    $"• Skipped: {result.SkippedCount}\n" +
-                    $"• Failed: {result.FailedCount}\n\n" +
-                    $"Detailed delivery records have been added to the Delivery Audit & History Trail below.",
-                    "Batch Complete",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                MessageBox.Show("Retention campaign email dispatched successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                await LoadQueueDataAsync();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Batch execution error: {ex.Message}", "Batch Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Dispatch failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
-                _btnRunBatchNow.Enabled = true;
-                _btnRunBatchNow.Text = isAgent
-                    ? "🚀 Run Batch Update for My Clients Only"
-                    : (RbacService.IsManager ? "🚀 Run Team Batch Update (Force Send)" : "🚀 Run Automated Batch Now (Force Send All)");
+                _btnDispatchSelected.Enabled = true;
             }
+        }
+
+        #endregion
+
+        #region Tab 5: Automated Valuation & Templates
+
+        private void BuildTab5Settings()
+        {
+            _tabSettings = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Theme.Background,
+                Padding = new Padding(28, 16, 28, 16),
+                AutoScroll = true
+            };
+
+            var card = new Panel
+            {
+                Location = new Point(20, 16),
+                Size = new Size(740, 520),
+                BackColor = Color.White,
+                Padding = new Padding(24)
+            };
+            UiRadiusHelper.StyleCard(card, 10);
+
+            var lblT = new Label { Text = "Property Appreciation & Client Care Settings", Font = new Font("Segoe UI", 12f, FontStyle.Bold), Location = new Point(20, 16), AutoSize = true };
+            var lblSub = new Label { Text = "Preserves automated real-estate appreciation math and benchmark market valuation reporting", Font = new Font("Segoe UI", 9f), ForeColor = Color.FromArgb(100, 116, 139), Location = new Point(20, 42), AutoSize = true };
+
+            int y = 80;
+
+            var lblRate = new Label { Text = "Annual Appreciation Benchmark (%):", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(20, y), AutoSize = true };
+            _numAppreciation = new NumericUpDown
+            {
+                Location = new Point(20, y + 24),
+                Width = 140,
+                DecimalPlaces = 2,
+                Minimum = 0.1m,
+                Maximum = 30.0m,
+                Value = 5.0m,
+                Font = new Font("Segoe UI", 9.5f)
+            };
+
+            var lblFreq = new Label { Text = "Outreach Cadence (Days):", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(200, y), AutoSize = true };
+            _cboFrequency = new ComboBox
+            {
+                Location = new Point(200, y + 24),
+                Width = 160,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = new Font("Segoe UI", 9.5f)
+            };
+            _cboFrequency.Items.AddRange(new object[] { "90 Days (Quarterly)", "180 Days (Semi-Annual)", "365 Days (Annual)" });
+            _cboFrequency.SelectedIndex = 1;
+
+            y += 70;
+
+            var lblBroker = new Label { Text = "Brokerage Display Name:", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(20, y), AutoSize = true };
+            _txtBrokerageName = new TextBox
+            {
+                Location = new Point(20, y + 24),
+                Width = 660,
+                Font = new Font("Segoe UI", 9.5f),
+                Text = "NEXA Real Estate Advisory"
+            };
+
+            y += 66;
+
+            var lblCta = new Label { Text = "Valuation Call to Action:", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(20, y), AutoSize = true };
+            _txtCtaText = new TextBox
+            {
+                Location = new Point(20, y + 24),
+                Width = 660,
+                Font = new Font("Segoe UI", 9.5f),
+                Text = "Schedule a Complimentary Equity Consultation"
+            };
+
+            y += 66;
+
+            var lblSubjTpl = new Label { Text = "Subject Template:", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(20, y), AutoSize = true };
+            _txtSubjectTemplate = new TextBox
+            {
+                Location = new Point(20, y + 24),
+                Width = 660,
+                Font = new Font("Segoe UI", 9.5f),
+                Text = "Market Valuation & Equity Report for {PropertyAddress}"
+            };
+
+            y += 66;
+
+            _btnSaveValuationSettings = new Button
+            {
+                Text = "Save Benchmark Settings",
+                Location = new Point(20, y + 24),
+                Size = new Size(200, 38),
+                BackColor = Theme.SidebarAccent,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            _btnSaveValuationSettings.FlatAppearance.BorderSize = 0;
+            UiRadiusHelper.StyleButton(_btnSaveValuationSettings, 8);
+            _btnSaveValuationSettings.Click += async (s, e) => await OnSaveValuationSettingsAsync();
+
+            card.Controls.Add(lblT);
+            card.Controls.Add(lblSub);
+            card.Controls.Add(lblRate);
+            card.Controls.Add(_numAppreciation);
+            card.Controls.Add(lblFreq);
+            card.Controls.Add(_cboFrequency);
+            card.Controls.Add(lblBroker);
+            card.Controls.Add(_txtBrokerageName);
+            card.Controls.Add(lblCta);
+            card.Controls.Add(_txtCtaText);
+            card.Controls.Add(lblSubjTpl);
+            card.Controls.Add(_txtSubjectTemplate);
+            card.Controls.Add(_btnSaveValuationSettings);
+
+            _tabSettings.Controls.Add(card);
+        }
+
+        private async Task LoadValuationSettingsDataAsync()
+        {
+            using var db = LocalDb.CreateContext(CurrentSession.TenantId);
+            _currentValuationSettings = await db.AutomatedEmailSettings.FirstOrDefaultAsync(s => s.TenantId == CurrentSession.TenantId)
+                ?? new AutomatedEmailSettings { TenantId = CurrentSession.TenantId };
+
+            _numAppreciation.Value = Math.Max(0.1m, Math.Min(30m, _currentValuationSettings.AnnualAppreciationRatePercent));
+            _txtBrokerageName.Text = _currentValuationSettings.BrokerageName;
+            _txtCtaText.Text = _currentValuationSettings.CallToActionText;
+            _txtSubjectTemplate.Text = _currentValuationSettings.SubjectTemplate;
+        }
+
+        private async Task OnSaveValuationSettingsAsync()
+        {
+            if (!RbacService.HasFullOversight && !RbacService.IsAdmin)
+            {
+                MessageBox.Show("Only Administrators and Managers are authorized to edit valuation benchmark settings.", "Permission Denied", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                using var db = LocalDb.CreateContext(CurrentSession.TenantId);
+                var settings = await db.AutomatedEmailSettings.FirstOrDefaultAsync(s => s.TenantId == CurrentSession.TenantId);
+                if (settings == null)
+                {
+                    settings = new AutomatedEmailSettings { TenantId = CurrentSession.TenantId };
+                    db.AutomatedEmailSettings.Add(settings);
+                }
+
+                settings.AnnualAppreciationRatePercent = _numAppreciation.Value;
+                settings.BrokerageName = _txtBrokerageName.Text.Trim();
+                settings.CallToActionText = _txtCtaText.Text.Trim();
+                settings.SubjectTemplate = _txtSubjectTemplate.Text.Trim();
+                settings.UpdatedAt = DateTime.UtcNow;
+
+                await db.SaveChangesAsync();
+                MessageBox.Show("Benchmark settings updated successfully.", "Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to save settings: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        #endregion
+
+        #region Common Actions
+
+        private void ShowNewRequestModal()
+        {
+            var dlg = new RetentionRequestDialog(_retentionController);
+            dlg.ShowDialog(this);
+            if (dlg.WasActionTaken)
+            {
+                _ = RefreshCurrentTabAsync();
+            }
+        }
+
+        private void ExportCurrentViewToCsv()
+        {
+            try
+            {
+                using var sfd = new SaveFileDialog
+                {
+                    Filter = "CSV Files (*.csv)|*.csv",
+                    FileName = $"NEXA_Retention_Roster_{DateTime.Now:yyyyMMdd_HHmm}.csv"
+                };
+
+                if (sfd.ShowDialog() == DialogResult.OK)
+                {
+                    _retentionController.ExportRetentionToCsv(_allClients, sfd.FileName);
+                    MessageBox.Show($"Retention roster exported successfully to {sfd.FileName}", "Export Completed", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Export failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async Task LoadInitialDataAsync()
+        {
+            await RefreshCurrentTabAsync();
+        }
+
+        #endregion
+
+        private class OutreachComboItem
+        {
+            public RetentionCustomerRow Customer { get; }
+            public OutreachComboItem(RetentionCustomerRow cust) => Customer = cust;
+            public override string ToString() => $"{Customer.FullName} ({Customer.Email}) - {Customer.CurrentSegment}";
         }
     }
 }

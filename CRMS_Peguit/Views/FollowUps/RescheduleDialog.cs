@@ -31,7 +31,7 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             MinimizeBox = false;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(460, 300);
+            ClientSize = new Size(500, 310);
             BackColor = Color.White;
 
             var pnlHeader = new Panel
@@ -68,13 +68,13 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
                 Text = "NEW DUE DATE",
                 Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(71, 85, 105),
-                Location = new Point(24, 86),
+                Location = new Point(24, 16),
                 AutoSize = true
             };
 
             _dtpDate = new DateTimePicker
             {
-                Location = new Point(24, 108),
+                Location = new Point(24, 38),
                 Size = new Size(190, 25),
                 Font = new Font("Segoe UI", 9.5f),
                 Format = DateTimePickerFormat.Short,
@@ -86,13 +86,13 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
                 Text = "NEW DUE TIME",
                 Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(71, 85, 105),
-                Location = new Point(234, 86),
+                Location = new Point(234, 16),
                 AutoSize = true
             };
 
             _dtpTime = new DateTimePicker
             {
-                Location = new Point(234, 108),
+                Location = new Point(234, 38),
                 Size = new Size(200, 25),
                 Font = new Font("Segoe UI", 9.5f),
                 Format = DateTimePickerFormat.Custom,
@@ -106,9 +106,21 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
                 Text = "💡 Rescheduling sets the follow-up status back to Pending and records the update.",
                 Font = new Font("Segoe UI", 8.5f),
                 ForeColor = Color.FromArgb(100, 116, 139),
-                Location = new Point(24, 156),
+                Location = new Point(24, 86),
                 Size = new Size(410, 40)
             };
+
+            var pnlContent = new Panel
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                BackColor = Color.White
+            };
+            pnlContent.Controls.Add(lblDate);
+            pnlContent.Controls.Add(_dtpDate);
+            pnlContent.Controls.Add(lblTime);
+            pnlContent.Controls.Add(_dtpTime);
+            pnlContent.Controls.Add(lblHint);
 
             var pnlFooter = new Panel
             {
@@ -126,7 +138,8 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
                 ForeColor = Color.FromArgb(71, 85, 105),
                 FlatStyle = FlatStyle.Flat,
                 Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold)
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             _btnCancel.FlatAppearance.BorderColor = Color.FromArgb(203, 213, 225);
             _btnCancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
@@ -134,13 +147,14 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             _btnSave = new Button
             {
                 Text = "Confirm Reschedule",
-                Size = new Size(140, 34),
-                Location = new Point(334, 11),
+                Size = new Size(150, 34),
+                Location = new Point(330, 11),
                 BackColor = Theme.Primary,
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
                 Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold)
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             _btnSave.FlatAppearance.BorderSize = 0;
             _btnSave.Click += BtnSaveClick;
@@ -148,13 +162,15 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             pnlFooter.Controls.Add(_btnCancel);
             pnlFooter.Controls.Add(_btnSave);
 
-            Controls.Add(lblHint);
-            Controls.Add(_dtpTime);
-            Controls.Add(lblTime);
-            Controls.Add(_dtpDate);
-            Controls.Add(lblDate);
-            Controls.Add(pnlHeader);
+            pnlFooter.Resize += (_, _) =>
+            {
+                _btnSave.Location = new Point(pnlFooter.Width - _btnSave.Width - 20, 11);
+                _btnCancel.Location = new Point(_btnSave.Left - _btnCancel.Width - 10, 11);
+            };
+
+            Controls.Add(pnlContent);
             Controls.Add(pnlFooter);
+            Controls.Add(pnlHeader);
         }
 
         private void ApplyStyling()

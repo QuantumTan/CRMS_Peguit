@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.infrastructure.Seeding;
@@ -175,33 +176,7 @@ namespace CRMS_Peguit.winforms
 
             if (args.Contains("--seed-cloud-tenants"))
             {
-                var cloudConn = DbConfiguration.GetCloudConnectionString();
-                Console.WriteLine("==================================================");
-                Console.WriteLine("SEEDING CLOUD DATABASE FOR ALL TENANTS (1, 2, 3)");
-                Console.WriteLine("==================================================");
-                foreach (int tid in new[] { 1, 2, 3 })
-                {
-                    try
-                    {
-                        Console.WriteLine($"[CLOUD-SEED] Seeding Tenant {tid}...");
-                        using var cloud = new RealEstateDbContext(
-                            new DbContextOptionsBuilder<RealEstateDbContext>()
-                                .UseSqlServer(cloudConn, opt => opt.CommandTimeout(180).EnableRetryOnFailure(5, TimeSpan.FromSeconds(15), null))
-                                .Options, tid);
-                        SchemaRepairService.EnsureCrmPolishColumns(cloud);
-                        DbSeeder.SeedTestUsersAsync(cloud, tid).GetAwaiter().GetResult();
-                        Console.WriteLine($"[CLOUD-SEED] Tenant {tid} successfully seeded!");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[CLOUD-SEED] Tenant {tid} failed: {ex.Message}");
-                        if (ex.InnerException != null)
-                            Console.WriteLine($"[CLOUD-SEED] INNER: {ex.InnerException.Message}");
-                    }
-                }
-                Console.WriteLine("==================================================");
-                Console.WriteLine("ALL TENANTS POPULATED IN CLOUD DATABASE!");
-                Console.WriteLine("==================================================");
+                Console.WriteLine("Direct seeding of the cloud database is permanently disabled. Cloud must be populated exclusively via sync.");
                 return;
             }
 
@@ -267,12 +242,187 @@ namespace CRMS_Peguit.winforms
                 return;
             }
 
-            if (args.Contains("--sync-once"))
+            if (args.Contains("--verify-retention"))
+            {
+                bool success = CRMS_Peguit.winforms.Tests.RetentionVerificationTests.RunAllTestsAsync().GetAwaiter().GetResult();
+                Environment.Exit(success ? 0 : 1);
+                return;
+            }
+
+            if (args.Contains("--verify-sync"))
+            {
+                Console.WriteLine("==================================================");
+                Console.WriteLine("VERIFYING OFFLINE QUEUE & CLOUD DIRECT SYNC (MONSTERASP)");
+                Console.WriteLine("==================================================");
+
+                int tenantId = 3;
+                using var localContext = LocalDb.CreateContext(tenantId);
+                var agentUser = localContext.Users.Include(u => u.Role).FirstOrDefault(u => u.Role.RoleName == "Agent")
+                    ?? localContext.Users.Include(u => u.Role).First();
+
+                CRMS_Peguit.winforms.Auth.CurrentSession.Start(agentUser.UserId, tenantId, agentUser.FullName, agentUser.Email, agentUser.Role?.RoleName ?? "Agent", null, false);
+                CRMS_Peguit.winforms.Auth.CurrentSession.SetActiveBranch(agentUser.BranchId, "Main Branch");
+
+                Console.WriteLine($"[1] Active Session: User={agentUser.FullName} (Id={agentUser.UserId}), Tenant={tenantId}, Role={agentUser.Role?.RoleName}");
+
+                var syncService = CRMS_Peguit.winforms.Models.Services.SyncService.Instance;
+                bool isOnline = syncService.CheckConnectivityAsync().GetAwaiter().GetResult();
+                Console.WriteLine($"[2] MonsterASP Cloud Connectivity: {(isOnline ? "ONLINE" : "OFFLINE")}");
+
+                var cache = CRMS_Peguit.winforms.Services.Offline.LocalDataCache.Instance;
+                cache.ClearAllQueue(tenantId);
+                Console.WriteLine("[2b] Cleared stale queue items for clean isolated test.");
+
+                string uniqueMarker = $"SyncTest_{DateTime.UtcNow.Ticks}";
+                var testLead = new Lead
+                {
+                    Source = "Website",
+                    Stage = "new",
+                    Priority = "High",
+                    ExpectedValue = 1500000m,
+                    AssignedAgentId = agentUser.UserId,
+                    CreatedByUserId = agentUser.UserId,
+                    BranchId = agentUser.BranchId,
+                    Notes = $"Auto-verification lead created at {DateTime.UtcNow:u} [{uniqueMarker}]",
+                    FirstName = "SyncTestFirst",
+                    LastName = uniqueMarker,
+                    Email = $"{uniqueMarker}@synctest.example.com",
+                    Phone = "09123456789"
+                };
+
+                using var leadCtrl = new CRMS_Peguit.winforms.Controllers.LeadController();
+                var createdLead = leadCtrl.Add(testLead);
+                Console.WriteLine($"[3] Created Local Lead: Id={createdLead.LeadId}, PersonId={createdLead.PersonId}, Name={createdLead.FullName}");
+
+                var pendingItems = cache.GetPendingQueue(tenantId);
+                var queuedItem = pendingItems.FirstOrDefault(q => q.EntityType == "Lead" && q.EntityLocalId == createdLead.LeadId.ToString());
+                bool isQueued = queuedItem != null;
+                Console.WriteLine($"[4] Enqueued in SQLite PendingSyncQueue: {isQueued}, QueueId={queuedItem?.QueueId}, Status={queuedItem?.Status}");
+
+                Console.WriteLine($"[5] Waiting for Queue Item #{queuedItem?.QueueId} to sync to MonsterASP Cloud DB...");
+                PendingSyncQueue? processedItem = null;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                while (sw.Elapsed < TimeSpan.FromSeconds(30))
+                {
+                    if (queuedItem != null)
+                    {
+                        processedItem = cache.GetQueueItem(queuedItem.QueueId);
+                        if (processedItem != null && processedItem.Status == "Synced")
+                        {
+                            break;
+                        }
+                    }
+                    Thread.Sleep(500);
+                }
+                Console.WriteLine($"[6] SQLite Queue Item Final Status: {processedItem?.Status} (Expected: Synced) in {sw.Elapsed.TotalSeconds:F1}s");
+
+                var cloudConn = DbConfiguration.GetCloudConnectionString();
+                using var cloudConnObj = new Microsoft.Data.SqlClient.SqlConnection(cloudConn);
+                cloudConnObj.Open();
+                using var cmd = cloudConnObj.CreateCommand();
+                cmd.CommandText = "SELECT COUNT(1) FROM Leads WHERE LastName = @marker";
+                cmd.Parameters.AddWithValue("@marker", uniqueMarker);
+                int cloudMatchCount = (int)cmd.ExecuteScalar();
+                Console.WriteLine($"[7] Record Found in MonsterASP Cloud DB (db66713): {cloudMatchCount > 0} (Count: {cloudMatchCount})");
+
+                using var cleanCmd = cloudConnObj.CreateCommand();
+                cleanCmd.CommandText = "DELETE FROM Leads WHERE LastName = @marker";
+                cleanCmd.Parameters.AddWithValue("@marker", uniqueMarker);
+                cleanCmd.ExecuteNonQuery();
+
+                using var cleanLocalCmd = localContext.Database.GetDbConnection().CreateCommand();
+                localContext.Database.OpenConnection();
+                cleanLocalCmd.CommandText = $"DELETE FROM Leads WHERE LeadId = {createdLead.LeadId};";
+                cleanLocalCmd.ExecuteNonQuery();
+
+                Console.WriteLine($"[8] Cleaned up temporary test lead {uniqueMarker} from Cloud and Local DBs.");
+
+                // --- Customer Sync Verification ---
+                string custMarker = $"CustSync_{DateTime.UtcNow.Ticks}";
+                var testCust = new Customer
+                {
+                    Type = "Individual",
+                    Status = "Active",
+                    AssignedAgentId = agentUser.UserId,
+                    CreatedByUserId = agentUser.UserId,
+                    FirstName = "CustomerTestFirst",
+                    LastName = custMarker,
+                    Email = $"{custMarker}@synctest.example.com",
+                    Phone = "09987654321"
+                };
+                using var custCtrl = new CRMS_Peguit.winforms.Controllers.CustomerController();
+                var createdCust = custCtrl.Add(testCust);
+                Console.WriteLine($"[9] Created Local Customer: Id={createdCust.CustomerId}, Name={createdCust.FullName}");
+
+                var custPending = cache.GetPendingQueue(tenantId);
+                var custQueuedItem = custPending.FirstOrDefault(q => q.EntityType == "Customer" && q.EntityLocalId == createdCust.CustomerId.ToString());
+                bool isCustQueued = custQueuedItem != null;
+                Console.WriteLine($"[10] Enqueued in SQLite PendingSyncQueue: {isCustQueued}, QueueId={custQueuedItem?.QueueId}, Status={custQueuedItem?.Status}");
+
+                Console.WriteLine($"[11] Waiting for Customer Queue Item #{custQueuedItem?.QueueId} to sync to MonsterASP Cloud DB...");
+                PendingSyncQueue? processedCust = null;
+                sw.Restart();
+                while (sw.Elapsed < TimeSpan.FromSeconds(30))
+                {
+                    if (custQueuedItem != null)
+                    {
+                        processedCust = cache.GetQueueItem(custQueuedItem.QueueId);
+                        if (processedCust != null && processedCust.Status == "Synced")
+                        {
+                            break;
+                        }
+                    }
+                    Thread.Sleep(500);
+                }
+                Console.WriteLine($"[12] SQLite Customer Queue Item Final Status: {processedCust?.Status} (Expected: Synced) in {sw.Elapsed.TotalSeconds:F1}s");
+
+                using var cmd2 = cloudConnObj.CreateCommand();
+                cmd2.CommandText = "SELECT COUNT(1) FROM Customers WHERE LastName = @marker";
+                cmd2.Parameters.AddWithValue("@marker", custMarker);
+                int cloudCustCount = (int)cmd2.ExecuteScalar();
+                Console.WriteLine($"[13] Customer Found in MonsterASP Cloud DB (db66713): {cloudCustCount > 0} (Count: {cloudCustCount})");
+
+                using var cleanCmd2 = cloudConnObj.CreateCommand();
+                cleanCmd2.CommandText = "DELETE FROM Customers WHERE LastName = @marker";
+                cleanCmd2.Parameters.AddWithValue("@marker", custMarker);
+                cleanCmd2.ExecuteNonQuery();
+
+                using var cleanLocalCmd2 = localContext.Database.GetDbConnection().CreateCommand();
+                cleanLocalCmd2.CommandText = $"DELETE FROM Customers WHERE CustomerId = {createdCust.CustomerId};";
+                cleanLocalCmd2.ExecuteNonQuery();
+
+                Console.WriteLine($"[14] Cleaned up temporary test customer {custMarker} from Cloud and Local DBs.");
+
+                bool success = isQueued && processedItem?.Status == "Synced" && cloudMatchCount > 0
+                    && isCustQueued && processedCust?.Status == "Synced" && cloudCustCount > 0;
+                if (success)
+                {
+                    Console.WriteLine("==================================================");
+                    Console.WriteLine("RESULT: ALL SYNC VERIFICATION CHECKS PASSED (100%)!");
+                    Console.WriteLine("==================================================");
+                }
+                else
+                {
+                    Console.WriteLine("==================================================");
+                    Console.WriteLine("RESULT: SYNC VERIFICATION FAILED!");
+                    Console.WriteLine("==================================================");
+                }
+                Environment.Exit(success ? 0 : 1);
+                return;
+            }
+
+            if (args.Contains("--sync-once") || args.Contains("--sync-all-users"))
             {
                 if (!string.IsNullOrWhiteSpace(cloudConnection))
                 {
+                    Console.WriteLine("==================================================");
+                    Console.WriteLine("SYNCHRONIZING USERS & ROLES ACROSS ALL TENANTS TO CLOUD");
+                    Console.WriteLine("==================================================");
                     using var sync = new SyncService(localConnection, cloudConnection);
-                    sync.SyncAsync().GetAwaiter().GetResult();
+                    using var cloudConn = new Microsoft.Data.SqlClient.SqlConnection(cloudConnection);
+                    cloudConn.Open();
+                    sync.PushAllTenantsUsersAndRolesToCloudAsync(cloudConn, 1).GetAwaiter().GetResult();
+                    Console.WriteLine("Users & roles sync complete!");
                 }
                 return;
             }

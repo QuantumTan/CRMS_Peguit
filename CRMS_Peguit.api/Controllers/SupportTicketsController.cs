@@ -40,8 +40,8 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var query = _db.SupportTickets
-                .Include(t => t.Customer).ThenInclude(c => c!.Person)
-                .Include(t => t.AssignedToUser).ThenInclude(u => u!.Person)
+                .Include(t => t.Customer)
+                .Include(t => t.AssignedToUser)
                 .AsQueryable();
 
             // Ownership-Based Access Control:
@@ -73,7 +73,7 @@ namespace CRMS_Peguit.api.Controllers
                     t.TicketNumber.Contains(s) ||
                     t.Category.Contains(s) ||
                     t.Description.Contains(s) ||
-                    (t.Customer != null && (t.Customer.Person.FirstName.Contains(s) || t.Customer.Person.LastName.Contains(s) || (t.Customer.Person.Email != null && t.Customer.Person.Email.Contains(s)))));
+                    (t.Customer != null && (t.Customer.FirstName.Contains(s) || t.Customer.LastName.Contains(s) || (t.Customer.Email != null && t.Customer.Email.Contains(s)))));
             }
 
             if (page.HasValue || pageSize.HasValue)
@@ -123,8 +123,8 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var item = await _db.SupportTickets
-                .Include(t => t.Customer).ThenInclude(c => c!.Person)
-                .Include(t => t.AssignedToUser).ThenInclude(u => u!.Person)
+                .Include(t => t.Customer)
+                .Include(t => t.AssignedToUser)
                 .Include(t => t.Comments)
                 .SingleOrDefaultAsync(t => t.TicketId == id);
 
@@ -145,7 +145,8 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> Create(SupportTicket ticket)
         {
             var user = CurrentUser;
-            ticket.RaisedByUserId = user.UserId > 0 ? user.UserId : (ticket.RaisedByUserId > 0 ? ticket.RaisedByUserId : 1);
+            if (user.UserId <= 0) return Unauthorized();
+            ticket.RaisedByUserId = user.UserId;
             ticket.CreatedAt = DateTime.UtcNow;
             ticket.AssignedToUserId = null; // Default unassigned
             if (string.IsNullOrWhiteSpace(ticket.Category)) ticket.Category = "Other";
@@ -221,10 +222,12 @@ namespace CRMS_Peguit.api.Controllers
 
             if (!string.IsNullOrWhiteSpace(req.Note))
             {
+                if (CurrentUser.UserId <= 0) return Unauthorized();
+
                 _db.TicketComments.Add(new TicketComment
                 {
                     TicketId = id,
-                    AuthorUserId = CurrentUser.UserId > 0 ? CurrentUser.UserId : 1,
+                    AuthorUserId = CurrentUser.UserId,
                     CommentText = $"[Status Changed to {req.NewStatus}] {req.Note}",
                     IsInternal = true,
                     CreatedAt = DateTime.UtcNow
@@ -238,6 +241,8 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPost("{id:int}/reopen")]
         public async Task<IActionResult> Reopen(int id, [FromBody] ReopenTicketRequest req)
         {
+            if (CurrentUser.UserId <= 0) return Unauthorized();
+
             var item = await _db.SupportTickets.FindAsync(id);
             if (item is null) return NotFound();
 
@@ -247,7 +252,7 @@ namespace CRMS_Peguit.api.Controllers
             _db.TicketComments.Add(new TicketComment
             {
                 TicketId = id,
-                AuthorUserId = CurrentUser.UserId > 0 ? CurrentUser.UserId : 1,
+                AuthorUserId = CurrentUser.UserId,
                 CommentText = $"[Ticket Reopened] {req.Reason}",
                 IsInternal = true,
                 CreatedAt = DateTime.UtcNow
@@ -261,6 +266,8 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> AssignTo(int id, [FromBody] AssignTicketRequest req)
         {
             var user = CurrentUser;
+            if (user.UserId <= 0) return Unauthorized();
+
             if (!ApiSecurityHelper.CanAssignRecords(user.Role))
                 return StatusCode(StatusCodes.Status403Forbidden, "Only Manager or Admin may assign tickets.");
 
@@ -275,7 +282,7 @@ namespace CRMS_Peguit.api.Controllers
                 _db.TicketComments.Add(new TicketComment
                 {
                     TicketId = id,
-                    AuthorUserId = user.UserId > 0 ? user.UserId : 1,
+                    AuthorUserId = user.UserId,
                     CommentText = $"[Assignment Note] {req.Notes}",
                     IsInternal = true,
                     CreatedAt = DateTime.UtcNow
@@ -290,7 +297,7 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> GetComments(int id)
         {
             var comments = await _db.TicketComments
-                .Include(c => c.AuthorUser).ThenInclude(u => u!.Person)
+                .Include(c => c.AuthorUser)
                 .Where(c => c.TicketId == id)
                 .OrderBy(c => c.CreatedAt)
                 .ToListAsync();
@@ -301,6 +308,8 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> AddComment(int id, [FromBody] AddTicketCommentRequest req)
         {
             var user = CurrentUser;
+            if (user.UserId <= 0) return Unauthorized();
+
             var ticket = await _db.SupportTickets.FindAsync(id);
             if (ticket is null) return NotFound();
 
@@ -312,7 +321,7 @@ namespace CRMS_Peguit.api.Controllers
             var comment = new TicketComment
             {
                 TicketId = id,
-                AuthorUserId = user.UserId > 0 ? user.UserId : 1,
+                AuthorUserId = user.UserId,
                 CommentText = req.CommentText,
                 IsInternal = req.IsInternal,
                 CreatedAt = DateTime.UtcNow
@@ -349,10 +358,9 @@ namespace CRMS_Peguit.api.Controllers
         {
             var customers = await _db.Customers
                 .AsNoTracking()
-                .Include(c => c.Person)
                 .Where(c => !c.IsDeleted)
-                .OrderBy(c => c.Person.LastName)
-                .ThenBy(c => c.Person.FirstName)
+                .OrderBy(c => c.LastName)
+                .ThenBy(c => c.FirstName)
                 .ToListAsync();
             return Ok(customers);
         }
@@ -368,10 +376,9 @@ namespace CRMS_Peguit.api.Controllers
 
             var agents = await _db.Users
                 .AsNoTracking()
-                .Include(u => u.Person)
                 .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status.ToLower() != "inactive")
-                .OrderBy(u => u.Person.LastName)
-                .ThenBy(u => u.Person.FirstName)
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
                 .Select(u => new AgentPickerDto(u.UserId, u.FullName, u.Email))
                 .ToListAsync();
 
@@ -383,7 +390,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var dict = await _db.Users
                 .AsNoTracking()
-                .Include(u => u.Person)
                 .ToDictionaryAsync(u => u.UserId, u => u.FullName);
             return Ok(dict);
         }
@@ -412,7 +418,7 @@ namespace CRMS_Peguit.api.Controllers
             var now = DateTime.UtcNow;
             var list = await _db.SupportTickets
                 .AsNoTracking()
-                .Include(t => t.Customer).ThenInclude(c => c!.Person)
+                .Include(t => t.Customer)
                 .Where(t => t.Status.ToLower() != "resolved")
                 .OrderBy(t => t.CreatedAt)
                 .Take(maxCount)

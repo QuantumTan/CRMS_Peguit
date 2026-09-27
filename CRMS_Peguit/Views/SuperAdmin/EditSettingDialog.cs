@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 // =============================================================================
 // EditSettingDialog — Edit a single SystemSetting value.
@@ -18,25 +19,26 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         public EditSettingDialog(string settingKey, string currentValue)
         {
             Text = $"Edit Setting — {settingKey}";
-            Size = new Size(460, 260);
-            StartPosition = FormStartPosition.CenterParent;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            BackColor = Theme.Surface;
+            Size = new Size(500, 330);
+            UiRadiusHelper.StyleModal(this, 8);
 
-            var pnl = new Panel { Dock = DockStyle.Fill, Padding = new Padding(28) };
-            Controls.Add(pnl);
+            var pnlContent = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(24),
+                BackColor = Color.White,
+                AutoScroll = true
+            };
 
             var lblHeader = new Label
             {
                 Text = "Edit System Setting",
-                Font = new Font("Segoe UI", 13f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 13.5f, FontStyle.Bold),
                 ForeColor = Theme.TextPrimary,
                 AutoSize = true,
-                Location = new Point(0, 0)
+                Location = new Point(24, 20)
             };
-            pnl.Controls.Add(lblHeader);
+            pnlContent.Controls.Add(lblHeader);
 
             var lblKey = new Label
             {
@@ -44,9 +46,9 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = new Font("Segoe UI", 9.5f),
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
-                Location = new Point(0, 30)
+                Location = new Point(24, 52)
             };
-            pnl.Controls.Add(lblKey);
+            pnlContent.Controls.Add(lblKey);
 
             var lblVal = new Label
             {
@@ -54,18 +56,18 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 ForeColor = Theme.TextPrimary,
                 AutoSize = true,
-                Location = new Point(0, 68)
+                Location = new Point(24, 88)
             };
-            pnl.Controls.Add(lblVal);
+            pnlContent.Controls.Add(lblVal);
 
             _txtValue = new TextBox
             {
-                Font = new Font("Segoe UI", 10.5f),
-                Location = new Point(0, 90),
-                Width = 400,
+                Location = new Point(24, 112),
+                Width = 412,
                 Text = currentValue
             };
-            pnl.Controls.Add(_txtValue);
+            UiRadiusHelper.StyleStandardInput(_txtValue);
+            pnlContent.Controls.Add(_txtValue);
 
             var lblNote = new Label
             {
@@ -73,33 +75,37 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = new Font("Segoe UI", 8.5f, FontStyle.Italic),
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
-                Location = new Point(0, 120)
+                Location = new Point(24, 150)
             };
-            pnl.Controls.Add(lblNote);
+            pnlContent.Controls.Add(lblNote);
+
+            // Footer Panel
+            var pnlFooter = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 60,
+                BackColor = Color.FromArgb(248, 250, 252)
+            };
 
             var btnCancel = new Button
             {
                 Text = "Cancel",
                 DialogResult = DialogResult.Cancel,
-                Location = new Point(196, 148),
-                Size = new Size(90, 36),
-                Font = new Font("Segoe UI", 9.5f),
-                Cursor = Cursors.Hand
+                Location = new Point(250, 12),
+                Size = new Size(100, 36),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
-            UiRadiusHelper.StyleButton(btnCancel, 6);
-            pnl.Controls.Add(btnCancel);
+            UiRadiusHelper.StyleSecondaryButton(btnCancel, 6);
+            pnlFooter.Controls.Add(btnCancel);
 
             var btnSave = new Button
             {
                 Text = "Save",
-                Location = new Point(308, 148),
-                Size = new Size(92, 36),
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                BackColor = Theme.Primary,
-                ForeColor = Color.White,
-                Cursor = Cursors.Hand
+                Location = new Point(360, 12),
+                Size = new Size(100, 36),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
-            UiRadiusHelper.StyleButton(btnSave, 6);
+            UiRadiusHelper.StylePrimaryButton(btnSave, 6);
             btnSave.Click += (_, _) =>
             {
                 if (string.IsNullOrWhiteSpace(_txtValue.Text))
@@ -112,7 +118,10 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 DialogResult = DialogResult.OK;
                 Close();
             };
-            pnl.Controls.Add(btnSave);
+            pnlFooter.Controls.Add(btnSave);
+
+            Controls.Add(pnlContent);
+            Controls.Add(pnlFooter);
 
             AcceptButton = btnSave;
             CancelButton = btnCancel;

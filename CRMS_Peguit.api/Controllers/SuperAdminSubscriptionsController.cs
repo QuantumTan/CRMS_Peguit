@@ -23,7 +23,7 @@ namespace CRMS_Peguit.api.Controllers
 
         private bool ValidateSuperAdmin()
         {
-            return ApiSecurityHelper.IsSuperAdmin(User) || ApiSecurityHelper.IsAdmin(User);
+            return ApiSecurityHelper.IsSuperAdmin(User);
         }
 
         [HttpGet("bi-summary")]
@@ -211,6 +211,119 @@ namespace CRMS_Peguit.api.Controllers
             }
 
             return Ok(new { success = true });
+        }
+
+        [HttpGet("{subscriptionId}/payments")]
+        public async Task<ActionResult<List<PaymentRecordDto>>> GetPayments(int subscriptionId)
+        {
+            if (!ValidateSuperAdmin()) return Forbid();
+
+            var records = await _masterDb.PaymentRecords
+                .Include(p => p.Subscription)
+                    .ThenInclude(s => s!.Company)
+                .Include(p => p.RecordedBySuperAdmin)
+                .Where(p => p.SubscriptionId == subscriptionId)
+                .OrderByDescending(p => p.PaymentDate)
+                .ThenByDescending(p => p.PaymentRecordId)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var dtos = records.Select(r => new PaymentRecordDto
+            {
+                PaymentRecordId = r.PaymentRecordId,
+                SubscriptionId = r.SubscriptionId,
+                CompanyId = r.Subscription?.CompanyId ?? 0,
+                CompanyName = r.Subscription?.Company?.CompanyName ?? string.Empty,
+                CompanyCode = r.Subscription?.Company?.CompanyCode ?? string.Empty,
+                AmountPaid = r.AmountPaid,
+                PaymentMethod = r.PaymentMethod,
+                PaymentReference = r.PaymentReference,
+                PaymentDate = r.PaymentDate,
+                RecordedByUserId = r.RecordedByUserId,
+                RecordedByName = r.RecordedBySuperAdmin != null
+                    ? $"{r.RecordedBySuperAdmin.FirstName} {r.RecordedBySuperAdmin.LastName}".Trim()
+                    : "Platform Super Admin",
+                Notes = r.Notes,
+                CreatedAt = r.CreatedAt
+            }).ToList();
+
+            return Ok(dtos);
+        }
+
+        [HttpPost("{subscriptionId}/payments")]
+        public async Task<ActionResult<PaymentRecordDto>> RecordPayment(int subscriptionId, [FromBody] RecordPaymentRequest req)
+        {
+            if (!ValidateSuperAdmin()) return Forbid();
+
+            if (req.AmountPaid <= 0)
+                return BadRequest(new { message = "Amount paid must be greater than zero." });
+
+            if (string.IsNullOrWhiteSpace(req.PaymentReference))
+                return BadRequest(new { message = "Payment Reference is required." });
+
+            var sub = await _masterDb.Subscriptions
+                .Include(s => s.Company)
+                .FirstOrDefaultAsync(s => s.SubscriptionId == subscriptionId);
+
+            if (sub == null) return NotFound();
+
+            var (newEndDate, newStatus) = Subscription.CalculateExtension(sub.EndDate, req.PaymentDate, sub.PlanName);
+            sub.EndDate = newEndDate;
+            sub.Status = newStatus;
+
+            int superAdminId = 1;
+            string superAdminName = "Platform Super Admin";
+            var claimId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (int.TryParse(claimId, out int parsedId)) superAdminId = parsedId;
+            var claimName = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
+            if (!string.IsNullOrWhiteSpace(claimName)) superAdminName = claimName;
+
+            var record = new PaymentRecord
+            {
+                SubscriptionId = sub.SubscriptionId,
+                AmountPaid = req.AmountPaid,
+                PaymentMethod = req.PaymentMethod,
+                PaymentReference = req.PaymentReference.Trim(),
+                PaymentDate = req.PaymentDate,
+                RecordedByUserId = superAdminId,
+                Notes = req.Notes?.Trim(),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _masterDb.PaymentRecords.Add(record);
+
+            // Platform Audit Log write
+            _masterDb.PlatformAuditLogs.Add(new PlatformAuditLog
+            {
+                PerformedBySuperAdminId = superAdminId,
+                PerformedByName = superAdminName,
+                ActionType = "PaymentRecorded",
+                Detail = $"Payment of ₱{req.AmountPaid:N2} via {record.PaymentMethod} (Ref: {record.PaymentReference}) recorded for '{sub.Company?.CompanyName ?? "Tenant"}'. Paid Through extended to {newEndDate:MMM dd, yyyy} (Status: {newStatus}).",
+                TargetCompanyId = sub.CompanyId,
+                TargetCompanyName = sub.Company?.CompanyName,
+                CreatedAt = DateTime.UtcNow
+            });
+
+            await _masterDb.SaveChangesAsync();
+
+            var dto = new PaymentRecordDto
+            {
+                PaymentRecordId = record.PaymentRecordId,
+                SubscriptionId = record.SubscriptionId,
+                CompanyId = sub.CompanyId,
+                CompanyName = sub.Company?.CompanyName ?? string.Empty,
+                CompanyCode = sub.Company?.CompanyCode ?? string.Empty,
+                AmountPaid = record.AmountPaid,
+                PaymentMethod = record.PaymentMethod,
+                PaymentReference = record.PaymentReference,
+                PaymentDate = record.PaymentDate,
+                RecordedByUserId = record.RecordedByUserId,
+                RecordedByName = superAdminName,
+                Notes = record.Notes,
+                CreatedAt = record.CreatedAt
+            };
+
+            return Ok(dto);
         }
     }
 }

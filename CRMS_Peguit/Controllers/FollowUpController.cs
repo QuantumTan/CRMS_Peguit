@@ -62,9 +62,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 var query = db.TaskReminders
                     .AsNoTracking()
                     .Include(r => r.RelatedCustomer)
-                        .ThenInclude(c => c!.Person)
                     .Include(r => r.RelatedLead)
-                        .ThenInclude(l => l!.Person)
                     .Where(r => !r.IsDeleted);
 
                 if (!RbacService.HasFullOversight)
@@ -151,9 +149,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 var query = _db.TaskReminders
                     .AsNoTracking()
                     .Include(r => r.RelatedCustomer)
-                        .ThenInclude(c => c!.Person)
                     .Include(r => r.RelatedLead)
-                        .ThenInclude(l => l!.Person)
                     .Where(r => r.TaskReminderId == id && !r.IsDeleted);
 
                 if (!RbacService.HasFullOversight)
@@ -203,9 +199,10 @@ namespace CRMS_Peguit.winforms.Controllers
             _db.SaveChanges();
             try { LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, new[] { reminder }); } catch { }
 
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
+            SyncService.Instance.EnqueueOfflineCreate("TaskReminder", reminder, TenantId, currentUserId, reminder.TaskReminderId.ToString());
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
             {
-                SyncService.Instance.EnqueueOfflineCreate("TaskReminder", reminder, TenantId, currentUserId);
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
             }
 
             return reminder;
@@ -216,11 +213,6 @@ namespace CRMS_Peguit.winforms.Controllers
             ValidateRelationshipExclusivity(reminder);
 
             int currentUserId = CurrentSession.UserId;
-
-            if (CurrentSession.IsOffline || !SyncService.Instance.IsOnline)
-            {
-                SyncService.Instance.EnqueueOfflineUpdate("TaskReminder", reminder.TaskReminderId, reminder, TenantId, currentUserId, reminder.UpdatedAt ?? reminder.CreatedAt);
-            }
 
             var item = _db.TaskReminders
                 .SingleOrDefault(r => r.TaskReminderId == reminder.TaskReminderId && (RbacService.HasFullOversight || r.AssignedToUserId == currentUserId) && !r.IsDeleted);
@@ -247,6 +239,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
             _db.SaveChanges();
             try { LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, new[] { item }); } catch { }
+
+            SyncService.Instance.EnqueueOfflineUpdate("TaskReminder", item.TaskReminderId, item, TenantId, currentUserId, item.UpdatedAt ?? item.CreatedAt);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
         }
 
         /// <summary>
@@ -292,6 +290,12 @@ namespace CRMS_Peguit.winforms.Controllers
 
             _db.SaveChanges();
             try { LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, new[] { item }); } catch { }
+
+            SyncService.Instance.EnqueueOfflineUpdate("TaskReminder", item.TaskReminderId, item, TenantId, currentUserId, item.UpdatedAt ?? item.CompletedAt ?? DateTime.UtcNow);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
         }
 
         /// <summary>
@@ -309,6 +313,12 @@ namespace CRMS_Peguit.winforms.Controllers
             item.Snooze(interval);
             _db.SaveChanges();
             try { LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, new[] { item }); } catch { }
+
+            SyncService.Instance.EnqueueOfflineUpdate("TaskReminder", item.TaskReminderId, item, TenantId, currentUserId, item.UpdatedAt ?? DateTime.UtcNow);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
         }
 
         /// <summary>
@@ -325,6 +335,12 @@ namespace CRMS_Peguit.winforms.Controllers
             item.Reschedule(newDueDate);
             _db.SaveChanges();
             try { LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, new[] { item }); } catch { }
+
+            SyncService.Instance.EnqueueOfflineUpdate("TaskReminder", item.TaskReminderId, item, TenantId, currentUserId, item.UpdatedAt ?? DateTime.UtcNow);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
         }
 
         /// <summary>
@@ -342,6 +358,12 @@ namespace CRMS_Peguit.winforms.Controllers
             item.DeletedAt = DateTime.UtcNow;
             _db.SaveChanges();
             try { LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, new[] { item }); } catch { }
+
+            SyncService.Instance.EnqueueOfflineDelete("TaskReminder", item.TaskReminderId, TenantId, currentUserId);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
         }
 
         /// <summary>
@@ -355,7 +377,6 @@ namespace CRMS_Peguit.winforms.Controllers
 
             var query = _db.Customers
                 .AsNoTracking()
-                .Include(c => c.Person)
                 .Where(c => !c.IsDeleted);
 
             if (!RbacService.HasFullOversight)
@@ -364,8 +385,8 @@ namespace CRMS_Peguit.winforms.Controllers
             }
 
             return query
-                .OrderBy(c => c.Person.LastName)
-                .ThenBy(c => c.Person.FirstName)
+                .OrderBy(c => c.LastName)
+                .ThenBy(c => c.FirstName)
                 .ToList();
         }
 
@@ -380,7 +401,6 @@ namespace CRMS_Peguit.winforms.Controllers
 
             var query = _db.Leads
                 .AsNoTracking()
-                .Include(l => l.Person)
                 .Where(l => !l.IsDeleted && l.Stage != "lost");
 
             if (!RbacService.HasFullOversight)
@@ -389,8 +409,8 @@ namespace CRMS_Peguit.winforms.Controllers
             }
 
             return query
-                .OrderBy(l => l.Person.LastName)
-                .ThenBy(l => l.Person.FirstName)
+                .OrderBy(l => l.LastName)
+                .ThenBy(l => l.FirstName)
                 .ToList();
         }
 
@@ -485,8 +505,8 @@ namespace CRMS_Peguit.winforms.Controllers
 
                 return _db.TaskReminders
                     .AsNoTracking()
-                    .Include(r => r.RelatedCustomer).ThenInclude(c => c!.Person)
-                    .Include(r => r.RelatedLead).ThenInclude(l => l!.Person)
+                    .Include(r => r.RelatedCustomer)
+                    .Include(r => r.RelatedLead)
                     .Where(r => r.AssignedToUserId == currentUserId && !r.IsDeleted && r.Status != "Completed")
                     .AsEnumerable()
                     .Where(r => r.DueDate.ToLocalTime().Date == todayLocal || r.Status == "Overdue" || r.DueDate < DateTime.UtcNow)

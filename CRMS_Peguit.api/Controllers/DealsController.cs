@@ -46,9 +46,9 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var query = _db.Deals
-                .Include(d => d.Customer).ThenInclude(c => c!.Person)
+                .Include(d => d.Customer)
                 .Include(d => d.Property)
-                .Include(d => d.Agent).ThenInclude(u => u!.Person)
+                .Include(d => d.Agent)
                 .AsQueryable();
 
             // Ownership-Based Access Control:
@@ -69,11 +69,11 @@ namespace CRMS_Peguit.api.Controllers
             {
                 string s = search.Trim();
                 query = query.Where(d =>
-                    (d.Customer != null && (d.Customer.Person.FirstName.Contains(s) || d.Customer.Person.LastName.Contains(s))) ||
+                    (d.Customer != null && (d.Customer.FirstName.Contains(s) || d.Customer.LastName.Contains(s))) ||
                     (d.Property != null && d.Property.Address.Contains(s)) ||
                     d.Stage.Contains(s) ||
                     (d.PaymentScheme != null && d.PaymentScheme.Contains(s)) ||
-                    (d.Agent != null && (d.Agent.Person.FirstName.Contains(s) || d.Agent.Person.LastName.Contains(s))));
+                    (d.Agent != null && (d.Agent.FirstName.Contains(s) || d.Agent.LastName.Contains(s))));
             }
 
             if (page.HasValue || pageSize.HasValue)
@@ -127,9 +127,9 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var item = await _db.Deals
-                .Include(d => d.Customer).ThenInclude(c => c!.Person)
+                .Include(d => d.Customer)
                 .Include(d => d.Property)
-                .Include(d => d.Agent).ThenInclude(u => u!.Person)
+                .Include(d => d.Agent)
                 .Include(d => d.Contingencies)
                 .Include(d => d.DealClauses)
                 .SingleOrDefaultAsync(d => d.DealId == id);
@@ -151,8 +151,9 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> Create(Deal deal)
         {
             var user = CurrentUser;
+            if (user.UserId <= 0) return Unauthorized();
             deal.CreatedAt = DateTime.UtcNow;
-            deal.CreatedByUserId = user.UserId > 0 ? user.UserId : (deal.CreatedByUserId > 0 ? deal.CreatedByUserId : 1);
+            deal.CreatedByUserId = user.UserId;
 
             if (!ApiSecurityHelper.CanAssignRecords(user.Role))
             {
@@ -261,7 +262,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var dict = await _db.Customers
                 .AsNoTracking()
-                .Include(c => c.Person)
                 .ToDictionaryAsync(c => c.CustomerId, c => c.FullName);
             return Ok(dict);
         }
@@ -280,7 +280,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var dict = await _db.Users
                 .AsNoTracking()
-                .Include(u => u.Person)
                 .ToDictionaryAsync(u => u.UserId, u => u.FullName);
             return Ok(dict);
         }
@@ -300,8 +299,8 @@ namespace CRMS_Peguit.api.Controllers
             }
 
             var list = await query
-                .OrderBy(c => c.Person.LastName)
-                .ThenBy(c => c.Person.FirstName)
+                .OrderBy(c => c.LastName)
+                .ThenBy(c => c.FirstName)
                 .Select(c => new KeyValuePair<int, string>(c.CustomerId, c.FullName))
                 .ToListAsync();
 
@@ -332,10 +331,9 @@ namespace CRMS_Peguit.api.Controllers
 
             var list = await _db.Users
                 .AsNoTracking()
-                .Include(u => u.Person)
                 .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status.ToLower() != "inactive")
-                .OrderBy(u => u.Person.LastName)
-                .ThenBy(u => u.Person.FirstName)
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
                 .Select(u => new KeyValuePair<int, string>(u.UserId, u.FullName))
                 .ToListAsync();
 

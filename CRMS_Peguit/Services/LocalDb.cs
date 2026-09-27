@@ -239,6 +239,146 @@ namespace CRMS_Peguit.winforms.Models.Services
                     context.SuperAdmins.Add(sa);
                     context.SaveChanges();
                 }
+
+                // 5. Ensure PlatformAuditLogs Table & Seed
+                try
+                {
+                    context.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PlatformAuditLogs')
+                        BEGIN
+                            CREATE TABLE PlatformAuditLogs (
+                                AuditLogId INT IDENTITY(1,1) PRIMARY KEY,
+                                PerformedBySuperAdminId INT NOT NULL,
+                                PerformedByName NVARCHAR(200) NOT NULL,
+                                ActionType NVARCHAR(100) NOT NULL,
+                                Detail NVARCHAR(2000) NOT NULL,
+                                TargetCompanyId INT NULL,
+                                TargetCompanyName NVARCHAR(200) NULL,
+                                CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+                            );
+                            CREATE INDEX IX_PlatformAuditLogs_ActionType ON PlatformAuditLogs(ActionType);
+                            CREATE INDEX IX_PlatformAuditLogs_CreatedAt ON PlatformAuditLogs(CreatedAt);
+                        END");
+
+                    if (!context.PlatformAuditLogs.Any())
+                    {
+                        var now = DateTime.UtcNow;
+                        context.PlatformAuditLogs.AddRange(new[]
+                        {
+                            new PlatformAuditLog
+                            {
+                                PerformedBySuperAdminId = 1,
+                                PerformedByName = "Platform Super Admin",
+                                ActionType = "BackupCreated",
+                                Detail = "System baseline automated snapshot created",
+                                TargetCompanyId = null,
+                                TargetCompanyName = "Platform-Wide",
+                                CreatedAt = now.AddDays(-2).AddHours(-4)
+                            },
+                            new PlatformAuditLog
+                            {
+                                PerformedBySuperAdminId = 1,
+                                PerformedByName = "Platform Super Admin",
+                                ActionType = "SubscriptionChanged",
+                                Detail = "Company: Crestview Holdings (Tenant C) tier upgraded to Tenant C (Enterprise)",
+                                TargetCompanyId = 3,
+                                TargetCompanyName = "Crestview Holdings",
+                                CreatedAt = now.AddDays(-1).AddHours(-2)
+                            },
+                            new PlatformAuditLog
+                            {
+                                PerformedBySuperAdminId = 1,
+                                PerformedByName = "Platform Super Admin",
+                                ActionType = "SystemSettingChanged",
+                                Detail = "Security Policy: SessionTimeoutMinutes set to 60",
+                                TargetCompanyId = null,
+                                TargetCompanyName = "Platform-Wide",
+                                CreatedAt = now.AddHours(-1)
+                            }
+                        });
+                        context.SaveChanges();
+                    }
+                }
+                catch
+                {
+                    // Non-critical fallback
+                }
+
+                // 6. Ensure PaymentRecords Table & Seed
+                try
+                {
+                    context.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'PaymentRecords')
+                        BEGIN
+                            CREATE TABLE PaymentRecords (
+                                PaymentRecordId INT IDENTITY(1,1) PRIMARY KEY,
+                                SubscriptionId INT NOT NULL,
+                                AmountPaid DECIMAL(18,2) NOT NULL,
+                                PaymentMethod NVARCHAR(50) NOT NULL,
+                                PaymentReference NVARCHAR(200) NOT NULL,
+                                PaymentDate DATETIME2 NOT NULL,
+                                RecordedByUserId INT NOT NULL,
+                                Notes NVARCHAR(1000) NULL,
+                                CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                                CONSTRAINT FK_PaymentRecords_Subscriptions_SubscriptionId FOREIGN KEY (SubscriptionId) REFERENCES Subscriptions(SubscriptionId) ON DELETE CASCADE,
+                                CONSTRAINT FK_PaymentRecords_SuperAdmins_RecordedByUserId FOREIGN KEY (RecordedByUserId) REFERENCES SuperAdmins(SuperAdminId) ON DELETE NO ACTION
+                            );
+                            CREATE INDEX IX_PaymentRecords_SubscriptionId ON PaymentRecords(SubscriptionId);
+                            CREATE INDEX IX_PaymentRecords_PaymentDate ON PaymentRecords(PaymentDate);
+                            CREATE INDEX IX_PaymentRecords_PaymentReference ON PaymentRecords(PaymentReference);
+                        END");
+
+                    if (!context.PaymentRecords.Any())
+                    {
+                        var subs = context.Subscriptions.ToList();
+                        var superAdmin = context.SuperAdmins.FirstOrDefault();
+                        int saId = superAdmin?.SuperAdminId ?? 1;
+
+                        foreach (var sub in subs)
+                        {
+                            var paymentDate = DateTime.UtcNow.AddDays(-15);
+                            var payRec = new PaymentRecord
+                            {
+                                SubscriptionId = sub.SubscriptionId,
+                                AmountPaid = sub.BillingAmount,
+                                PaymentMethod = sub.CompanyId switch
+                                {
+                                    1 => PaymentMethod.GCash,
+                                    2 => PaymentMethod.BankTransfer,
+                                    _ => PaymentMethod.Check
+                                },
+                                PaymentReference = sub.CompanyId switch
+                                {
+                                    1 => "GCASH-98234182903",
+                                    2 => "BDO-FT-20260901-884",
+                                    _ => "CHK-MBTC-004928"
+                                },
+                                PaymentDate = paymentDate,
+                                RecordedByUserId = saId,
+                                Notes = "Subscription manual offline payment confirmed and reconciled against bank statement.",
+                                CreatedAt = paymentDate
+                            };
+                            context.PaymentRecords.Add(payRec);
+
+                            // Recalculate status automatically based on EndDate
+                            sub.Status = Subscription.CalculateStatus(sub.EndDate);
+                        }
+                        context.SaveChanges();
+                    }
+                    else
+                    {
+                        var subs = context.Subscriptions.ToList();
+                        foreach (var sub in subs)
+                        {
+                            sub.Status = Subscription.CalculateStatus(sub.EndDate);
+                        }
+                        context.SaveChanges();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[EnsureMasterDatabaseInitialized] PaymentRecords error: {ex.Message}");
+                }
             }
             catch
             {
@@ -256,6 +396,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             EnsureAutomatedEmailSchema(context);
             EnsureEmailTemplateSchema(context);
             EnsureBranchSchema(context);
+            EnsureRetentionSchema(context);
         }
 
         private static void EnsureTenantDatabaseInitialized(RealEstateDbContext context, int tenantId)
@@ -804,6 +945,213 @@ namespace CRMS_Peguit.winforms.Models.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[LocalDb] EnsureEmailTemplateSchema notice: {ex.Message}");
+            }
+        }
+
+        private static void EnsureRetentionSchema(RealEstateDbContext context)
+        {
+            try
+            {
+                context.Database.ExecuteSqlRaw(@"
+                    IF OBJECT_ID('Customers', 'U') IS NOT NULL
+                    BEGIN
+                        IF COL_LENGTH('Customers', 'CurrentRetentionSegment') IS NULL
+                        BEGIN
+                            ALTER TABLE Customers ADD CurrentRetentionSegment NVARCHAR(100) NOT NULL CONSTRAINT DF_Customers_RetentionSegment DEFAULT 'Prospective Client';
+                        END
+                        IF COL_LENGTH('Customers', 'RetentionSegmentCalculatedAt') IS NULL
+                        BEGIN
+                            ALTER TABLE Customers ADD RetentionSegmentCalculatedAt DATETIME2 NULL;
+                        END
+                        IF COL_LENGTH('Customers', 'LastRetentionEmailSentAt') IS NULL
+                        BEGIN
+                            ALTER TABLE Customers ADD LastRetentionEmailSentAt DATETIME2 NULL;
+                        END
+                    END
+
+                    IF OBJECT_ID('RetentionRequests', 'U') IS NULL
+                    BEGIN
+                        CREATE TABLE [dbo].[RetentionRequests] (
+                            [RequestId] INT IDENTITY(1,1) NOT NULL,
+                            [TenantId] INT NOT NULL DEFAULT 1,
+                            [CustomerId] INT NOT NULL,
+                            [SubmittedByUserId] INT NOT NULL,
+                            [AssignedAgentId] INT NULL,
+                            [TargetSegment] NVARCHAR(100) NOT NULL,
+                            [ActionType] NVARCHAR(100) NOT NULL DEFAULT 'Incentive Offer',
+                            [ProposedIncentive] NVARCHAR(255) NOT NULL,
+                            [RetentionDetails] NVARCHAR(2000) NOT NULL,
+                            [ReasonCategory] NVARCHAR(100) NOT NULL DEFAULT 'Improve Customer Retention',
+                            [Status] NVARCHAR(50) NOT NULL DEFAULT 'Pending',
+                            [ReviewedByUserId] INT NULL,
+                            [ReviewedAt] DATETIME2 NULL,
+                            [ReviewerRemarks] NVARCHAR(1000) NULL,
+                            [RejectionReason] NVARCHAR(1000) NULL,
+                            [AddedToCampaign] BIT NOT NULL DEFAULT 0,
+                            [CreatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                            CONSTRAINT [PK_RetentionRequests] PRIMARY KEY CLUSTERED ([RequestId] ASC)
+                        );
+                        CREATE INDEX [IX_RetentionRequests_TenantId] ON [dbo].[RetentionRequests] ([TenantId]);
+                        CREATE INDEX [IX_RetentionRequests_CustomerId] ON [dbo].[RetentionRequests] ([CustomerId]);
+                        CREATE INDEX [IX_RetentionRequests_Status] ON [dbo].[RetentionRequests] ([Status]);
+                        CREATE INDEX [IX_RetentionRequests_SubmittedByUserId] ON [dbo].[RetentionRequests] ([SubmittedByUserId]);
+                    END
+
+                    IF OBJECT_ID('RetentionEmailLogs', 'U') IS NULL
+                    BEGIN
+                        CREATE TABLE [dbo].[RetentionEmailLogs] (
+                            [EmailLogId] INT IDENTITY(1,1) NOT NULL,
+                            [TenantId] INT NOT NULL DEFAULT 1,
+                            [CustomerId] INT NOT NULL,
+                            [RetentionRequestId] INT NULL,
+                            [RecipientEmail] NVARCHAR(255) NOT NULL,
+                            [RecipientName] NVARCHAR(150) NOT NULL,
+                            [Segment] NVARCHAR(100) NOT NULL,
+                            [Subject] NVARCHAR(300) NOT NULL,
+                            [Body] NVARCHAR(MAX) NOT NULL,
+                            [IncentiveOffered] NVARCHAR(255) NULL,
+                            [Status] NVARCHAR(50) NOT NULL DEFAULT 'Queued',
+                            [GenerationSource] NVARCHAR(50) NOT NULL DEFAULT 'AutomatedRequest',
+                            [DispatchedByUserId] INT NULL,
+                            [DispatchedAt] DATETIME2 NULL,
+                            [CreatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                            [ErrorMessage] NVARCHAR(1000) NULL,
+                            [IsCooldownOverride] BIT NOT NULL DEFAULT 0,
+                            [CooldownOverrideReason] NVARCHAR(500) NULL,
+                            CONSTRAINT [PK_RetentionEmailLogs] PRIMARY KEY CLUSTERED ([EmailLogId] ASC)
+                        );
+                        CREATE INDEX [IX_RetentionEmailLogs_TenantId] ON [dbo].[RetentionEmailLogs] ([TenantId]);
+                        CREATE INDEX [IX_RetentionEmailLogs_CustomerId] ON [dbo].[RetentionEmailLogs] ([CustomerId]);
+                        CREATE INDEX [IX_RetentionEmailLogs_Status] ON [dbo].[RetentionEmailLogs] ([Status]);
+                        CREATE INDEX [IX_RetentionEmailLogs_RetentionRequestId] ON [dbo].[RetentionEmailLogs] ([RetentionRequestId]);
+                    END
+
+                    IF OBJECT_ID('RetentionAuditLogs', 'U') IS NULL
+                    BEGIN
+                        CREATE TABLE [dbo].[RetentionAuditLogs] (
+                            [AuditId] INT IDENTITY(1,1) NOT NULL,
+                            [TenantId] INT NOT NULL DEFAULT 1,
+                            [PerformedByUserId] INT NOT NULL,
+                            [PerformedByName] NVARCHAR(150) NOT NULL,
+                            [UserRole] NVARCHAR(50) NOT NULL,
+                            [ActionType] NVARCHAR(100) NOT NULL,
+                            [TargetCustomerId] INT NULL,
+                            [TargetCustomerName] NVARCHAR(150) NULL,
+                            [Detail] NVARCHAR(2000) NOT NULL,
+                            [CreatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                            CONSTRAINT [PK_RetentionAuditLogs] PRIMARY KEY CLUSTERED ([AuditId] ASC)
+                        );
+                        CREATE INDEX [IX_RetentionAuditLogs_TenantId] ON [dbo].[RetentionAuditLogs] ([TenantId]);
+                        CREATE INDEX [IX_RetentionAuditLogs_ActionType] ON [dbo].[RetentionAuditLogs] ([ActionType]);
+                        CREATE INDEX [IX_RetentionAuditLogs_TargetCustomerId] ON [dbo].[RetentionAuditLogs] ([TargetCustomerId]);
+                    END
+                ");
+
+                // Seed Retention Templates if not present
+                bool hasRetentionTemplates = context.EmailTemplates.Any(t => t.Category == "Retention");
+                if (!hasRetentionTemplates)
+                {
+                    var retentionTemplates = new List<EmailTemplate>
+                    {
+                        new EmailTemplate
+                        {
+                            TenantId = 1,
+                            Name = "New Client - First-Transaction Gratitude & Referral",
+                            Category = "Retention",
+                            TargetAudience = "All",
+                            EmailFormat = "Html",
+                            Subject = "Thank You for Trusting Us with Your Real Estate Journey, {{customer_name}}!",
+                            CallToActionText = "Share a Referral or Feedback",
+                            CallToActionUrl = "https://nexacrm.local/referral",
+                            Body = "Dear {{customer_name}},\n\nOn behalf of our entire team, thank you for choosing us to help you close your recent transaction!\n\nIt was a privilege to assist you, and we remain dedicated to supporting you with any ongoing property documents or questions. If you know friends or colleagues looking to buy or sell, we would be honored to provide them with the same high level of care.\n\nWarm regards,\n{{agent_name}}\nNEXA Real Estate Advisory",
+                            IsSystem = true,
+                            IsActive = true,
+                            CreatedByRole = "System"
+                        },
+                        new EmailTemplate
+                        {
+                            TenantId = 1,
+                            Name = "Recent Client - Post-Move Settlement Check-In",
+                            Category = "Retention",
+                            TargetAudience = "All",
+                            EmailFormat = "Html",
+                            Subject = "Checking In: How is Everything Going at {{property_address}}?",
+                            CallToActionText = "Schedule Post-Move Consultation",
+                            CallToActionUrl = "https://nexacrm.local/checkin",
+                            Body = "Hi {{customer_name}},\n\nWe wanted to take a moment to check in and see how you are settling in since closing on your property.\n\nOur client care doesn't stop at closing — whether you need recommendations for trusted contractors or tax guidance, we are always here for you.\n\nBest regards,\n{{agent_name}}\nNEXA Real Estate Advisory",
+                            IsSystem = true,
+                            IsActive = true,
+                            CreatedByRole = "System"
+                        },
+                        new EmailTemplate
+                        {
+                            TenantId = 1,
+                            Name = "Repeat Client - VIP Recognition & Priority Concession",
+                            Category = "Retention",
+                            TargetAudience = "All",
+                            EmailFormat = "Html",
+                            Subject = "Exclusive VIP Client Appreciation: Priority Access & Concession",
+                            CallToActionText = "Claim Your VIP Privilege",
+                            CallToActionUrl = "https://nexacrm.local/vip-client",
+                            Body = "Dear {{customer_name}},\n\nThank you for your ongoing partnership with NEXA Real Estate Advisory. Having worked together on multiple transactions, you are one of our most valued clients.\n\nAs a token of our appreciation, we are pleased to offer you: {{proposed_incentive}}.\n\nWhenever you're ready to evaluate your portfolio or explore your next move, let's connect.\n\nWarmest regards,\n{{agent_name}}\nNEXA Real Estate Advisory",
+                            IsSystem = true,
+                            IsActive = true,
+                            CreatedByRole = "System"
+                        },
+                        new EmailTemplate
+                        {
+                            TenantId = 1,
+                            Name = "At Risk - Neighborhood Market Re-Engagement",
+                            Category = "Retention",
+                            TargetAudience = "All",
+                            EmailFormat = "Html",
+                            Subject = "Market Update for {{property_address}}: Active Buyer Demand Nearby",
+                            CallToActionText = "Request Local Market Snapshot",
+                            CallToActionUrl = "https://nexacrm.local/market-update",
+                            Body = "Hello {{customer_name}},\n\nIt's been a little while since we last spoke! We have noticed significant movement in local market inventory and pricing trends in your neighborhood.\n\nWe would love to share a complimentary market snapshot with you. No pressure at all — just keeping you informed on what your property is worth in today's market.\n\nSincerely,\n{{agent_name}}\nNEXA Real Estate Advisory",
+                            IsSystem = true,
+                            IsActive = true,
+                            CreatedByRole = "System"
+                        },
+                        new EmailTemplate
+                        {
+                            TenantId = 1,
+                            Name = "Inactive Client - Comprehensive Portfolio Property Valuation",
+                            Category = "Retention",
+                            TargetAudience = "All",
+                            EmailFormat = "Html",
+                            Subject = "A Lot Has Changed: Complimentary Property Valuation & Consultation",
+                            CallToActionText = "Book Free Valuation Consultation",
+                            CallToActionUrl = "https://nexacrm.local/free-valuation",
+                            Body = "Dear {{customer_name}},\n\nThe real estate market has experienced substantial shifts since our last conversation. Values, interest benchmarks, and neighborhood demand have evolved considerably.\n\nWe would love to reconnect and offer you a complimentary, comprehensive property valuation and equity review at your convenience.\n\nWarm regards,\n{{agent_name}}\nNEXA Real Estate Advisory",
+                            IsSystem = true,
+                            IsActive = true,
+                            CreatedByRole = "System"
+                        },
+                        new EmailTemplate
+                        {
+                            TenantId = 1,
+                            Name = "Prospective Client - First-Time Buyer & Investor Nurture",
+                            Category = "Retention",
+                            TargetAudience = "All",
+                            EmailFormat = "Html",
+                            Subject = "Exclusive Market Insights & Curated Opportunities",
+                            CallToActionText = "Explore Prime Listings",
+                            CallToActionUrl = "https://nexacrm.local/curated-listings",
+                            Body = "Dear {{customer_name}},\n\nWe hope this email finds you well. As you navigate your real estate options, having clear market data and early access to opportunities makes all the difference.\n\nHere is our latest curated property selection and neighborhood analysis. We are always here to answer questions or arrange private viewings tailored to your timeline.\n\nBest regards,\n{{agent_name}}\nNEXA Real Estate Advisory",
+                            IsSystem = true,
+                            IsActive = true,
+                            CreatedByRole = "System"
+                        }
+                    };
+
+                    context.EmailTemplates.AddRange(retentionTemplates);
+                    context.SaveChanges();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LocalDb] EnsureRetentionSchema notice: {ex.Message}");
             }
         }
     }

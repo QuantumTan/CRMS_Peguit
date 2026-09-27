@@ -14,6 +14,8 @@ namespace CRMS_Peguit.winforms.Views.Shared
         private System.Windows.Forms.Label lblError = null!;
         private System.Windows.Forms.Button btnSave = null!;
         private System.Windows.Forms.Button btnCancel = null!;
+        private System.Windows.Forms.Panel pnlFooter = null!;
+        private System.Windows.Forms.Panel pnlContent = null!;
 
         protected override void Dispose(bool disposing)
         {
@@ -38,6 +40,10 @@ namespace CRMS_Peguit.winforms.Views.Shared
             this.lblError = new System.Windows.Forms.Label();
             this.btnSave = new System.Windows.Forms.Button();
             this.btnCancel = new System.Windows.Forms.Button();
+            this.pnlFooter = new System.Windows.Forms.Panel();
+            this.pnlContent = new System.Windows.Forms.Panel();
+            this.pnlFooter.SuspendLayout();
+            this.pnlContent.SuspendLayout();
             this.SuspendLayout();
             // 
             // lblTitle
@@ -135,14 +141,14 @@ namespace CRMS_Peguit.winforms.Views.Shared
             // 
             // btnSave
             // 
-            this.btnSave.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnSave.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnSave.BackColor = System.Drawing.Color.FromArgb(37, 103, 156);
             this.btnSave.Cursor = System.Windows.Forms.Cursors.Hand;
             this.btnSave.FlatAppearance.BorderSize = 0;
             this.btnSave.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnSave.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
             this.btnSave.ForeColor = System.Drawing.Color.White;
-            this.btnSave.Location = new System.Drawing.Point(235, 255);
+            this.btnSave.Location = new System.Drawing.Point(235, 12);
             this.btnSave.Name = "btnSave";
             this.btnSave.Size = new System.Drawing.Size(140, 36);
             this.btnSave.TabIndex = 8;
@@ -151,7 +157,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
             // 
             // btnCancel
             // 
-            this.btnCancel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnCancel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnCancel.BackColor = System.Drawing.Color.White;
             this.btnCancel.Cursor = System.Windows.Forms.Cursors.Hand;
             this.btnCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
@@ -159,32 +165,52 @@ namespace CRMS_Peguit.winforms.Views.Shared
             this.btnCancel.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnCancel.Font = new System.Drawing.Font("Segoe UI", 9.5F);
             this.btnCancel.ForeColor = System.Drawing.Color.FromArgb(8, 52, 87);
-            this.btnCancel.Location = new System.Drawing.Point(135, 255);
+            this.btnCancel.Location = new System.Drawing.Point(135, 12);
             this.btnCancel.Name = "btnCancel";
             this.btnCancel.Size = new System.Drawing.Size(90, 36);
             this.btnCancel.TabIndex = 9;
             this.btnCancel.Text = "Cancel";
             this.btnCancel.UseVisualStyleBackColor = false;
             // 
+            // pnlFooter
+            // 
+            this.pnlFooter.BackColor = System.Drawing.Color.FromArgb(248, 250, 252);
+            this.pnlFooter.Controls.Add(this.btnCancel);
+            this.pnlFooter.Controls.Add(this.btnSave);
+            this.pnlFooter.Dock = System.Windows.Forms.DockStyle.Bottom;
+            this.pnlFooter.Location = new System.Drawing.Point(0, 260);
+            this.pnlFooter.Name = "pnlFooter";
+            this.pnlFooter.Size = new System.Drawing.Size(400, 60);
+            this.pnlFooter.TabIndex = 1;
+            // 
+            // pnlContent
+            // 
+            this.pnlContent.AutoScroll = true;
+            this.pnlContent.Controls.Add(this.lblError);
+            this.pnlContent.Controls.Add(this.chkShowPassword);
+            this.pnlContent.Controls.Add(this.txtConfirmPassword);
+            this.pnlContent.Controls.Add(this.lblConfirmPassword);
+            this.pnlContent.Controls.Add(this.txtNewPassword);
+            this.pnlContent.Controls.Add(this.lblNewPassword);
+            this.pnlContent.Controls.Add(this.lblSubtitle);
+            this.pnlContent.Controls.Add(this.lblTitle);
+            this.pnlContent.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.pnlContent.Location = new System.Drawing.Point(0, 0);
+            this.pnlContent.Name = "pnlContent";
+            this.pnlContent.Size = new System.Drawing.Size(400, 260);
+            this.pnlContent.TabIndex = 0;
+            // 
             // ChangePasswordDialog
             // 
             this.AcceptButton = this.btnSave;
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.AutoScroll = true;
+            this.AutoScroll = false;
             this.BackColor = System.Drawing.Color.White;
             this.CancelButton = this.btnCancel;
-            this.ClientSize = new System.Drawing.Size(400, 310);
-            this.Controls.Add(this.btnCancel);
-            this.Controls.Add(this.btnSave);
-            this.Controls.Add(this.lblError);
-            this.Controls.Add(this.chkShowPassword);
-            this.Controls.Add(this.txtConfirmPassword);
-            this.Controls.Add(this.lblConfirmPassword);
-            this.Controls.Add(this.txtNewPassword);
-            this.Controls.Add(this.lblNewPassword);
-            this.Controls.Add(this.lblSubtitle);
-            this.Controls.Add(this.lblTitle);
+            this.ClientSize = new System.Drawing.Size(400, 320);
+            this.Controls.Add(this.pnlContent);
+            this.Controls.Add(this.pnlFooter);
             this.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -194,8 +220,10 @@ namespace CRMS_Peguit.winforms.Views.Shared
             this.ShowInTaskbar = false;
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "Change Password";
+            this.pnlFooter.ResumeLayout(false);
+            this.pnlContent.ResumeLayout(false);
+            this.pnlContent.PerformLayout();
             this.ResumeLayout(false);
-            this.PerformLayout();
         }
 
         #endregion

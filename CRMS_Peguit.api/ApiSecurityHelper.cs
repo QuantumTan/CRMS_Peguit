@@ -1,6 +1,4 @@
 using System;
-using System.IdentityModel.Tokens.Jwt;
-using System.Linq;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 
@@ -8,73 +6,13 @@ namespace CRMS_Peguit.api
 {
     public static class ApiSecurityHelper
     {
-        public static (int UserId, string Role, int TenantId) GetCurrentUserInfo(HttpContext context)
-        {
-            int userId = 0;
-            string role = "Agent";
-            int tenantId = 0;
-
-            if (context?.User?.Identity?.IsAuthenticated == true || context?.User != null)
-            {
-                var info = GetCurrentUserInfo(context.User);
-                userId = info.UserId;
-                role = info.Role;
-                tenantId = info.TenantId;
-            }
-
-            if (userId <= 0 && context != null)
-            {
-                var authHeader = context.Request.Headers["Authorization"].ToString();
-                if (!string.IsNullOrWhiteSpace(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        var handler = new JwtSecurityTokenHandler();
-                        var jwt = handler.ReadJwtToken(authHeader.Substring(7).Trim());
-                        var idClaim = jwt.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier || c.Type == "nameid" || c.Type == "sub")?.Value;
-                        int.TryParse(idClaim, out userId);
-
-                        var roleClaim = jwt.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role || c.Type == "role")?.Value;
-                        if (!string.IsNullOrWhiteSpace(roleClaim))
-                            role = roleClaim;
-
-                        var tidClaim = jwt.Claims.FirstOrDefault(c => c.Type == "tenantId")?.Value;
-                        int.TryParse(tidClaim, out tenantId);
-                    }
-                    catch { }
-                }
-            }
-
-            // Fallback headers
-            if (context != null)
-            {
-                if (userId <= 0 && int.TryParse(context.Request.Headers["X-User-Id"].ToString(), out var hdrUid) && hdrUid > 0)
-                {
-                    userId = hdrUid;
-                }
-
-                var hdrRole = context.Request.Headers["X-User-Role"].ToString();
-                if (!string.IsNullOrWhiteSpace(hdrRole))
-                {
-                    role = hdrRole;
-                }
-
-                if (tenantId <= 0 && int.TryParse(context.Request.Headers["X-Tenant-Id"].ToString(), out var hdrTid) && hdrTid > 0)
-                {
-                    tenantId = hdrTid;
-                }
-            }
-
-            return (userId, role, tenantId);
-        }
-
         public static (int UserId, string Role, int TenantId) GetCurrentUserInfo(ClaimsPrincipal? user)
         {
             int userId = 0;
-            string role = "Agent";
+            string role = string.Empty;
             int tenantId = 0;
 
-            if (user != null)
+            if (user != null && user.Identity?.IsAuthenticated == true)
             {
                 var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
                     ?? user.FindFirst("sub")?.Value
@@ -85,7 +23,7 @@ namespace CRMS_Peguit.api
                 role = user.FindFirst(ClaimTypes.Role)?.Value
                     ?? user.FindFirst("role")?.Value
                     ?? user.FindFirst("Role")?.Value
-                    ?? "Agent";
+                    ?? string.Empty;
 
                 var tidClaim = user.FindFirst("tenantId")?.Value
                     ?? user.FindFirst("TenantId")?.Value;
@@ -95,25 +33,37 @@ namespace CRMS_Peguit.api
             return (userId, role, tenantId);
         }
 
+        public static (int UserId, string Role, int TenantId) GetCurrentUserInfo(HttpContext? context)
+        {
+            return GetCurrentUserInfo(context?.User);
+        }
+
         public static int GetUserId(ClaimsPrincipal? user) => GetCurrentUserInfo(user).UserId;
         public static string GetRole(ClaimsPrincipal? user) => GetCurrentUserInfo(user).Role;
         public static int GetTenantId(ClaimsPrincipal? user) => GetCurrentUserInfo(user).TenantId;
 
-        public static int GetUserId(HttpContext? context) => context != null ? GetCurrentUserInfo(context).UserId : 0;
-        public static string GetRole(HttpContext? context) => context != null ? GetCurrentUserInfo(context).Role : "Agent";
-        public static int GetTenantId(HttpContext? context) => context != null ? GetCurrentUserInfo(context).TenantId : 0;
+        public static int GetUserId(HttpContext? context) => GetCurrentUserInfo(context).UserId;
+        public static string GetRole(HttpContext? context) => GetCurrentUserInfo(context).Role;
+        public static int GetTenantId(HttpContext? context) => GetCurrentUserInfo(context).TenantId;
 
         public static bool IsAgent(string role) =>
-            role.Equals("Agent", StringComparison.OrdinalIgnoreCase) || role.Equals("SalesStaff", StringComparison.OrdinalIgnoreCase);
+            !string.IsNullOrWhiteSpace(role) &&
+            (role.Equals("Agent", StringComparison.OrdinalIgnoreCase) ||
+             role.Equals("SalesStaff", StringComparison.OrdinalIgnoreCase) ||
+             role.Equals("Sales Staff", StringComparison.OrdinalIgnoreCase));
 
         public static bool IsManager(string role) =>
+            !string.IsNullOrWhiteSpace(role) &&
             role.Equals("Manager", StringComparison.OrdinalIgnoreCase);
 
         public static bool IsAdmin(string role) =>
+            !string.IsNullOrWhiteSpace(role) &&
             role.Equals("Admin", StringComparison.OrdinalIgnoreCase);
 
         public static bool IsSuperAdmin(string role) =>
-            role.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) || role.Equals("Super Admin", StringComparison.OrdinalIgnoreCase);
+            !string.IsNullOrWhiteSpace(role) &&
+            (role.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) ||
+             role.Equals("Super Admin", StringComparison.OrdinalIgnoreCase));
 
         public static bool HasFullOversight(string role) =>
             (IsManager(role) || IsAdmin(role)) && !IsSuperAdmin(role);

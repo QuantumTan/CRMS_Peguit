@@ -50,9 +50,9 @@ namespace CRMS_Peguit.winforms.Auth
                 throw new ArgumentException("A valid UserId is required.", nameof(userId));
             }
 
-            if (tenantId <= 0)
+            if (tenantId < 0)
             {
-                tenantId = 1;
+                tenantId = 0;
             }
 
             if (string.IsNullOrWhiteSpace(email))
@@ -75,7 +75,7 @@ namespace CRMS_Peguit.winforms.Auth
             JwtToken = jwtToken;
             IsOffline = isOffline;
             TenantTier = tier;
-            TenantName = tenantName ?? $"Tenant #{tenantId}";
+            TenantName = tenantName ?? (tenantId == 0 ? "Master Platform Administration" : $"Tenant #{tenantId}");
 
             var role = roleName.Trim().ToLowerInvariant();
 
@@ -90,7 +90,7 @@ namespace CRMS_Peguit.winforms.Auth
                 "manager" =>
                     new Manager(fullName, email),
 
-                "agent" =>
+                "agent" or "salesstaff" or "sales staff" or "sales_staff" =>
                     new SalesStaff(fullName, email),
 
                 _ =>

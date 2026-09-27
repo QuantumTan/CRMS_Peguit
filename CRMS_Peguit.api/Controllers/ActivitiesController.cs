@@ -31,9 +31,9 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var query = _db.Activities
-                .Include(a => a.LoggedByAgent).ThenInclude(u => u!.Person)
-                .Include(a => a.RelatedCustomer).ThenInclude(c => c!.Person)
-                .Include(a => a.RelatedLead).ThenInclude(l => l!.Person)
+                .Include(a => a.LoggedByAgent)
+                .Include(a => a.RelatedCustomer)
+                .Include(a => a.RelatedLead)
                 .AsQueryable();
 
             if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)
@@ -48,22 +48,35 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetById(int id)
         {
+            var user = CurrentUser;
             var item = await _db.Activities
-                .Include(a => a.LoggedByAgent).ThenInclude(u => u!.Person)
-                .Include(a => a.RelatedCustomer).ThenInclude(c => c!.Person)
-                .Include(a => a.RelatedLead).ThenInclude(l => l!.Person)
+                .Include(a => a.LoggedByAgent)
+                .Include(a => a.RelatedCustomer)
+                .Include(a => a.RelatedLead)
                 .SingleOrDefaultAsync(a => a.ActivityId == id);
 
-            return item is null ? NotFound() : Ok(item);
+            if (item is null) return NotFound();
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && item.LoggedByAgentId != user.UserId)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, "You can only access your own activities.");
+            }
+
+            return Ok(item);
         }
 
         [HttpPost]
         public async Task<IActionResult> Create(Activity activity)
         {
             var user = CurrentUser;
+            if (user.UserId <= 0)
+            {
+                return Unauthorized();
+            }
+
             if (activity.LoggedByAgentId <= 0)
             {
-                activity.LoggedByAgentId = user.UserId > 0 ? user.UserId : 1;
+                activity.LoggedByAgentId = user.UserId;
             }
             if (activity.ActivityDate == default)
             {
@@ -79,8 +92,16 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPut("{id:int}")]
         public async Task<IActionResult> Update(int id, Activity updated)
         {
+            var user = CurrentUser;
+            if (user.UserId <= 0) return Unauthorized();
+
             var item = await _db.Activities.FindAsync(id);
             if (item is null) return NotFound();
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && item.LoggedByAgentId != user.UserId)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, "You can only update your own activities.");
+            }
 
             item.Type = updated.Type;
             item.RelatedLeadId = updated.RelatedLeadId;
@@ -98,8 +119,16 @@ namespace CRMS_Peguit.api.Controllers
         [HttpDelete("{id:int}")]
         public async Task<IActionResult> Delete(int id)
         {
+            var user = CurrentUser;
+            if (user.UserId <= 0) return Unauthorized();
+
             var item = await _db.Activities.FindAsync(id);
             if (item is null) return NotFound();
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && item.LoggedByAgentId != user.UserId)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, "You can only delete your own activities.");
+            }
 
             _db.Activities.Remove(item);
             await _db.SaveChangesAsync();
@@ -118,9 +147,9 @@ namespace CRMS_Peguit.api.Controllers
             int effectiveAgentId = agentId ?? user.UserId;
 
             var query = _db.Activities
-                .Include(a => a.LoggedByAgent).ThenInclude(u => u!.Person)
-                .Include(a => a.RelatedCustomer).ThenInclude(c => c!.Person)
-                .Include(a => a.RelatedLead).ThenInclude(l => l!.Person)
+                .Include(a => a.LoggedByAgent)
+                .Include(a => a.RelatedCustomer)
+                .Include(a => a.RelatedLead)
                 .AsQueryable();
 
             if (effectiveAgentId > 0 && (!ApiSecurityHelper.HasFullOversight(user.Role) || agentId.HasValue))
@@ -139,10 +168,10 @@ namespace CRMS_Peguit.api.Controllers
                 query = query.Where(a =>
                     (a.Notes != null && a.Notes.Contains(s)) ||
                     a.Type.Contains(s) ||
-                    (a.RelatedCustomer != null && a.RelatedCustomer.Person.FirstName.Contains(s)) ||
-                    (a.RelatedCustomer != null && a.RelatedCustomer.Person.LastName.Contains(s)) ||
-                    (a.RelatedLead != null && a.RelatedLead.Person.FirstName.Contains(s)) ||
-                    (a.RelatedLead != null && a.RelatedLead.Person.LastName.Contains(s)));
+                    (a.RelatedCustomer != null && a.RelatedCustomer.FirstName.Contains(s)) ||
+                    (a.RelatedCustomer != null && a.RelatedCustomer.LastName.Contains(s)) ||
+                    (a.RelatedLead != null && a.RelatedLead.FirstName.Contains(s)) ||
+                    (a.RelatedLead != null && a.RelatedLead.LastName.Contains(s)));
             }
 
             int validPage = Math.Max(1, page);
@@ -188,9 +217,9 @@ namespace CRMS_Peguit.api.Controllers
 
             var query = _db.Activities
                 .AsNoTracking()
-                .Include(a => a.LoggedByAgent).ThenInclude(u => u!.Person)
-                .Include(a => a.RelatedCustomer).ThenInclude(c => c!.Person)
-                .Include(a => a.RelatedLead).ThenInclude(l => l!.Person)
+                .Include(a => a.LoggedByAgent)
+                .Include(a => a.RelatedCustomer)
+                .Include(a => a.RelatedLead)
                 .AsQueryable();
 
             if (effectiveAgentId > 0 && (!ApiSecurityHelper.HasFullOversight(user.Role) || agentId.HasValue))
@@ -210,9 +239,9 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> GetTimeline([FromQuery] int? customerId, [FromQuery] int? leadId, [FromQuery] string? filter = null)
         {
             var query = _db.Activities
-                .Include(a => a.LoggedByAgent).ThenInclude(u => u!.Person)
-                .Include(a => a.RelatedCustomer).ThenInclude(c => c!.Person)
-                .Include(a => a.RelatedLead).ThenInclude(l => l!.Person)
+                .Include(a => a.LoggedByAgent)
+                .Include(a => a.RelatedCustomer)
+                .Include(a => a.RelatedLead)
                 .AsQueryable();
 
             if (customerId.HasValue && customerId.Value > 0)
@@ -236,15 +265,15 @@ namespace CRMS_Peguit.api.Controllers
                 Source = "Activity",
                 Type = a.Type ?? "Activity",
                 Category = a.Type ?? "Activity",
-                Title = $"{a.Type}: {(a.RelatedCustomer != null ? a.RelatedCustomer.Person.FirstName + " " + a.RelatedCustomer.Person.LastName : a.RelatedLead != null ? a.RelatedLead.Person.FirstName + " " + a.RelatedLead.Person.LastName : "")}".TrimEnd(':', ' '),
+                Title = $"{a.Type}: {(a.RelatedCustomer != null ? a.RelatedCustomer.FullName : a.RelatedLead != null ? a.RelatedLead.FullName : "")}".TrimEnd(':', ' '),
                 Notes = a.Notes,
                 Timestamp = a.ActivityDate,
-                ActorName = a.LoggedByAgent != null ? $"{a.LoggedByAgent.Person.FirstName} {a.LoggedByAgent.Person.LastName}".Trim() : "System",
+                ActorName = a.LoggedByAgent != null ? a.LoggedByAgent.FullName : "System",
                 Outcome = a.Outcome,
                 DurationMinutes = a.DurationMinutes,
                 RelatedCustomerId = a.RelatedCustomerId,
                 RelatedLeadId = a.RelatedLeadId,
-                ClientName = a.RelatedCustomer != null ? $"{a.RelatedCustomer.Person.FirstName} {a.RelatedCustomer.Person.LastName}".Trim() : a.RelatedLead != null ? $"{a.RelatedLead.Person.FirstName} {a.RelatedLead.Person.LastName}".Trim() : "",
+                ClientName = a.RelatedCustomer != null ? a.RelatedCustomer.FullName : a.RelatedLead != null ? a.RelatedLead.FullName : "",
                 ClientType = a.RelatedCustomerId.HasValue ? "Customer" : "Lead",
                 CanCreateFollowUp = true
             }).ToList();

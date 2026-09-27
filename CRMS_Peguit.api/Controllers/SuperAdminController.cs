@@ -11,6 +11,8 @@ using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.infrastructure.Services;
 
+using CRMS_Peguit.infrastructure.Security;
+
 namespace CRMS_Peguit.api.Controllers
 {
     [ApiController]
@@ -30,7 +32,7 @@ namespace CRMS_Peguit.api.Controllers
 
         private bool ValidateSuperAdmin()
         {
-            return ApiSecurityHelper.IsSuperAdmin(User) || ApiSecurityHelper.IsAdmin(User);
+            return ApiSecurityHelper.IsSuperAdmin(User);
         }
 
         [HttpGet("snapshot")]
@@ -126,7 +128,6 @@ namespace CRMS_Peguit.api.Controllers
                 {
                     await using var tenantDb = await _tenantFactory.CreateAsync(tid);
                     var adminUsers = await tenantDb.Users
-                        .Include(u => u.Person)
                         .Include(u => u.Role)
                         .Where(u => u.Role.RoleName == "Admin" ||
                                     u.Role.RoleName == "SuperAdmin" ||
@@ -140,9 +141,7 @@ namespace CRMS_Peguit.api.Controllers
                     {
                         string safeName = !string.IsNullOrWhiteSpace(u.FullName)
                             ? u.FullName
-                            : (!string.IsNullOrWhiteSpace(u.Person?.FirstName)
-                                ? $"{u.Person.FirstName} {u.Person.LastName}".Trim()
-                                : (!string.IsNullOrWhiteSpace(u.Email) ? u.Email : $"Admin #{u.UserId}"));
+                            : (!string.IsNullOrWhiteSpace(u.Email) ? u.Email : $"Admin #{u.UserId}");
 
                         result.Add(new AdminDto
                         {
@@ -175,28 +174,21 @@ namespace CRMS_Peguit.api.Controllers
             {
                 await using var db = await _tenantFactory.CreateAsync(req.TenantId);
 
-                var existingPerson = await db.Persons.AsNoTracking().AnyAsync(p => p.Email == req.Email);
-                if (existingPerson)
+                var existingUser = await db.Users.AsNoTracking().AnyAsync(u => u.Email == req.Email);
+                if (existingUser)
                     return BadRequest(new { message = "An account with this email already exists in this tenant." });
 
                 var role = await db.Roles.AsNoTracking().FirstOrDefaultAsync(r => r.RoleName == req.RoleName || r.RoleName == "Admin");
                 if (role == null)
                     return BadRequest(new { message = $"Role '{req.RoleName}' not found in tenant {req.TenantId}." });
 
-                var person = new Person
+                var user = new User
                 {
                     FirstName = req.FirstName,
                     LastName = req.LastName,
-                    Email = req.Email
-                };
-                db.Persons.Add(person);
-                await db.SaveChangesAsync();
-
-                var user = new User
-                {
-                    PersonId = person.PersonId,
+                    Email = req.Email,
                     RoleId = role.RoleId,
-                    PasswordHash = HashPassword(req.Password),
+                    PasswordHash = PasswordHasher.Hash(req.Password),
                     Status = "Active",
                     CreatedAt = DateTime.UtcNow
                 };
@@ -308,7 +300,7 @@ namespace CRMS_Peguit.api.Controllers
             try
             {
                 var settings = await _mgmtDb.SystemSettings
-                    .Include(s => s.UpdatedByUser).ThenInclude(u => u.Person)
+                    .Include(s => s.UpdatedByUser)
                     .AsNoTracking()
                     .OrderBy(s => s.SettingKey)
                     .ToListAsync();
@@ -352,11 +344,13 @@ namespace CRMS_Peguit.api.Controllers
             if (!ValidateSuperAdmin()) return Forbid();
 
             int callerId = ApiSecurityHelper.GetUserId(User);
+            if (callerId <= 0) return Unauthorized();
+
             var setting = await _mgmtDb.SystemSettings.FirstOrDefaultAsync(s => s.SettingId == settingId);
             if (setting == null) return NotFound();
 
             setting.SettingValue = req.Value;
-            setting.UpdatedByUserId = callerId > 0 ? callerId : 1;
+            setting.UpdatedByUserId = callerId;
             setting.UpdatedAt = DateTime.UtcNow;
             await _mgmtDb.SaveChangesAsync();
             return Ok(new { success = true });
@@ -371,7 +365,7 @@ namespace CRMS_Peguit.api.Controllers
             try
             {
                 var logs = await _mgmtDb.BackupLogs
-                    .Include(b => b.PerformedByUser).ThenInclude(u => u.Person)
+                    .Include(b => b.PerformedByUser)
                     .AsNoTracking()
                     .OrderByDescending(b => b.BackupDate)
                     .ToListAsync();
@@ -402,12 +396,14 @@ namespace CRMS_Peguit.api.Controllers
             if (!ValidateSuperAdmin()) return Forbid();
 
             int callerId = ApiSecurityHelper.GetUserId(User);
+            if (callerId <= 0) return Unauthorized();
+
             var timestamp = DateTime.UtcNow;
             var fileLocation = $"NEXA_Backup_{timestamp:yyyyMMdd_HHmmss}.bak";
 
             var log = new BackupLog
             {
-                PerformedByUserId = callerId > 0 ? callerId : 1,
+                PerformedByUserId = callerId,
                 BackupDate = timestamp,
                 Status = "Success",
                 FileLocation = fileLocation
@@ -432,7 +428,7 @@ namespace CRMS_Peguit.api.Controllers
             if (!ValidateSuperAdmin()) return Forbid();
 
             var log = await _mgmtDb.BackupLogs
-                .Include(b => b.PerformedByUser).ThenInclude(u => u.Person)
+                .Include(b => b.PerformedByUser)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(b => b.BackupId == backupId);
 
@@ -454,9 +450,11 @@ namespace CRMS_Peguit.api.Controllers
             if (!ValidateSuperAdmin()) return Forbid();
 
             int callerId = ApiSecurityHelper.GetUserId(User);
+            if (callerId <= 0) return Unauthorized();
+
             var restoreLog = new BackupLog
             {
-                PerformedByUserId = callerId > 0 ? callerId : 1,
+                PerformedByUserId = callerId,
                 BackupDate = DateTime.UtcNow,
                 Status = $"Restore from BackupId:{backupId}",
                 FileLocation = $"RESTORE_FROM_BACKUP_{backupId}"
@@ -464,13 +462,6 @@ namespace CRMS_Peguit.api.Controllers
             _mgmtDb.BackupLogs.Add(restoreLog);
             await _mgmtDb.SaveChangesAsync();
             return Ok(new { success = true });
-        }
-
-        private static string HashPassword(string password)
-        {
-            using var sha = SHA256.Create();
-            var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(password));
-            return Convert.ToBase64String(bytes);
         }
     }
 }

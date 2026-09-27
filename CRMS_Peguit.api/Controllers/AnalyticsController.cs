@@ -377,7 +377,7 @@ namespace CRMS_Peguit.api.Controllers
 
             var deals = await GetDealsQuery()
                 .Include(d => d.Agent)
-                .Include(d => d.Customer).ThenInclude(c => c!.Person)
+                .Include(d => d.Customer)
                 .Include(d => d.Property)
                 .Where(d => (d.ContractSignedDate ?? d.CreatedAt) >= startDate && (d.ContractSignedDate ?? d.CreatedAt) <= endDate)
                 .ToListAsync();
@@ -404,7 +404,6 @@ namespace CRMS_Peguit.api.Controllers
 
             var leads = await GetLeadsQuery()
                 .Include(l => l.AssignedAgent)
-                .Include(l => l.Person)
                 .Where(l => l.CreatedAt >= startDate && l.CreatedAt <= endDate)
                 .ToListAsync();
 
@@ -425,7 +424,7 @@ namespace CRMS_Peguit.api.Controllers
 
             var tickets = await GetTicketsQuery()
                 .Include(t => t.AssignedToUser)
-                .Include(t => t.Customer).ThenInclude(c => c.Person)
+                .Include(t => t.Customer)
                 .Where(t => t.CreatedAt >= startDate && t.CreatedAt <= endDate)
                 .ToListAsync();
 

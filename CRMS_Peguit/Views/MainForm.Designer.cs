@@ -543,9 +543,9 @@ namespace CRMS_Peguit.winforms
             this.lblTenantTierBadge.BackColor = System.Drawing.Color.FromArgb(241, 245, 249);
             this.lblTenantTierBadge.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
             this.lblTenantTierBadge.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
-            this.lblTenantTierBadge.Location = new System.Drawing.Point(480, 14);
+            this.lblTenantTierBadge.Location = new System.Drawing.Point(440, 14);
             this.lblTenantTierBadge.Name = "lblTenantTierBadge";
-            this.lblTenantTierBadge.Size = new System.Drawing.Size(300, 30);
+            this.lblTenantTierBadge.Size = new System.Drawing.Size(280, 30);
             this.lblTenantTierBadge.TabIndex = 5;
             this.lblTenantTierBadge.Text = "🏢 Tenant Tier";
             this.lblTenantTierBadge.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
@@ -615,14 +615,14 @@ namespace CRMS_Peguit.winforms
             this.txtGlobalSearch.Location = new System.Drawing.Point(58, 16);
             this.txtGlobalSearch.Name = "txtGlobalSearch";
             this.txtGlobalSearch.PlaceholderText = "🔍 Search records, contacts... (Ctrl+K)";
-            this.txtGlobalSearch.Size = new System.Drawing.Size(260, 24);
+            this.txtGlobalSearch.Size = new System.Drawing.Size(220, 24);
             this.txtGlobalSearch.TabIndex = 2;
             // 
             // notificationBell
             // 
             this.notificationBell.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.notificationBell.Cursor = System.Windows.Forms.Cursors.Hand;
-            this.notificationBell.Location = new System.Drawing.Point(796, 12);
+            this.notificationBell.Location = new System.Drawing.Point(734, 12);
             this.notificationBell.Name = "notificationBell";
             this.notificationBell.Size = new System.Drawing.Size(34, 34);
             this.notificationBell.TabIndex = 2;
@@ -633,7 +633,7 @@ namespace CRMS_Peguit.winforms
             this.lblHeaderAvatar.BackColor = System.Drawing.Color.FromArgb(41, 98, 150);
             this.lblHeaderAvatar.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
             this.lblHeaderAvatar.ForeColor = System.Drawing.Color.White;
-            this.lblHeaderAvatar.Location = new System.Drawing.Point(838, 14);
+            this.lblHeaderAvatar.Location = new System.Drawing.Point(776, 13);
             this.lblHeaderAvatar.Name = "lblHeaderAvatar";
             this.lblHeaderAvatar.Size = new System.Drawing.Size(32, 32);
             this.lblHeaderAvatar.TabIndex = 3;
@@ -643,11 +643,12 @@ namespace CRMS_Peguit.winforms
             // lblHeaderUserName
             // 
             this.lblHeaderUserName.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.lblHeaderUserName.AutoEllipsis = true;
             this.lblHeaderUserName.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Bold);
             this.lblHeaderUserName.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
-            this.lblHeaderUserName.Location = new System.Drawing.Point(876, 12);
+            this.lblHeaderUserName.Location = new System.Drawing.Point(816, 11);
             this.lblHeaderUserName.Name = "lblHeaderUserName";
-            this.lblHeaderUserName.Size = new System.Drawing.Size(155, 36);
+            this.lblHeaderUserName.Size = new System.Drawing.Size(210, 38);
             this.lblHeaderUserName.TabIndex = 4;
             this.lblHeaderUserName.Text = "Sam Johnson\r\nAgent";
             this.lblHeaderUserName.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;

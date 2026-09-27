@@ -345,7 +345,6 @@ namespace CRMS_Peguit.winforms.Controllers
                     var recentUsers = _db.Users
                         .AsNoTracking()
                         .Include(u => u.Role)
-                        .Include(u => u.Person)
                         .OrderByDescending(u => u.CreatedAt)
                         .Take(3)
                         .ToList();

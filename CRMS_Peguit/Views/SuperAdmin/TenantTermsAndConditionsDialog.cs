@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Views.SuperAdmin
 {
@@ -16,30 +17,27 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         public TenantTermsAndConditionsDialog(string tenantName, string planName, bool isReadOnly = false)
         {
             Text = $"Terms & Conditions — {tenantName}";
-            Size = new Size(620, 560);
-            StartPosition = FormStartPosition.CenterParent;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            BackColor = Theme.Surface;
+            Size = new Size(660, 600);
+            UiRadiusHelper.StyleModal(this, 8);
 
-            var pnlContainer = new Panel
+            var pnlContent = new Panel
             {
                 Dock = DockStyle.Fill,
-                Padding = new Padding(24)
+                Padding = new Padding(24),
+                BackColor = Color.White,
+                AutoScroll = true
             };
-            Controls.Add(pnlContainer);
 
             // Header
             var lblTitle = new Label
             {
                 Text = "Tenant Subscription & Service Agreement",
-                Font = new Font("Segoe UI", 13f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 13.5f, FontStyle.Bold),
                 ForeColor = Theme.TextPrimary,
                 AutoSize = true,
                 Location = new Point(24, 18)
             };
-            pnlContainer.Controls.Add(lblTitle);
+            pnlContent.Controls.Add(lblTitle);
 
             var lblSub = new Label
             {
@@ -49,34 +47,32 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 AutoSize = true,
                 Location = new Point(24, 46)
             };
-            pnlContainer.Controls.Add(lblSub);
+            pnlContent.Controls.Add(lblSub);
 
             // Terms Content (RichTextBox / Read-only Box)
             var txtTerms = new RichTextBox
             {
                 Location = new Point(24, 80),
-                Size = new Size(556, 330),
+                Size = new Size(590, 340),
                 ReadOnly = true,
-                BackColor = Color.FromArgb(249, 250, 251),
+                BackColor = Color.FromArgb(248, 250, 252),
                 ForeColor = Color.FromArgb(51, 65, 85),
                 Font = new Font("Segoe UI", 9f),
                 BorderStyle = BorderStyle.FixedSingle,
                 Text = GetTermsText(tenantName, planName)
             };
-            pnlContainer.Controls.Add(txtTerms);
+            pnlContent.Controls.Add(txtTerms);
 
             _btnAccept = new Button
             {
                 Text = isReadOnly ? "Close" : "Accept & Proceed",
-                Size = new Size(140, 36),
-                BackColor = Theme.Primary,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                Cursor = Cursors.Hand,
+                Size = new Size(150, 36),
+                Location = new Point(470, 12),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 Enabled = isReadOnly,
                 DialogResult = DialogResult.OK
             };
-            UiRadiusHelper.StyleButton(_btnAccept, 6);
+            UiRadiusHelper.StylePrimaryButton(_btnAccept, 6);
 
             _chkAgree = new CheckBox
             {
@@ -84,37 +80,40 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = new Font("Segoe UI", 9f, FontStyle.Regular),
                 ForeColor = Theme.TextPrimary,
                 AutoSize = true,
-                Location = new Point(24, 424),
+                Location = new Point(24, 436),
                 Checked = isReadOnly,
                 Enabled = !isReadOnly
             };
             _chkAgree.CheckedChanged += (_, _) => _btnAccept.Enabled = _chkAgree.Checked || isReadOnly;
-            pnlContainer.Controls.Add(_chkAgree);
+            pnlContent.Controls.Add(_chkAgree);
 
-            var pnlActions = new FlowLayoutPanel
+            // Footer panel
+            var pnlFooter = new Panel
             {
-                FlowDirection = FlowDirection.RightToLeft,
-                Location = new Point(24, 460),
-                Size = new Size(556, 44),
-                BackColor = Color.Transparent
+                Dock = DockStyle.Bottom,
+                Height = 60,
+                BackColor = Color.FromArgb(248, 250, 252)
             };
 
             _btnClose = new Button
             {
                 Text = "Cancel",
                 Size = new Size(100, 36),
-                BackColor = Theme.Surface,
-                ForeColor = Theme.TextSecondary,
-                Font = new Font("Segoe UI", 9f, FontStyle.Regular),
-                Cursor = Cursors.Hand,
+                Location = new Point(360, 12),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 DialogResult = DialogResult.Cancel,
                 Visible = !isReadOnly
             };
-            UiRadiusHelper.StyleButton(_btnClose, 6);
+            UiRadiusHelper.StyleSecondaryButton(_btnClose, 6);
 
-            pnlActions.Controls.Add(_btnAccept);
-            pnlActions.Controls.Add(_btnClose);
-            pnlContainer.Controls.Add(pnlActions);
+            pnlFooter.Controls.Add(_btnAccept);
+            pnlFooter.Controls.Add(_btnClose);
+
+            Controls.Add(pnlContent);
+            Controls.Add(pnlFooter);
+
+            AcceptButton = _btnAccept;
+            CancelButton = _btnClose;
         }
 
         private static string GetTermsText(string tenantName, string planName)

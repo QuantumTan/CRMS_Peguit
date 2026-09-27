@@ -90,6 +90,29 @@ namespace CRMS_Peguit.winforms.Controllers
                 });
             }
 
+            // 4. Pending Retention Requests
+            try
+            {
+                using var retentionCtrl = new RetentionController();
+                var retentionRequests = retentionCtrl.GetRetentionRequestsAsync("Pending").GetAwaiter().GetResult();
+                foreach (var req in retentionRequests)
+                {
+                    items.Add(new PendingApprovalItem
+                    {
+                        Id = req.RequestId,
+                        Type = "Retention Request",
+                        Title = $"{req.CustomerName} ({req.TargetSegment}) - {req.ProposedIncentive}",
+                        SubmitterName = req.SubmitterName,
+                        CreatedAt = req.CreatedAt,
+                        AssignedTo = req.AssignedAgentName,
+                        AssignedAgentId = req.AssignedAgentId,
+                        Status = "PENDING REVIEW",
+                        OriginalEntity = req
+                    });
+                }
+            }
+            catch { }
+
             return items.OrderByDescending(x => x.CreatedAt).ToList();
         }
 

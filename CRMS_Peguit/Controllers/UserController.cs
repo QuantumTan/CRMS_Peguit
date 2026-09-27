@@ -38,7 +38,6 @@ namespace CRMS_Peguit.winforms.Controllers
             EnsureAdmin();
             var query = _db.Users
                 .Include(u => u.Branch)
-                .Include(u => u.Person)
                 .AsNoTracking();
 
             if (!includeInactive)
@@ -59,7 +58,7 @@ namespace CRMS_Peguit.winforms.Controllers
 
             query = query.Where(u => managedRoleIds.Contains(u.RoleId));
 
-            return await query.OrderBy(u => u.Person.FirstName).ThenBy(u => u.Person.LastName).ToListAsync();
+            return await query.OrderBy(u => u.FirstName).ThenBy(u => u.LastName).ToListAsync();
         }
 
         public async Task<User?> GetByIdAsync(int id)
@@ -80,7 +79,12 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             EnsureAdmin();
 
-            if (await _db.Users.AnyAsync(u => u.Person.Email == user.Email))
+            if (!ValidationHelper.IsValidEmail(user.Email, out string? emailErr))
+            {
+                throw new InvalidOperationException(emailErr);
+            }
+
+            if (await _db.Users.AnyAsync(u => u.Email == user.Email))
             {
                 throw new InvalidOperationException("A user with this email already exists in your tenant.");
             }
@@ -101,18 +105,6 @@ namespace CRMS_Peguit.winforms.Controllers
                 throw new InvalidOperationException(lnError);
             }
 
-            if (user.PersonId <= 0 && user.Person == null)
-            {
-                user.Person = new Person
-                {
-                    FirstName = user.FirstName,
-                    MiddleName = user.MiddleName,
-                    LastName = user.LastName,
-                    Suffix = user.Suffix,
-                    Email = user.Email
-                };
-            }
-
             user.PasswordHash = PasswordHasher.Hash(plainTextPassword);
             user.Status = "active";
             user.CreatedAt = DateTime.UtcNow;
@@ -129,6 +121,8 @@ namespace CRMS_Peguit.winforms.Controllers
                     $"User account '{user.FullName}' was created under Tenant #{TenantId}.",
                     "User",
                     user.UserId);
+
+                TriggerBackgroundSync();
             }
             catch (DbUpdateException ex)
             {
@@ -151,7 +145,12 @@ namespace CRMS_Peguit.winforms.Controllers
                 throw new InvalidOperationException(lnError);
             }
 
-            if (await _db.Users.AnyAsync(u => u.Person.Email == user.Email && u.UserId != user.UserId))
+            if (!ValidationHelper.IsValidEmail(user.Email, out string? emailErr))
+            {
+                throw new InvalidOperationException(emailErr);
+            }
+
+            if (await _db.Users.AnyAsync(u => u.Email == user.Email && u.UserId != user.UserId))
             {
                 throw new InvalidOperationException("A user with this email already exists in your tenant.");
             }
@@ -162,7 +161,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 throw new InvalidOperationException("Invalid role selected. You can only assign Manager or Agent roles.");
             }
 
-            var existing = await _db.Users.Include(u => u.Person).SingleOrDefaultAsync(u => u.UserId == user.UserId);
+            var existing = await _db.Users.SingleOrDefaultAsync(u => u.UserId == user.UserId);
             if (existing == null) throw new InvalidOperationException("User not found.");
 
             existing.FirstName = user.FirstName;
@@ -174,6 +173,7 @@ namespace CRMS_Peguit.winforms.Controllers
             existing.BranchId = user.BranchId;
 
             await _db.SaveChangesAsync();
+            TriggerBackgroundSync();
         }
 
         public async Task DeactivateAsync(int id)
@@ -190,6 +190,7 @@ namespace CRMS_Peguit.winforms.Controllers
 
             user.Status = "inactive";
             await _db.SaveChangesAsync();
+            TriggerBackgroundSync();
         }
 
         public async Task ReactivateAsync(int id)
@@ -201,6 +202,7 @@ namespace CRMS_Peguit.winforms.Controllers
 
             user.Status = "active";
             await _db.SaveChangesAsync();
+            TriggerBackgroundSync();
         }
 
         public async Task<List<User>> GetDeactivatedAsync()
@@ -208,12 +210,11 @@ namespace CRMS_Peguit.winforms.Controllers
             try
             {
                 return await _db.Users
-                    .Include(u => u.Person)
                     .Include(u => u.Role)
                     .AsNoTracking()
                     .Where(u => u.Status.ToLower() == "inactive")
-                    .OrderBy(u => u.Person.LastName)
-                    .ThenBy(u => u.Person.FirstName)
+                    .OrderBy(u => u.LastName)
+                    .ThenBy(u => u.FirstName)
                     .ToListAsync();
             }
             catch (Exception ex)
@@ -232,6 +233,19 @@ namespace CRMS_Peguit.winforms.Controllers
 
             user.PasswordHash = PasswordHasher.Hash(newPassword);
             await _db.SaveChangesAsync();
+            TriggerBackgroundSync();
+        }
+
+        private void TriggerBackgroundSync()
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await SyncService.Instance.SyncAsync(waitIfBusy: false, isFullSync: true);
+                }
+                catch { }
+            });
         }
 
         public int GetActiveUsersCount()
@@ -270,11 +284,10 @@ namespace CRMS_Peguit.winforms.Controllers
                 var users = _db.Users
                     .AsNoTracking()
                     .Include(u => u.Role)
-                    .Include(u => u.Person)
                     .Where(u => managedRoles.Contains(u.Role.RoleName))
                     .OrderByDescending(u => u.Role.RoleName == "Manager")
-                    .ThenBy(u => u.Person.FirstName)
-                    .ThenBy(u => u.Person.LastName)
+                    .ThenBy(u => u.FirstName)
+                    .ThenBy(u => u.LastName)
                     .Take(maxCount)
                     .ToList();
 

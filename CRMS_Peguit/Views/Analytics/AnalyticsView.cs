@@ -486,6 +486,14 @@ namespace CRMS_Peguit.winforms.Views.Analytics
                 lblLoading.Visible = true;
                 lblSubtitle.Visible = false;
 
+                // Show animated loading skeleton placeholders on charts
+                chartDealsClosed.ShowLoadingSkeleton(ChartSkeletonType.Bars);
+                chartPipeline.ShowLoadingSkeleton(ChartSkeletonType.Bars);
+                chartWonVsLost.ShowLoadingSkeleton(ChartSkeletonType.Donut);
+                chartTickets.ShowLoadingSkeleton(ChartSkeletonType.Donut);
+                if (chartAgents.Visible) chartAgents.ShowLoadingSkeleton(ChartSkeletonType.Bars);
+                if (chartSources.Visible) chartSources.ShowLoadingSkeleton(ChartSkeletonType.Donut);
+
                 var range = GetSelectedDateRange();
                 AnalyticsSnapshot? snapshot = null;
                 List<AnalyticsDetailRow>? drillDown = null;

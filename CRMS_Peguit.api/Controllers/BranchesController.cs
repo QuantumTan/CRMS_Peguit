@@ -98,12 +98,13 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> SaveBranch([FromBody] Branch branch)
         {
             var user = CurrentUser;
+            if (user.TenantId <= 0) return Unauthorized();
             if (!ApiSecurityHelper.HasFullOversight(user.Role))
                 return StatusCode(StatusCodes.Status403Forbidden, "Only Manager or Admin can manage branches.");
 
             if (branch.BranchId <= 0)
             {
-                branch.TenantId = user.TenantId > 0 ? user.TenantId : 1;
+                branch.TenantId = user.TenantId;
                 branch.CreatedAt = DateTime.UtcNow;
                 _db.Branches.Add(branch);
             }

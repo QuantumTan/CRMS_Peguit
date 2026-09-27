@@ -50,9 +50,8 @@ namespace CRMS_Peguit.api.Controllers
             // 1. Leads
             var leads = await _db.Leads
                 .AsNoTracking()
-                .Include(l => l.Person)
-                .Include(l => l.AssignedAgent).ThenInclude(u => u!.Person)
-                .Include(l => l.CreatedByUser).ThenInclude(u => u!.Person)
+                .Include(l => l.AssignedAgent)
+                .Include(l => l.CreatedByUser)
                 .Where(l => !l.IsDeleted && (l.AssignmentStatus == "pending_review" || l.AssignedAgentId == null))
                 .OrderByDescending(l => l.CreatedAt)
                 .ToListAsync();
@@ -73,9 +72,8 @@ namespace CRMS_Peguit.api.Controllers
             // 2. Customers
             var customers = await _db.Customers
                 .AsNoTracking()
-                .Include(c => c.Person)
-                .Include(c => c.AssignedAgent).ThenInclude(u => u!.Person)
-                .Include(c => c.CreatedByUser).ThenInclude(u => u!.Person)
+                .Include(c => c.AssignedAgent)
+                .Include(c => c.CreatedByUser)
                 .Where(c => !c.IsDeleted && (c.AssignmentStatus == "pending_review" || c.AssignedAgentId == null))
                 .OrderByDescending(c => c.CreatedAt)
                 .ToListAsync();
@@ -96,8 +94,8 @@ namespace CRMS_Peguit.api.Controllers
             // 3. Properties
             var properties = await _db.Properties
                 .AsNoTracking()
-                .Include(p => p.ListedByAgent).ThenInclude(u => u!.Person)
-                .Include(p => p.CreatedByUser).ThenInclude(u => u!.Person)
+                .Include(p => p.ListedByAgent)
+                .Include(p => p.CreatedByUser)
                 .Where(p => p.AssignmentStatus == "pending_review" || p.ListedByAgentId == null)
                 .OrderByDescending(p => p.CreatedAt)
                 .ToListAsync();
@@ -129,10 +127,9 @@ namespace CRMS_Peguit.api.Controllers
 
             var agents = await _db.Users
                 .AsNoTracking()
-                .Include(u => u.Person)
                 .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status.ToLower() != "inactive")
-                .OrderBy(u => u.Person.LastName)
-                .ThenBy(u => u.Person.FirstName)
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
                 .Select(u => new AgentPickerDto(u.UserId, u.FullName, u.Email))
                 .ToListAsync();
 

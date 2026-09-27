@@ -39,7 +39,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var query = _db.Customers
-                .Include(c => c.Person)
                 .Include(c => c.AssignedAgent)
                 .Include(c => c.CreatedByUser)
                 .Where(c => !c.IsDeleted)
@@ -58,13 +57,13 @@ namespace CRMS_Peguit.api.Controllers
             if (!string.IsNullOrWhiteSpace(search))
             {
                 string s = search.Trim();
-                query = query.Where(c => (c.Person != null && (
-                    c.Person.FirstName.Contains(s) ||
-                    c.Person.LastName.Contains(s) ||
-                    (c.Person.MiddleName != null && c.Person.MiddleName.Contains(s)) ||
-                    (c.Person.Suffix != null && c.Person.Suffix.Contains(s)) ||
-                    (c.Person.Email != null && c.Person.Email.Contains(s)) ||
-                    (c.Person.Phone != null && c.Person.Phone.Contains(s)))) ||
+                query = query.Where(c =>
+                    c.FirstName.Contains(s) ||
+                    c.LastName.Contains(s) ||
+                    (c.MiddleName != null && c.MiddleName.Contains(s)) ||
+                    (c.Suffix != null && c.Suffix.Contains(s)) ||
+                    (c.Email != null && c.Email.Contains(s)) ||
+                    (c.Phone != null && c.Phone.Contains(s)) ||
                     c.Type.Contains(s));
             }
 
@@ -87,8 +86,8 @@ namespace CRMS_Peguit.api.Controllers
 
                 int totalCount = await query.CountAsync();
                 var items = await query
-                    .OrderBy(x => x.Person.LastName)
-                    .ThenBy(x => x.Person.FirstName)
+                    .OrderBy(x => x.LastName)
+                    .ThenBy(x => x.FirstName)
                     .Skip((pageNum - 1) * size)
                     .Take(size)
                     .ToListAsync();
@@ -97,8 +96,8 @@ namespace CRMS_Peguit.api.Controllers
             }
 
             var all = await query
-                .OrderBy(x => x.Person.LastName)
-                .ThenBy(x => x.Person.FirstName)
+                .OrderBy(x => x.LastName)
+                .ThenBy(x => x.FirstName)
                 .ToListAsync();
             return Ok(all);
         }
@@ -108,7 +107,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var customer = await _db.Customers
-                .Include(c => c.Person)
                 .Include(c => c.AssignedAgent)
                 .Include(c => c.CreatedByUser)
                 .SingleOrDefaultAsync(x => x.CustomerId == id);
@@ -131,21 +129,10 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> Create(Customer customer)
         {
             var user = CurrentUser;
-            if (customer.PersonId <= 0 && customer.Person == null)
-            {
-                customer.Person = new Person
-                {
-                    FirstName = customer.FirstName,
-                    MiddleName = customer.MiddleName,
-                    LastName = customer.LastName,
-                    Suffix = customer.Suffix,
-                    Email = customer.Email,
-                    Phone = customer.Phone
-                };
-            }
+            if (user.UserId <= 0) return Unauthorized();
 
             customer.CreatedAt = DateTime.UtcNow;
-            customer.CreatedByUserId = user.UserId > 0 ? user.UserId : (customer.CreatedByUserId > 0 ? customer.CreatedByUserId : 1);
+            customer.CreatedByUserId = user.UserId;
             customer.IsDeleted = false;
             customer.DeletedAt = null;
 
@@ -174,7 +161,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             var item = await _db.Customers
-                .Include(c => c.Person)
                 .SingleOrDefaultAsync(x => x.CustomerId == id);
             if (item is null) return NotFound();
 
@@ -267,7 +253,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var items = await _db.Customers
                 .IgnoreQueryFilters()
-                .Include(c => c.Person)
                 .Where(c => c.IsDeleted)
                 .OrderByDescending(c => c.DeletedAt)
                 .ToListAsync();
@@ -357,7 +342,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var items = await _db.Customers
                 .AsNoTracking()
-                .Include(c => c.Person)
                 .Where(c => !c.IsDeleted && (c.AssignmentStatus == "pending_review" || c.AssignedAgentId == null))
                 .OrderByDescending(c => c.CreatedAt)
                 .ToListAsync();
@@ -375,10 +359,9 @@ namespace CRMS_Peguit.api.Controllers
 
             var agents = await _db.Users
                 .AsNoTracking()
-                .Include(u => u.Person)
                 .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status.ToLower() != "inactive")
-                .OrderBy(u => u.Person.LastName)
-                .ThenBy(u => u.Person.FirstName)
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
                 .Select(u => new AgentPickerDto(u.UserId, u.FullName, u.Email))
                 .ToListAsync();
 
@@ -390,7 +373,6 @@ namespace CRMS_Peguit.api.Controllers
         {
             var dict = await _db.Users
                 .AsNoTracking()
-                .Include(u => u.Person)
                 .ToDictionaryAsync(u => u.UserId, u => u.FullName);
             return Ok(dict);
         }
@@ -423,7 +405,7 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> LogEmail(int id, [FromBody] LogCustomerActivityRequest req)
         {
             var user = CurrentUser;
-            var customer = await _db.Customers.Include(c => c.Person).SingleOrDefaultAsync(c => c.CustomerId == id);
+            var customer = await _db.Customers.SingleOrDefaultAsync(c => c.CustomerId == id);
             if (customer == null) return NotFound();
 
             LogActivityInternal("Email", null, id, $"Email sent to '{customer.FullName}'. Subject: {req.Subject}", user.UserId);
@@ -434,7 +416,7 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> LogCall(int id, [FromBody] LogCustomerActivityRequest req)
         {
             var user = CurrentUser;
-            var customer = await _db.Customers.Include(c => c.Person).SingleOrDefaultAsync(c => c.CustomerId == id);
+            var customer = await _db.Customers.SingleOrDefaultAsync(c => c.CustomerId == id);
             if (customer == null) return NotFound();
 
             LogActivityInternal("Call", null, id, $"Call logged for '{customer.FullName}': {req.Notes}", user.UserId);
@@ -445,7 +427,7 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> LogMeeting(int id, [FromBody] LogCustomerActivityRequest req)
         {
             var user = CurrentUser;
-            var customer = await _db.Customers.Include(c => c.Person).SingleOrDefaultAsync(c => c.CustomerId == id);
+            var customer = await _db.Customers.SingleOrDefaultAsync(c => c.CustomerId == id);
             if (customer == null) return NotFound();
 
             LogActivityInternal("Meeting", null, id, $"Meeting held with '{customer.FullName}': {req.Notes}", user.UserId);
