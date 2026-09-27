@@ -26,11 +26,14 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
         private readonly System.Windows.Forms.Timer _searchDebounceTimer;
         private bool _isLoading = false;
         private ScreenFilterCoordinator _filterCoord = null!;
+        private GridSkeletonOverlay _gridSkeleton = null!;
 
         public SupportTicketsView()
         {
             InitializeComponent();
             _controller = new SupportTicketController();
+
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(grid);
 
             _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
             _searchDebounceTimer.Tick += async (_, _) =>
@@ -43,6 +46,13 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             InitEmptyState();
             ApplyStyling();
             BindEvents();
+
+            kpiTotal.ShowLoadingSkeleton();
+            kpiOpen.ShowLoadingSkeleton();
+            kpiInProgress.ShowLoadingSkeleton();
+            kpiOverdue.ShowLoadingSkeleton();
+            _gridSkeleton.ShowSkeleton();
+
             _ = RefreshGridAsync(resetPage: true);
 
             this.Load += (_, _) => LayoutToolbar();
@@ -230,6 +240,18 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             if (_isLoading) return;
             _isLoading = true;
 
+            bool isFullLoad = _agentDict.Count == 0 || kpiTotal.IsLoading;
+            if (isFullLoad)
+            {
+                kpiTotal.ShowLoadingSkeleton();
+                kpiOpen.ShowLoadingSkeleton();
+                kpiInProgress.ShowLoadingSkeleton();
+                kpiOverdue.ShowLoadingSkeleton();
+            }
+
+            _pnlEmptyState.Visible = false;
+            _gridSkeleton.ShowSkeleton();
+
             try
             {
                 int pageNumber = resetPage ? 1 : _pagination.CurrentPage;
@@ -253,9 +275,17 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
                 BindCurrentPage();
 
                 _pnlEmptyState.Visible = pagedResult.TotalCount == 0;
+                grid.Visible = pagedResult.TotalCount > 0;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SupportTicketsView] RefreshGridAsync error: {ex.Message}");
+                _pnlEmptyState.Visible = true;
+                grid.Visible = false;
             }
             finally
             {
+                _gridSkeleton.HideSkeleton();
                 _isLoading = false;
             }
         }

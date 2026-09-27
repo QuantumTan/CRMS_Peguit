@@ -17,7 +17,7 @@ namespace CRMS_Peguit.winforms.Controllers
     {
         private readonly RealEstateDbContext _db;
 
-        private int TenantId => CurrentSession.TenantId;
+        private int TenantId => CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
         private readonly NotificationController _notifCtrl;
 
         public SupportTicketController()
@@ -637,6 +637,74 @@ namespace CRMS_Peguit.winforms.Controllers
             _db.SaveChanges();
 
             SyncService.Instance.EnqueueOfflineDelete("SupportTicket", ticket.TicketId, TenantId, actorUserId);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
+        }
+
+        public List<SupportTicket> GetArchived()
+        {
+            try
+            {
+                return _db.SupportTickets
+                    .IgnoreQueryFilters()
+                    .Include(t => t.RaisedByUser)
+                        .ThenInclude(u => u.Role)
+                    .AsNoTracking()
+                    .Where(t => t.RaisedByUser != null && t.RaisedByUser.Role != null && t.RaisedByUser.Role.TenantId == TenantId && t.IsDeleted)
+                    .OrderByDescending(t => t.DeletedAt ?? t.CreatedAt)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SupportTicketController.GetArchived] Error: {ex.Message}");
+                return new List<SupportTicket>();
+            }
+        }
+
+        public void Restore(int ticketId)
+        {
+            var ticket = _db.SupportTickets.IgnoreQueryFilters().SingleOrDefault(t => t.TicketId == ticketId);
+            if (ticket is null) return;
+
+            ticket.IsDeleted = false;
+            ticket.DeletedAt = null;
+
+            int actorUserId = CurrentSession.UserId > 0 ? CurrentSession.UserId : 1;
+            string actorName = CurrentSession.CurrentUser?.FullName ?? $"User #{actorUserId}";
+
+            var logEntry = new TicketComment
+            {
+                TicketId = ticket.TicketId,
+                AuthorUserId = actorUserId,
+                CommentText = $"Ticket restored by {actorName}.",
+                CommentType = "StatusChange",
+                IsInternal = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.TicketComments.Add(logEntry);
+            _db.SaveChanges();
+
+            SyncService.Instance.EnqueueOfflineUpdate("SupportTicket", ticket.TicketId, ticket, TenantId, actorUserId, DateTime.UtcNow);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
+        }
+
+        public void HardDelete(int ticketId)
+        {
+            var ticket = _db.SupportTickets.IgnoreQueryFilters().SingleOrDefault(t => t.TicketId == ticketId);
+            if (ticket is null) return;
+
+            var comments = _db.TicketComments.IgnoreQueryFilters().Where(c => c.TicketId == ticketId).ToList();
+            if (comments.Count > 0) _db.TicketComments.RemoveRange(comments);
+
+            _db.SupportTickets.Remove(ticket);
+            _db.SaveChanges();
+
+            SyncService.Instance.EnqueueOfflineDelete("SupportTicket", ticketId, TenantId, CurrentSession.UserId);
             if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
             {
                 _ = Task.Run(() => SyncService.Instance.SyncAsync());

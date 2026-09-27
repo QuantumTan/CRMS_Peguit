@@ -13,7 +13,7 @@ namespace CRMS_Peguit.winforms.Controllers
     public class FollowUpController : IDisposable
     {
         private readonly RealEstateDbContext _db;
-        private int TenantId => CurrentSession.TenantId;
+        private int TenantId => CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
 
         public FollowUpController()
         {
@@ -360,6 +360,61 @@ namespace CRMS_Peguit.winforms.Controllers
             try { LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, new[] { item }); } catch { }
 
             SyncService.Instance.EnqueueOfflineDelete("TaskReminder", item.TaskReminderId, TenantId, currentUserId);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
+        }
+
+        public List<TaskReminder> GetArchived()
+        {
+            try
+            {
+                return _db.TaskReminders
+                    .IgnoreQueryFilters()
+                    .Include(t => t.AssignedToUser)
+                        .ThenInclude(u => u.Role)
+                    .AsNoTracking()
+                    .Where(t => t.AssignedToUser != null && t.AssignedToUser.Role != null && t.AssignedToUser.Role.TenantId == TenantId && t.IsDeleted)
+                    .OrderByDescending(t => t.DeletedAt ?? t.CreatedAt)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FollowUpController.GetArchived] Error: {ex.Message}");
+                return new List<TaskReminder>();
+            }
+        }
+
+        public void Restore(int taskReminderId)
+        {
+            var item = _db.TaskReminders.IgnoreQueryFilters().SingleOrDefault(r => r.TaskReminderId == taskReminderId);
+            if (item is null) return;
+
+            item.IsDeleted = false;
+            item.DeletedAt = null;
+            _db.SaveChanges();
+
+            try { LocalDataCache.Instance.SaveTaskRemindersMirror(TenantId, new[] { item }); } catch { }
+
+            int currentUserId = CurrentSession.UserId > 0 ? CurrentSession.UserId : 1;
+            SyncService.Instance.EnqueueOfflineUpdate("TaskReminder", item.TaskReminderId, item, TenantId, currentUserId, DateTime.UtcNow);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
+        }
+
+        public void HardDelete(int taskReminderId)
+        {
+            var item = _db.TaskReminders.IgnoreQueryFilters().SingleOrDefault(r => r.TaskReminderId == taskReminderId);
+            if (item is null) return;
+
+            _db.TaskReminders.Remove(item);
+            _db.SaveChanges();
+
+            int currentUserId = CurrentSession.UserId > 0 ? CurrentSession.UserId : 1;
+            SyncService.Instance.EnqueueOfflineDelete("TaskReminder", taskReminderId, TenantId, currentUserId);
             if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
             {
                 _ = Task.Run(() => SyncService.Instance.SyncAsync());

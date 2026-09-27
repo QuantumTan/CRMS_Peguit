@@ -43,6 +43,9 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
         private Panel? _pnlTicketsAttentionList;
         private Panel? _cardRecentActivity;
         private Panel? _pnlRecentActivityList;
+        private ListSkeletonOverlay? _leftListSkeleton;
+        private ListSkeletonOverlay? _rightListSkeleton;
+        private ChartSkeletonOverlay? _chartSkeleton;
 
         public DashboardView()
         {
@@ -59,7 +62,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             this.BackColor = Theme.Background;
             lblTitle.ForeColor = Theme.TextPrimary;
             lblSubtitle.ForeColor = Theme.TextSecondary;
-            lblLoading.ForeColor = Theme.TextSecondary;
+            lblLoading.Visible = false;
 
             UiRadiusHelper.StyleCard(pnlLeftCard, 12);
             UiRadiusHelper.StyleCard(pnlRightCard, 12);
@@ -80,6 +83,16 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             pnlLeftList.AutoScroll = true;
             pnlRightList.AutoScroll = true;
 
+            _leftListSkeleton = ListSkeletonOverlay.CreateForContainer(pnlLeftList);
+            _rightListSkeleton = ListSkeletonOverlay.CreateForContainer(pnlRightList);
+
+            _chartSkeleton = new ChartSkeletonOverlay();
+            _chartSkeleton.Location = plotGlanceable.Location;
+            _chartSkeleton.Size = plotGlanceable.Size;
+            _chartSkeleton.Anchor = plotGlanceable.Anchor;
+            pnlChartCard.Controls.Add(_chartSkeleton);
+            _chartSkeleton.BringToFront();
+
             pnlLeftList.Resize += (_, _) => ResizeListItems(pnlLeftList);
             pnlRightList.Resize += (_, _) => ResizeListItems(pnlRightList);
 
@@ -97,8 +110,15 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
         {
             try
             {
-                lblLoading.Visible = true;
-                lblSubtitle.Visible = false;
+                lblLoading.Visible = false;
+
+                kpi1.ShowLoadingSkeleton();
+                kpi2.ShowLoadingSkeleton();
+                kpi3.ShowLoadingSkeleton();
+                kpi4.ShowLoadingSkeleton();
+                _chartSkeleton?.ShowSkeleton(ChartSkeletonType.Bars);
+                _leftListSkeleton?.ShowSkeleton(4);
+                _rightListSkeleton?.ShowSkeleton(4);
 
                 var user = CurrentSession.CurrentUser;
                 var role = user?.Role ?? UserRole.SalesStaff;
@@ -119,9 +139,6 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                 });
 
                 if (IsDisposed) return;
-
-                lblLoading.Visible = false;
-                lblSubtitle.Visible = true;
 
                 switch (role)
                 {
@@ -145,9 +162,19 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[DashboardView.LoadData] Error: {ex.Message}");
+            }
+            finally
+            {
+                kpi1.HideLoadingSkeleton();
+                kpi2.HideLoadingSkeleton();
+                kpi3.HideLoadingSkeleton();
+                kpi4.HideLoadingSkeleton();
+                _chartSkeleton?.HideSkeleton();
+                _leftListSkeleton?.HideSkeleton();
+                _rightListSkeleton?.HideSkeleton();
                 lblLoading.Visible = false;
                 lblSubtitle.Visible = true;
-                System.Diagnostics.Debug.WriteLine($"[DashboardView.LoadData] Error: {ex.Message}");
             }
         }
 

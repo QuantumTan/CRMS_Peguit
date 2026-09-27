@@ -7,6 +7,7 @@ using System.Windows.Forms;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
+using CRMS_Peguit.winforms.Controls;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
 using CRMS_Peguit.winforms.Views.Customers;
@@ -194,15 +195,13 @@ namespace CRMS_Peguit.winforms.Views.Controls
             ShowNotificationDropdown();
         }
 
-        public void ShowNotificationDropdown()
+        public async void ShowNotificationDropdown()
         {
             int currentUserId = CurrentSession.UserId;
             if (currentUserId <= 0) return;
 
             _dropdown?.Close();
             _dropdown?.Dispose();
-
-            var items = _controller.GetMyNotifications(currentUserId, take: 40);
 
             var panel = new Panel
             {
@@ -345,30 +344,6 @@ namespace CRMS_Peguit.winforms.Views.Controls
                 Padding = new Padding(0)
             };
 
-            if (items.Count == 0)
-            {
-                var lblEmpty = new Label
-                {
-                    Text = "🎉 All caught up!\nNo new notifications.",
-                    Font = new Font("Segoe UI", 10.5f),
-                    ForeColor = Theme.TextSecondary,
-                    Dock = DockStyle.Fill,
-                    TextAlign = ContentAlignment.MiddleCenter
-                };
-                pnlList.Controls.Add(lblEmpty);
-            }
-            else
-            {
-                int currentY = 0;
-                foreach (var notif in items)
-                {
-                    var itemCard = CreateNotificationCard(notif, panel.Width - 18, currentUserId);
-                    itemCard.Location = new Point(0, currentY);
-                    pnlList.Controls.Add(itemCard);
-                    currentY += itemCard.Height;
-                }
-            }
-
             panel.Controls.Add(pnlList);
             panel.Controls.Add(pnlFooter);
             panel.Controls.Add(pnlHeader);
@@ -394,6 +369,44 @@ namespace CRMS_Peguit.winforms.Views.Controls
             int dropX = Width - panel.Width;
             int dropY = Height + 4;
             _dropdown.Show(this, new Point(dropX, dropY));
+
+            var skeleton = ListSkeletonOverlay.CreateForContainer(pnlList, 54);
+            skeleton.ShowSkeleton(4);
+
+            List<Notification> items;
+            try
+            {
+                items = await Task.Run(() => _controller.GetMyNotifications(currentUserId, take: 40));
+            }
+            finally
+            {
+                skeleton.HideSkeleton();
+                pnlList.Controls.Remove(skeleton);
+            }
+
+            if (items.Count == 0)
+            {
+                var lblEmpty = new Label
+                {
+                    Text = "🎉 All caught up!\nNo new notifications.",
+                    Font = new Font("Segoe UI", 10.5f),
+                    ForeColor = Theme.TextSecondary,
+                    Dock = DockStyle.Fill,
+                    TextAlign = ContentAlignment.MiddleCenter
+                };
+                pnlList.Controls.Add(lblEmpty);
+            }
+            else
+            {
+                int currentY = 0;
+                foreach (var notif in items)
+                {
+                    var itemCard = CreateNotificationCard(notif, panel.Width - 18, currentUserId);
+                    itemCard.Location = new Point(0, currentY);
+                    pnlList.Controls.Add(itemCard);
+                    currentY += itemCard.Height;
+                }
+            }
         }
 
         private Panel CreateNotificationCard(Notification notif, int cardWidth, int currentUserId)

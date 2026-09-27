@@ -801,6 +801,143 @@ namespace CRMS_Peguit.winforms.Controllers
             }
         }
 
+        public async Task<int> GenerateAutomatedValuationCampaignsAsync(bool forceAll = false)
+        {
+            AssertTenantAccess();
+
+            var settings = await _db.AutomatedEmailSettings.FirstOrDefaultAsync(s => s.TenantId == TenantId)
+                ?? new AutomatedEmailSettings { TenantId = TenantId, IsEnabled = true };
+
+            var query = _db.Deals
+                .AsNoTracking()
+                .Include(d => d.Customer)
+                .Include(d => d.Property)
+                .Include(d => d.Agent)
+                .Where(d => d.Customer != null && !d.Customer.IsDeleted)
+                .Where(d => d.Stage.ToLower() == "closed" || d.Stage.ToLower() == "closed-won" || d.Stage.ToLower() == "won");
+
+            if (!RbacService.HasFullOversight && RbacService.IsAgent)
+            {
+                int currentUserId = CurrentSession.UserId;
+                query = query.Where(d => d.AgentId == currentUserId);
+            }
+
+            if (settings.TargetAudience.Equals("Buyers", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(d => d.Customer!.Type.ToLower() == "buyer");
+            else if (settings.TargetAudience.Equals("Sellers", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(d => d.Customer!.Type.ToLower() == "seller");
+
+            var deals = await query
+                .OrderByDescending(d => d.ContractSignedDate ?? d.CreatedAt)
+                .ToListAsync();
+
+            var latestDealsByCustomer = deals
+                .GroupBy(d => d.CustomerId)
+                .Select(g => g.First())
+                .ToList();
+
+            var now = DateTime.UtcNow;
+            int enqueuedCount = 0;
+
+            var activeQueuedCustomerIds = await _db.RetentionEmailLogs
+                .Where(l => l.Status == "Queued")
+                .Select(l => l.CustomerId)
+                .ToListAsync();
+
+            foreach (var deal in latestDealsByCustomer)
+            {
+                var customer = deal.Customer;
+                if (customer == null || string.IsNullOrWhiteSpace(customer.Email)) continue;
+
+                if (activeQueuedCustomerIds.Contains(customer.CustomerId)) continue;
+
+                if (!forceAll && customer.LastRetentionEmailSentAt.HasValue)
+                {
+                    double daysSince = (now - customer.LastRetentionEmailSentAt.Value).TotalDays;
+                    if (daysSince < settings.FrequencyDays) continue;
+                }
+
+                var metrics = MarketUpdateBackgroundService.CalculateValuation(settings, deal);
+                var (subject, body) = settings.EmailFormat == "Html"
+                    ? MarketUpdateBackgroundService.FormatHtmlMessage(settings, deal, metrics)
+                    : MarketUpdateBackgroundService.FormatPlainTextMessage(settings, deal, metrics);
+
+                var log = new RetentionEmailLog
+                {
+                    TenantId = TenantId,
+                    CustomerId = customer.CustomerId,
+                    RecipientName = customer.FullName,
+                    RecipientEmail = customer.Email,
+                    Segment = string.IsNullOrWhiteSpace(customer.CurrentRetentionSegment) ? "Recent Client" : customer.CurrentRetentionSegment,
+                    Subject = subject,
+                    Body = body,
+                    IncentiveOffered = $"{settings.AnnualAppreciationRatePercent:F1}% Benchmark Equity Update",
+                    Status = "Queued",
+                    GenerationSource = "AutomatedValuation",
+                    CreatedAt = now
+                };
+
+                _db.RetentionEmailLogs.Add(log);
+                activeQueuedCustomerIds.Add(customer.CustomerId);
+                enqueuedCount++;
+            }
+
+            if (enqueuedCount > 0)
+            {
+                await _db.SaveChangesAsync();
+
+                await LogRetentionAuditAsync(
+                    "AutomatedCampaignsGenerated",
+                    null,
+                    "Automated Valuation Engine",
+                    $"Generated {enqueuedCount} queued valuation campaigns based on benchmark {settings.AnnualAppreciationRatePercent}% / {settings.FrequencyDays}d cadence.");
+            }
+
+            return enqueuedCount;
+        }
+
+        public async Task<(int Dispatched, int Failed, int SkippedCooldown)> DispatchAllQueuedCampaignEmailsAsync(
+            bool overrideCooldown = false,
+            string? overrideReason = null)
+        {
+            AssertTenantAccess();
+
+            var queuedLogs = await _db.RetentionEmailLogs
+                .Include(l => l.Customer)
+                .Where(l => l.Status == "Queued")
+                .OrderBy(l => l.CreatedAt)
+                .ToListAsync();
+
+            int dispatched = 0;
+            int failed = 0;
+            int skippedCooldown = 0;
+
+            foreach (var log in queuedLogs)
+            {
+                try
+                {
+                    if (log.Customer.LastRetentionEmailSentAt.HasValue)
+                    {
+                        double daysSince = (DateTime.UtcNow - log.Customer.LastRetentionEmailSentAt.Value).TotalDays;
+                        if (daysSince < 30 && !overrideCooldown)
+                        {
+                            skippedCooldown++;
+                            continue;
+                        }
+                    }
+
+                    await DispatchQueuedEmailAsync(log.EmailLogId, log.Subject, log.Body, overrideCooldown, overrideReason);
+                    dispatched++;
+                }
+                catch
+                {
+                    failed++;
+                }
+            }
+
+            return (dispatched, failed, skippedCooldown);
+        }
+
         public async Task SendManualRetentionEmailAsync(
             int customerId,
             string subject,

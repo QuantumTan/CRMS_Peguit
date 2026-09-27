@@ -454,8 +454,11 @@ namespace CRMS_Peguit.winforms
             {
                 using var startupDb = LocalDb.CreateContext();
                 startupDb.Database.EnsureCreated();
-                DbSeeder.SeedTestUsersAsync(startupDb, 1).GetAwaiter().GetResult();
                 SchemaRepairService.EnsureCrmPolishColumns(startupDb);
+                if (!startupDb.Users.Any() || !startupDb.Customers.Any())
+                {
+                    DbSeeder.SeedTestUsersAsync(startupDb, 1).GetAwaiter().GetResult();
+                }
             }
             catch (Exception ex)
             {

@@ -31,6 +31,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         private List<BackupLogDto> _backups = new();
 
         private DataGridView _grid = null!;
+        private GridSkeletonOverlay? _gridSkeleton;
         private PaginationControl _pagination = null!;
         private Button _btnRunBackup = null!;
         private Button _btnRestore = null!;
@@ -92,7 +93,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
             _lblLastStatus = new Label
             {
-                Text = "Loading backup log history...",
+                Text = "",
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
@@ -372,6 +373,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _pagination.PageSizeChanged += (_, _) => RenderGrid(resetPage: true);
 
             pnlCard.Controls.Add(_grid);
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(_grid);
             pnlCard.Controls.Add(_pnlEmptyState);
             pnlCard.Controls.Add(_pagination);
             _pagination.BringToFront();
@@ -387,6 +389,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
         private async Task LoadDataAsync()
         {
+            _gridSkeleton?.ShowSkeleton();
             try
             {
                 _backups = await _controller.GetBackupHistoryAsync();
@@ -396,6 +399,10 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             {
                 MessageBox.Show($"Failed to load backup history: {ex.Message}",
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _gridSkeleton?.HideSkeleton();
             }
         }
 

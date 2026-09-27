@@ -20,8 +20,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
         private int _hoverRowIndex = -1;
         private string _sortColumn = "Name";
         private SortOrder _sortDirection = SortOrder.Ascending;
-        private bool _isSkeletonLoading = false;
-        private System.Windows.Forms.Timer? _skeletonTimer;
+        private GridSkeletonOverlay _gridSkeleton = null!;
         private PaginationControl _pagination = null!;
         private List<Lead> _currentPageLeads = new();
         private readonly System.Windows.Forms.Timer _searchDebounceTimer;
@@ -39,11 +38,13 @@ namespace CRMS_Peguit.winforms.Views.Leads
             InitializeComponent();
             _controller = new LeadController();
 
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(grid);
+
             _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
             _searchDebounceTimer.Tick += async (_, _) =>
             {
                 _searchDebounceTimer.Stop();
-                await RefreshGridAsync(resetPage: true, animate: false);
+                await RefreshGridAsync(resetPage: true);
             };
 
             InitKpis();
@@ -51,7 +52,15 @@ namespace CRMS_Peguit.winforms.Views.Leads
             InitEmptyState();
             ApplyStyling();
             BindEvents();
-            _ = RefreshGridAsync(resetPage: true, animate: false);
+
+            _kpiTotal.ShowLoadingSkeleton();
+            _kpiNew.ShowLoadingSkeleton();
+            _kpiContacted.ShowLoadingSkeleton();
+            _kpiQualified.ShowLoadingSkeleton();
+            _kpiConverted.ShowLoadingSkeleton();
+            _gridSkeleton.ShowSkeleton();
+
+            _ = RefreshGridAsync(resetPage: true);
 
             this.Load += (_, _) => LayoutToolbar();
             this.Resize += (_, _) => LayoutToolbar();
@@ -201,7 +210,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
 
             grid.CellDoubleClick += (_, e) =>
             {
-                if (e.RowIndex < 0 || _isSkeletonLoading) return;
+                if (e.RowIndex < 0) return;
                 var lead = GetLeadAtRow(e.RowIndex);
                 if (lead is not null) ViewLead(lead);
             };
@@ -223,7 +232,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
                 txtSearch.Clear();
             }
 
-            await RefreshGridAsync(resetPage: true, animate: true);
+            await RefreshGridAsync(resetPage: true);
         }
 
         private void UpdateFilterPillStyles(LeadStageCounts counts)
@@ -258,7 +267,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
 
         private async void Grid_ColumnHeaderMouseClick(object? sender, DataGridViewCellMouseEventArgs e)
         {
-            if (e.ColumnIndex < 0 || _isSkeletonLoading) return;
+            if (e.ColumnIndex < 0) return;
             string colName = grid.Columns[e.ColumnIndex].Name;
             if (colName == "Actions" || colName == "LeadId") return;
 
@@ -272,18 +281,31 @@ namespace CRMS_Peguit.winforms.Views.Leads
                 _sortDirection = SortOrder.Ascending;
             }
 
-            await RefreshGridAsync(resetPage: false, animate: false);
+            await RefreshGridAsync(resetPage: false);
         }
 
         public void RefreshGrid(bool reloadFromDb = true, bool animate = false)
         {
-            _ = RefreshGridAsync(resetPage: false, animate: animate);
+            _ = RefreshGridAsync(resetPage: false);
         }
 
         public async Task RefreshGridAsync(bool resetPage = false, bool animate = false)
         {
             if (_isLoading) return;
             _isLoading = true;
+
+            bool isFullLoad = _kpiTotal.IsLoading;
+            if (isFullLoad)
+            {
+                _kpiTotal.ShowLoadingSkeleton();
+                _kpiNew.ShowLoadingSkeleton();
+                _kpiContacted.ShowLoadingSkeleton();
+                _kpiQualified.ShowLoadingSkeleton();
+                _kpiConverted.ShowLoadingSkeleton();
+            }
+
+            _pnlEmptyState.Visible = false;
+            _gridSkeleton.ShowSkeleton();
 
             try
             {
@@ -304,34 +326,20 @@ namespace CRMS_Peguit.winforms.Views.Leads
                 _currentPageLeads = pagedResult.Items;
                 _pagination.UpdatePagination(pagedResult.TotalCount, pagedResult.PageNumber, pagedResult.PageSize);
 
-                if (animate)
-                {
-                    _isSkeletonLoading = true;
-                    _skeletonTimer?.Stop();
-                    _skeletonTimer?.Dispose();
+                BindCurrentPage();
 
-                    BindCurrentPage();
-                    grid.Invalidate();
-
-                    _skeletonTimer = new System.Windows.Forms.Timer { Interval = 130 };
-                    _skeletonTimer.Tick += (_, _) =>
-                    {
-                        _skeletonTimer?.Stop();
-                        _skeletonTimer?.Dispose();
-                        _skeletonTimer = null;
-                        _isSkeletonLoading = false;
-                        grid.Invalidate();
-                    };
-                    _skeletonTimer.Start();
-                }
-                else
-                {
-                    _isSkeletonLoading = false;
-                    BindCurrentPage();
-                }
+                _pnlEmptyState.Visible = pagedResult.TotalCount == 0;
+                grid.Visible = pagedResult.TotalCount > 0;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LeadsView] RefreshGridAsync error: {ex.Message}");
+                _pnlEmptyState.Visible = true;
+                grid.Visible = false;
             }
             finally
             {
+                _gridSkeleton.HideSkeleton();
                 _isLoading = false;
             }
         }
@@ -479,36 +487,6 @@ namespace CRMS_Peguit.winforms.Views.Leads
                 : (e.RowIndex == _hoverRowIndex
                     ? UiGridHelper.RowHover
                     : (e.RowIndex % 2 == 1 ? UiGridHelper.RowAlternate : UiGridHelper.RowNormal));
-
-            // Skeleton Loading State
-            if (_isSkeletonLoading)
-            {
-                using (var bgBrush = new SolidBrush(rowBg))
-                {
-                    e.Graphics.FillRectangle(bgBrush, e.CellBounds);
-                }
-
-                // Shimmering placeholder bar
-                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                int barHeight = 14;
-                int barY = e.CellBounds.Y + (e.CellBounds.Height - barHeight) / 2;
-                int barWidth = Math.Max(30, e.CellBounds.Width - 36);
-                int barX = e.CellBounds.X + 16;
-
-                using (var shimmerBrush = new SolidBrush(Color.FromArgb(226, 232, 240)))
-                using (var path = GetRoundedRectangle(new Rectangle(barX, barY, barWidth, barHeight), 4))
-                {
-                    e.Graphics.FillPath(shimmerBrush, path);
-                }
-
-                using (var dividerPen = new Pen(UiGridHelper.GridBorder, 1f))
-                {
-                    e.Graphics.DrawLine(dividerPen, e.CellBounds.Left, e.CellBounds.Bottom - 1, e.CellBounds.Right, e.CellBounds.Bottom - 1);
-                }
-
-                e.Handled = true;
-                return;
-            }
 
             string columnName = grid.Columns[e.ColumnIndex].Name;
 

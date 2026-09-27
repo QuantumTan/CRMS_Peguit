@@ -22,11 +22,14 @@ namespace CRMS_Peguit.winforms.Views.Deals
         private Dictionary<int, string> _agents = new();
         private readonly System.Windows.Forms.Timer _searchDebounceTimer;
         private bool _isLoading = false;
+        private GridSkeletonOverlay _gridSkeleton = null!;
 
         public DealsView()
         {
             InitializeComponent();
             _controller = new DealController();
+
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(grid);
 
             _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
             _searchDebounceTimer.Tick += async (_, _) =>
@@ -39,6 +42,14 @@ namespace CRMS_Peguit.winforms.Views.Deals
             InitEmptyState();
             ApplyStyling();
             BindEvents();
+
+            kpiTotal.ShowLoadingSkeleton();
+            kpiOffer.ShowLoadingSkeleton();
+            kpiContract.ShowLoadingSkeleton();
+            kpiClosed.ShowLoadingSkeleton();
+            kpiLost.ShowLoadingSkeleton();
+            _gridSkeleton.ShowSkeleton();
+
             _ = RefreshGridAsync(resetPage: true);
 
             this.Load += (_, _) => LayoutToolbar();
@@ -251,6 +262,19 @@ namespace CRMS_Peguit.winforms.Views.Deals
             if (_isLoading) return;
             _isLoading = true;
 
+            bool isFullLoad = _customers.Count == 0 || kpiTotal.IsLoading;
+            if (isFullLoad)
+            {
+                kpiTotal.ShowLoadingSkeleton();
+                kpiOffer.ShowLoadingSkeleton();
+                kpiContract.ShowLoadingSkeleton();
+                kpiClosed.ShowLoadingSkeleton();
+                kpiLost.ShowLoadingSkeleton();
+            }
+
+            _pnlEmptyState.Visible = false;
+            _gridSkeleton.ShowSkeleton();
+
             try
             {
                 int page = resetPage ? 1 : _pagination.CurrentPage;
@@ -271,9 +295,19 @@ namespace CRMS_Peguit.winforms.Views.Deals
 
                 _pagination.UpdatePagination(pagedResult.TotalCount, pagedResult.PageNumber, pagedResult.PageSize);
                 BindCurrentPage();
+
+                _pnlEmptyState.Visible = pagedResult.TotalCount == 0;
+                grid.Visible = pagedResult.TotalCount > 0;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DealsView] RefreshGridAsync error: {ex.Message}");
+                _pnlEmptyState.Visible = true;
+                grid.Visible = false;
             }
             finally
             {
+                _gridSkeleton.HideSkeleton();
                 _isLoading = false;
             }
         }

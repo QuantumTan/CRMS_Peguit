@@ -19,6 +19,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
         private readonly CampaignController _campaignController;
         private readonly LeadController _leadController;
         private string _selectedSource = "All";
+        private GridSkeletonOverlay? _gridSkeleton;
 
         // Pagination Controls
         private PaginationControl _paginationLeads = null!;
@@ -65,6 +66,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             _paginationLeads.BringToFront();
 
             UiGridHelper.ApplyModernGridStyle(gridLeads, 48);
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(gridLeads);
         }
 
         private void BindEvents()
@@ -81,6 +83,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
 
         private async Task LoadDataAsync()
         {
+            _gridSkeleton?.ShowSkeleton();
             try
             {
                 var summary = await Task.Run(() => _campaignController.GetCampaignSummary(_selectedSource));
@@ -102,6 +105,10 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[CampaignsView] LoadDataAsync error: {ex.Message}");
+            }
+            finally
+            {
+                _gridSkeleton?.HideSkeleton();
             }
         }
 

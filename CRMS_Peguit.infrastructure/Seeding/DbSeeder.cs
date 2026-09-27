@@ -252,7 +252,7 @@ namespace CRMS_Peguit.infrastructure.Seeding
             int fallbackUserId = agents.FirstOrDefault()?.UserId ?? 1;
 
             // 1. Customers & Buyer Profiles (at least 90 customers)
-            await EnsureCustomersAndBuyerProfilesAsync(db, agents, fallbackUserId);
+            await EnsureCustomersAndBuyerProfilesAsync(db, agents, fallbackUserId, tenantId);
 
             // 2. Properties (at least 85 properties across prime locations)
             await EnsurePropertiesAsync(db, agents, fallbackUserId, tenantId);
@@ -276,15 +276,24 @@ namespace CRMS_Peguit.infrastructure.Seeding
             await SeedNotificationsAsync(db, tenantId);
         }
 
-        public static async Task EnsureCustomersAndBuyerProfilesAsync(RealEstateDbContext db, List<User> agents, int fallbackUserId)
+        public static async Task EnsureCustomersAndBuyerProfilesAsync(RealEstateDbContext db, List<User> agents, int fallbackUserId, int tenantId = 1)
         {
             int currentCount = await db.Customers.CountAsync(c => !c.IsDeleted);
             if (currentCount < 90)
             {
                 int needed = 95 - currentCount;
-                var newCustomers = GenerateCustomerPool(needed, agents, fallbackUserId);
-                db.Customers.AddRange(newCustomers);
-                await db.SaveChangesAsync();
+                var existingEmails = await db.Customers
+                    .IgnoreQueryFilters()
+                    .Where(c => c.CreatedByUser.Role.TenantId == tenantId)
+                    .Select(c => c.Email.ToLower())
+                    .ToHashSetAsync();
+
+                var newCustomers = GenerateCustomerPool(needed, agents, fallbackUserId, tenantId, existingEmails);
+                if (newCustomers.Count > 0)
+                {
+                    db.Customers.AddRange(newCustomers);
+                    await db.SaveChangesAsync();
+                }
             }
 
             // Ensure BuyerProfiles exist for buyers and investors
@@ -339,9 +348,18 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 if (customers.Count == 0) return;
 
                 int needed = 90 - currentCount;
-                var newProperties = GeneratePropertyCatalog(needed, customers, agents, fallbackUserId, tenantId, hqBranchId, cebuBranchId, davaoBranchId);
-                db.Properties.AddRange(newProperties);
-                await db.SaveChangesAsync();
+                var existingAddresses = await db.Properties
+                    .IgnoreQueryFilters()
+                    .Where(p => p.CreatedByUser.Role.TenantId == tenantId)
+                    .Select(p => p.Address.ToLower().Trim())
+                    .ToHashSetAsync();
+
+                var newProperties = GeneratePropertyCatalog(needed, customers, agents, fallbackUserId, tenantId, existingAddresses, hqBranchId, cebuBranchId, davaoBranchId);
+                if (newProperties.Count > 0)
+                {
+                    db.Properties.AddRange(newProperties);
+                    await db.SaveChangesAsync();
+                }
             }
 
             if (tenantId == 3 && branches.Count > 0)
@@ -383,32 +401,58 @@ namespace CRMS_Peguit.infrastructure.Seeding
             var existingCustomers = await db.Customers.Where(c => !c.IsDeleted).ToListAsync();
             if (existingCustomers.Count < 50)
             {
-                var newCustomers = GenerateCustomerPool(60 - existingCustomers.Count, salesAgents, fallbackUserId);
-                db.Customers.AddRange(newCustomers);
-                await db.SaveChangesAsync();
-                existingCustomers = await db.Customers.Where(c => !c.IsDeleted).ToListAsync();
+                var existingEmails = await db.Customers
+                    .IgnoreQueryFilters()
+                    .Where(c => c.CreatedByUser.Role.TenantId == tenantId)
+                    .Select(c => c.Email.ToLower())
+                    .ToHashSetAsync();
+                var newCustomers = GenerateCustomerPool(60 - existingCustomers.Count, salesAgents, fallbackUserId, tenantId, existingEmails);
+                if (newCustomers.Count > 0)
+                {
+                    db.Customers.AddRange(newCustomers);
+                    await db.SaveChangesAsync();
+                    existingCustomers = await db.Customers.Where(c => !c.IsDeleted).ToListAsync();
+                }
             }
 
             var existingProperties = await db.Properties.ToListAsync();
             if (existingProperties.Count < 60)
             {
-                var newProperties = GeneratePropertyCatalog(70 - existingProperties.Count, existingCustomers, salesAgents, fallbackUserId, tenantId, hqBranchId, cebuBranchId, davaoBranchId);
-                db.Properties.AddRange(newProperties);
-                await db.SaveChangesAsync();
-                existingProperties = await db.Properties.ToListAsync();
+                var existingAddresses = await db.Properties
+                    .IgnoreQueryFilters()
+                    .Where(p => p.CreatedByUser.Role.TenantId == tenantId)
+                    .Select(p => p.Address.ToLower().Trim())
+                    .ToHashSetAsync();
+                var newProperties = GeneratePropertyCatalog(70 - existingProperties.Count, existingCustomers, salesAgents, fallbackUserId, tenantId, existingAddresses, hqBranchId, cebuBranchId, davaoBranchId);
+                if (newProperties.Count > 0)
+                {
+                    db.Properties.AddRange(newProperties);
+                    await db.SaveChangesAsync();
+                    existingProperties = await db.Properties.ToListAsync();
+                }
             }
 
             int currentDealCount = await db.Deals.CountAsync();
             int dealsToCreate = targetCount - currentDealCount;
             if (dealsToCreate > 0)
             {
-                var deals = GenerateDealTransactions(dealsToCreate, existingCustomers, existingProperties, salesAgents, fallbackUserId, tenantId);
-                db.Deals.AddRange(deals);
-                await db.SaveChangesAsync();
+                var existingDeals = await db.Deals
+                    .IgnoreQueryFilters()
+                    .Where(d => d.CreatedByUser.Role.TenantId == tenantId)
+                    .Select(d => new { d.CustomerId, d.PropertyId })
+                    .ToListAsync();
+                var existingDealSet = existingDeals.Select(x => (x.CustomerId, x.PropertyId)).ToHashSet();
 
-                // Generate contingencies and clauses for new deals
-                AttachContingenciesAndClauses(db, deals);
-                await db.SaveChangesAsync();
+                var deals = GenerateDealTransactions(dealsToCreate, existingCustomers, existingProperties, salesAgents, fallbackUserId, tenantId, existingDealSet);
+                if (deals.Count > 0)
+                {
+                    db.Deals.AddRange(deals);
+                    await db.SaveChangesAsync();
+
+                    // Generate contingencies and clauses for new deals
+                    AttachContingenciesAndClauses(db, deals);
+                    await db.SaveChangesAsync();
+                }
             }
 
             // Also check if any existing deals lack contingencies/clauses
@@ -538,7 +582,7 @@ namespace CRMS_Peguit.infrastructure.Seeding
             }
         }
 
-        private static List<Customer> GenerateCustomerPool(int count, List<User> agents, int fallbackUserId)
+        private static List<Customer> GenerateCustomerPool(int count, List<User> agents, int fallbackUserId, int tenantId, HashSet<string> existingEmails)
         {
             var firstNames = new[]
             {
@@ -559,17 +603,24 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 "Valderama", "Gutierrez", "Navarro", "Ocampo", "Flores", "Vergara", "Aguilar", "Del Rosario", "Salazar", "Cruz"
             };
 
-            var rnd = new Random(101);
+            var rnd = new Random(101 + tenantId * 17);
             var customers = new List<Customer>();
 
-            for (int i = 0; i < count; i++)
+            int attempts = 0;
+            while (customers.Count < count && attempts < count * 20)
             {
+                attempts++;
                 string fn = firstNames[rnd.Next(firstNames.Length)];
                 string ln = lastNames[rnd.Next(lastNames.Length)];
-                string email = $"{fn.ToLower()}.{ln.ToLower()}{rnd.Next(10, 999)}@example.ph";
+                int num = rnd.Next(10, 9999);
+                string email = $"{fn.ToLower()}.{ln.ToLower()}{tenantId}_{num}@example.ph";
+                if (existingEmails.Contains(email.ToLower()))
+                    continue;
+
+                existingEmails.Add(email.ToLower());
                 string phone = $"09{rnd.Next(10, 99)}{rnd.Next(1000000, 9999999)}";
 
-                var assignedAgent = agents[i % agents.Count];
+                var assignedAgent = agents[customers.Count % agents.Count];
                 int typeRoll = rnd.Next(100);
                 string custType = typeRoll < 60 ? "buyer" : (typeRoll < 85 ? "seller" : "investor");
 
@@ -609,7 +660,8 @@ namespace CRMS_Peguit.infrastructure.Seeding
             List<Customer> customers,
             List<User> agents,
             int fallbackUserId,
-            int tenantId = 1,
+            int tenantId,
+            HashSet<string> existingAddresses,
             int? hqBranchId = null,
             int? cebuBranchId = null,
             int? davaoBranchId = null)
@@ -637,7 +689,7 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 ("Unit 1508, The Lerato Tower 1, Bel-Air, Makati City", "condo", 8900000m),
                 ("Unit 28A, Grand Hyatt Manila Residences, BGC, Taguig", "condo", 36000000m),
                 ("Unit 1704, Tivoli Garden Residences, Coronado, Mandaluyong", "condo", 4700000m),
-                ("Unit 14C, Park Central Towers, Makati City", "condo", 42000000m),
+                ("Unit 14C, Park Central Towers, Makati City", "condo", 4200000m),
                 ("Unit 2108, Horizons 101, General Maxilom Ave, Cebu City", "condo", 4400000m),
                 ("Unit 502, Aeon Towers, J.P. Laurel Ave, Bajada, Davao City", "condo", 6800000m),
                 ("Unit 310, Mandani Bay Suites, F.E. Zuellig Ave, Mandaue City", "condo", 5300000m),
@@ -697,15 +749,30 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 ("Commercial Space 104, Clark Global City, Pampanga", "commercial", 21500000m)
             };
 
-            var rnd = new Random(202);
+            var rnd = new Random(202 + tenantId * 31);
             var properties = new List<Property>();
 
-            for (int i = 0; i < count; i++)
+            int templateIndex = 0;
+            int phase = 1;
+            int attempts = 0;
+            while (properties.Count < count && attempts < count * 20)
             {
-                var template = propertyTemplates[i % propertyTemplates.Length];
-                string address = i >= propertyTemplates.Length
-                    ? $"{template.Address} - Phase {i / propertyTemplates.Length + 1}"
-                    : template.Address;
+                attempts++;
+                var template = propertyTemplates[templateIndex % propertyTemplates.Length];
+                string address = phase == 1
+                    ? (tenantId > 1 ? $"{template.Address} (Branch {tenantId})" : template.Address)
+                    : (tenantId > 1 ? $"{template.Address} (Branch {tenantId}) - Phase {phase}" : $"{template.Address} - Phase {phase}");
+
+                templateIndex++;
+                if (templateIndex % propertyTemplates.Length == 0)
+                {
+                    phase++;
+                }
+
+                if (existingAddresses.Contains(address.ToLower().Trim()))
+                    continue;
+
+                existingAddresses.Add(address.ToLower().Trim());
 
                 var owner = customers[rnd.Next(customers.Count)];
                 var agent = agents[rnd.Next(agents.Count)];
@@ -741,7 +808,8 @@ namespace CRMS_Peguit.infrastructure.Seeding
             List<Property> properties,
             List<User> agents,
             int fallbackUserId,
-            int tenantId = 1)
+            int tenantId,
+            HashSet<(int CustomerId, int PropertyId)> existingDeals)
         {
             var stipulationsPool = new[]
             {
@@ -762,7 +830,7 @@ namespace CRMS_Peguit.infrastructure.Seeding
             var downPaymentPercents = new[] { 10m, 20m, 30m };
             var reservationFees = new[] { 25000m, 50000m, 75000m, 100000m, 150000m };
 
-            var rnd = new Random(303);
+            var rnd = new Random(303 + tenantId * 23);
             var deals = new List<Deal>(count);
 
             DateTime now = DateTime.UtcNow;
@@ -783,6 +851,14 @@ namespace CRMS_Peguit.infrastructure.Seeding
 
                 var customer = customers[rnd.Next(customers.Count)];
                 var property = properties[rnd.Next(properties.Count)];
+                int dealAttempts = 0;
+                while (existingDeals.Contains((customer.CustomerId, property.PropertyId)) && dealAttempts < 20)
+                {
+                    property = properties[rnd.Next(properties.Count)];
+                    dealAttempts++;
+                }
+                existingDeals.Add((customer.CustomerId, property.PropertyId));
+
                 var agent = agents[i % agents.Count]; // Even distribution across all sales agents
 
                 string stage;
@@ -886,12 +962,31 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 .Where(c => !c.IsDeleted)
                 .ToListAsync();
 
-            var rnd = new Random(42);
+            var rnd = new Random(42 + tenantId * 19);
 
             // 1. Seed Leads (target: at least 75 leads)
             int leadCount = await db.Leads.CountAsync();
             if (leadCount < 75)
             {
+                var existingLeadEmails = await db.Leads
+                    .IgnoreQueryFilters()
+                    .Where(l => l.CreatedByUser.Role.TenantId == tenantId)
+                    .Select(l => l.Email.ToLower().Trim())
+                    .ToHashSetAsync();
+
+                var usedCustomerIds = await db.Leads
+                    .IgnoreQueryFilters()
+                    .Where(l => l.ConvertedCustomerId.HasValue)
+                    .Select(l => l.ConvertedCustomerId!.Value)
+                    .ToHashSetAsync();
+
+                var availableCustomers = customers
+                    .Where(c => !usedCustomerIds.Contains(c.CustomerId))
+                    .ToList();
+
+                var leadsToAdd = new List<Lead>();
+                int needed = 75 - leadCount;
+
                 var leadNames = new (string Fn, string Ln, string Email, string Phone, string Note)[]
                 {
                     ("Ramon", "Valderama", "ramon.valderama@yahoo.com", "09171112233", "Inquired about 2BR penthouse in BGC. Overseas investor looking for rental yield."),
@@ -945,20 +1040,18 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 var stages = new[] { "new", "contacted", "qualified", "proposal", "converted", "lost" };
                 var priorities = new[] { "low", "medium", "high" };
 
-                var usedCustomerIds = await db.Leads
-                    .Where(l => l.ConvertedCustomerId.HasValue)
-                    .Select(l => l.ConvertedCustomerId!.Value)
-                    .ToHashSetAsync();
-
-                var availableCustomers = customers
-                    .Where(c => !usedCustomerIds.Contains(c.CustomerId))
-                    .ToList();
-
-                var leadsToAdd = new List<Lead>();
-                for (int i = 0; i < leadNames.Length; i++)
+                for (int i = 0; i < leadNames.Length && leadsToAdd.Count < needed; i++)
                 {
                     var item = leadNames[i];
-                    var agent = agents[i % agents.Count];
+                    string email = tenantId > 1 ? $"{item.Fn.ToLower()}.{item.Ln.ToLower()}{tenantId}@gmail.com" : item.Email;
+                    int suffix = 1;
+                    while (existingLeadEmails.Contains(email.ToLower()))
+                    {
+                        email = $"{item.Fn.ToLower()}.{item.Ln.ToLower()}{tenantId}_{suffix++}@gmail.com";
+                    }
+                    existingLeadEmails.Add(email.ToLower());
+
+                    var agent = agents[leadsToAdd.Count % agents.Count];
                     int daysAgo = rnd.Next(5, 450);
                     var created = DateTime.UtcNow.AddDays(-daysAgo);
 
@@ -969,17 +1062,18 @@ namespace CRMS_Peguit.infrastructure.Seeding
                         var cust = availableCustomers[0];
                         availableCustomers.RemoveAt(0);
                         convertedCustId = cust.CustomerId;
+                        usedCustomerIds.Add(cust.CustomerId);
                     }
                     else if (stage == "converted")
                     {
                         stage = "qualified";
                     }
 
-                    var lead = new Lead
+                    leadsToAdd.Add(new Lead
                     {
                         FirstName = item.Fn,
                         LastName = item.Ln,
-                        Email = item.Email,
+                        Email = email,
                         Phone = item.Phone,
                         Source = sources[rnd.Next(sources.Length)],
                         Stage = stage,
@@ -992,13 +1086,49 @@ namespace CRMS_Peguit.infrastructure.Seeding
                         AssignmentStatus = "approved",
                         ConvertedCustomerId = convertedCustId,
                         CreatedAt = created
-                    };
-
-                    leadsToAdd.Add(lead);
+                    });
                 }
 
-                db.Leads.AddRange(leadsToAdd);
-                await db.SaveChangesAsync();
+                // If still needed more to reach 75, generate additional unique leads
+                int extraIdx = 1;
+                while (leadsToAdd.Count < needed)
+                {
+                    var baseItem = leadNames[extraIdx % leadNames.Length];
+                    string email = $"{baseItem.Fn.ToLower()}.{baseItem.Ln.ToLower()}{tenantId}_{extraIdx}@mail.ph";
+                    while (existingLeadEmails.Contains(email.ToLower()))
+                    {
+                        extraIdx++;
+                        email = $"{baseItem.Fn.ToLower()}.{baseItem.Ln.ToLower()}{tenantId}_{extraIdx}@mail.ph";
+                    }
+                    existingLeadEmails.Add(email.ToLower());
+
+                    var agent = agents[leadsToAdd.Count % agents.Count];
+                    leadsToAdd.Add(new Lead
+                    {
+                        FirstName = baseItem.Fn,
+                        LastName = baseItem.Ln,
+                        Email = email,
+                        Phone = $"09{rnd.Next(10, 99)}{rnd.Next(1000000, 9999999)}",
+                        Source = sources[rnd.Next(sources.Length)],
+                        Stage = stages[rnd.Next(stages.Length - 1)],
+                        Priority = priorities[rnd.Next(priorities.Length)],
+                        ExpectedValue = rnd.Next(28, 220) * 100000m,
+                        Notes = baseItem.Note,
+                        AssignedAgentId = agent.UserId,
+                        CreatedByUserId = agent.UserId,
+                        BranchId = tenantId == 3 ? agent.BranchId : null,
+                        AssignmentStatus = "approved",
+                        ConvertedCustomerId = null,
+                        CreatedAt = DateTime.UtcNow.AddDays(-rnd.Next(5, 300))
+                    });
+                    extraIdx++;
+                }
+
+                if (leadsToAdd.Count > 0)
+                {
+                    db.Leads.AddRange(leadsToAdd);
+                    await db.SaveChangesAsync();
+                }
             }
 
             if (tenantId == 3)
@@ -1020,6 +1150,11 @@ namespace CRMS_Peguit.infrastructure.Seeding
             int ticketCount = await db.SupportTickets.CountAsync();
             if (ticketCount < 40 && customers.Count > 0)
             {
+                var existingTicketNumbers = await db.SupportTickets
+                    .IgnoreQueryFilters()
+                    .Select(t => t.TicketNumber.ToUpper().Trim())
+                    .ToHashSetAsync();
+
                 var ticketTemplates = new[]
                 {
                     ("Billing", "Inquiry on Capital Gains Tax and Documentary Stamp Tax payment computation and schedule", "Medium", "Resolved", 3, 5),
@@ -1064,6 +1199,13 @@ namespace CRMS_Peguit.infrastructure.Seeding
 
                 foreach (var tpl in ticketTemplates)
                 {
+                    string ticketNumber = $"TICK-{tenantId}-{tNum++}";
+                    while (existingTicketNumbers.Contains(ticketNumber.ToUpper()))
+                    {
+                        ticketNumber = $"TICK-{tenantId}-{tNum++}";
+                    }
+                    existingTicketNumbers.Add(ticketNumber.ToUpper());
+
                     var cust = customers[rnd.Next(customers.Count)];
                     var agent = agents[rnd.Next(agents.Count)];
                     int daysAgo = rnd.Next(5, 300);
@@ -1078,7 +1220,7 @@ namespace CRMS_Peguit.infrastructure.Seeding
 
                     var ticket = new SupportTicket
                     {
-                        TicketNumber = $"TICK-{tNum++}",
+                        TicketNumber = ticketNumber,
                         CustomerId = cust.CustomerId,
                         RaisedByUserId = agent.UserId,
                         AssignedToUserId = agent.UserId,
@@ -1095,8 +1237,11 @@ namespace CRMS_Peguit.infrastructure.Seeding
                     ticketsToAdd.Add(ticket);
                 }
 
-                db.SupportTickets.AddRange(ticketsToAdd);
-                await db.SaveChangesAsync();
+                if (ticketsToAdd.Count > 0)
+                {
+                    db.SupportTickets.AddRange(ticketsToAdd);
+                    await db.SaveChangesAsync();
+                }
 
                 // Attach TicketComments
                 var commentsToAdd = new List<TicketComment>();
@@ -1323,6 +1468,13 @@ namespace CRMS_Peguit.infrastructure.Seeding
 
             if (customers.Count == 0) return;
 
+            var existingTasks = await db.TaskReminders
+                .IgnoreQueryFilters()
+                .Where(t => !t.IsDeleted)
+                .Select(t => new { t.AssignedToUserId, Title = t.Title.ToLower().Trim() })
+                .ToListAsync();
+            var existingSet = existingTasks.Select(x => (x.AssignedToUserId, x.Title)).ToHashSet();
+
             var taskTemplates = new (string Title, string Type, string Priority, string Notes)[]
             {
                 ("Call client to verify bank loan pre-approval status", "Call", "High", "Check if security appraisal was approved by BDO mortgage department."),
@@ -1339,16 +1491,19 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 ("Confirm Saturday 2:00 PM showroom walkthrough with client", "Call", "Medium", "Meet at Azure Residences sales lounge.")
             };
 
-            var rnd = new Random(909);
+            var rnd = new Random(909 + tenantId * 13);
             var tasksToAdd = new List<TaskReminder>();
             DateTime now = DateTime.UtcNow;
 
-            int targetToSeed = 60 - currentCount;
-
-            for (int i = 0; i < targetToSeed; i++)
+            for (int i = 0; i < taskTemplates.Length * agents.Count; i++)
             {
                 var tpl = taskTemplates[i % taskTemplates.Length];
                 var agent = agents[i % agents.Count];
+
+                if (existingSet.Contains((agent.UserId, tpl.Title.ToLower().Trim())))
+                    continue;
+
+                existingSet.Add((agent.UserId, tpl.Title.ToLower().Trim()));
 
                 bool isCustomer = rnd.Next(100) < 65;
                 int? custId = isCustomer ? customers[rnd.Next(customers.Count)].CustomerId : null;
@@ -1401,14 +1556,20 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 });
             }
 
-            db.TaskReminders.AddRange(tasksToAdd);
-            await db.SaveChangesAsync();
+            if (tasksToAdd.Count > 0)
+            {
+                db.TaskReminders.AddRange(tasksToAdd);
+                await db.SaveChangesAsync();
+            }
         }
 
         public static async Task SeedCampaignsAsync(RealEstateDbContext db, int tenantId = 1)
         {
-            int currentCount = await db.Campaigns.CountAsync();
-            if (currentCount >= 8) return;
+            var existingNames = await db.Campaigns
+                .IgnoreQueryFilters()
+                .Where(c => c.TenantId == tenantId)
+                .Select(c => c.Name.ToLower().Trim())
+                .ToHashSetAsync();
 
             var campaigns = new (string Name, string Channel, decimal Budget, int MonthsAgo, int DurationMonths)[]
             {
@@ -1429,13 +1590,19 @@ namespace CRMS_Peguit.infrastructure.Seeding
 
             foreach (var c in campaigns)
             {
+                string campName = tenantId > 1 ? $"{c.Name} (Branch {tenantId})" : c.Name;
+                if (existingNames.Contains(campName.ToLower().Trim()))
+                    continue;
+
+                existingNames.Add(campName.ToLower().Trim());
+
                 var startDate = now.AddMonths(-c.MonthsAgo);
                 var endDate = startDate.AddMonths(c.DurationMonths);
 
                 toAdd.Add(new Campaign
                 {
                     TenantId = tenantId,
-                    Name = c.Name,
+                    Name = campName,
                     Channel = c.Channel,
                     Status = endDate > now ? "Active" : "Completed",
                     Budget = c.Budget,
@@ -1446,8 +1613,11 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 });
             }
 
-            db.Campaigns.AddRange(toAdd);
-            await db.SaveChangesAsync();
+            if (toAdd.Count > 0)
+            {
+                db.Campaigns.AddRange(toAdd);
+                await db.SaveChangesAsync();
+            }
         }
 
         public static async Task SeedNotificationsAsync(RealEstateDbContext db, int tenantId = 1)

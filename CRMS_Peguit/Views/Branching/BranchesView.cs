@@ -26,6 +26,7 @@ namespace CRMS_Peguit.winforms.Views.Branching
 
         private TextBox _txtSearch = null!;
         private DataGridView _grid = null!;
+        private GridSkeletonOverlay? _gridSkeleton;
         private PaginationControl _pagination = null!;
         private Button _btnAdd = null!;
         private Button _btnEdit = null!;
@@ -289,6 +290,7 @@ namespace CRMS_Peguit.winforms.Views.Branching
             _pagination.PageSizeChanged += (_, _) => ApplyFilter(resetPage: true);
 
             pnlGridCard.Controls.Add(_grid);
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(_grid);
             pnlGridCard.Controls.Add(_pagination);
             _pagination.BringToFront();
 
@@ -315,6 +317,12 @@ namespace CRMS_Peguit.winforms.Views.Branching
 
         private async void LoadDataAsync()
         {
+            _kpiTotal.ShowLoadingSkeleton();
+            _kpiActive.ShowLoadingSkeleton();
+            _kpiStaff.ShowLoadingSkeleton();
+            _kpiRevenue.ShowLoadingSkeleton();
+            _gridSkeleton?.ShowSkeleton();
+
             try
             {
                 _branches = await _controller.GetAllBranchesAsync();
@@ -335,6 +343,14 @@ namespace CRMS_Peguit.winforms.Views.Branching
             catch (Exception ex)
             {
                 MessageBox.Show($"Error loading branches: {ex.Message}", "Branch Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _kpiTotal.HideLoadingSkeleton();
+                _kpiActive.HideLoadingSkeleton();
+                _kpiStaff.HideLoadingSkeleton();
+                _kpiRevenue.HideLoadingSkeleton();
+                _gridSkeleton?.HideSkeleton();
             }
         }
 

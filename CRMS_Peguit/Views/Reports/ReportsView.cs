@@ -19,6 +19,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
         private enum ViewDisplayMode { Both, ChartsOnly, TableOnly }
 
         private readonly ReportsController? _controller;
+        private GridSkeletonOverlay? _gridSkeleton;
         private object? _currentData;
         private object? _unfilteredData;
         private ReportHeader? _currentHeader;
@@ -55,7 +56,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
         {
             if (this.IsDisposed) return;
             LayoutReportControls();
-            if (_unfilteredData == null && !lblLoading.Visible)
+            if (_unfilteredData == null && _gridSkeleton?.IsActive != true)
             {
                 BtnRunReport_Click(this, EventArgs.Empty);
             }
@@ -81,6 +82,8 @@ namespace CRMS_Peguit.winforms.Views.Reports
             this.BackColor = Theme.Background;
             UiGridHelper.ApplyModernGridStyle(gridData, 48);
             gridData.CellPainting += GridData_CellPainting;
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(gridData);
+            lblLoading.Visible = false;
 
             kpi1.ClickMode = KpiClickMode.InPlaceFilter;
             kpi2.ClickMode = KpiClickMode.InPlaceFilter;
@@ -387,11 +390,20 @@ namespace CRMS_Peguit.winforms.Views.Reports
         {
             if (_controller == null) return;
 
-            lblLoading.Visible = true;
+            lblLoading.Visible = false;
             btnRunReport.Enabled = false;
             btnExportExcel.Enabled = false;
             btnExportPdf.Enabled = false;
             lblReportHeader.Text = "Generating report and analytical charts...";
+
+            // Show animated loading skeleton placeholders on KPIs, charts, and table
+            kpi1.ShowLoadingSkeleton();
+            kpi2.ShowLoadingSkeleton();
+            kpi3.ShowLoadingSkeleton();
+            kpi4.ShowLoadingSkeleton();
+            chartReport1.ShowLoadingSkeleton(ChartSkeletonType.Bars);
+            chartReport2.ShowLoadingSkeleton(ChartSkeletonType.Donut);
+            _gridSkeleton?.ShowSkeleton();
 
             try
             {
@@ -412,10 +424,6 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 };
 
                 object? data = null;
-
-                // Show animated loading skeleton placeholders on report charts
-                chartReport1.ShowLoadingSkeleton(ChartSkeletonType.Bars);
-                chartReport2.ShowLoadingSkeleton(ChartSkeletonType.Donut);
 
                 await Task.Run(() =>
                 {
@@ -468,6 +476,16 @@ namespace CRMS_Peguit.winforms.Views.Reports
             }
             finally
             {
+                _gridSkeleton?.HideSkeleton();
+                if (_unfilteredData == null)
+                {
+                    kpi1.HideLoadingSkeleton();
+                    kpi2.HideLoadingSkeleton();
+                    kpi3.HideLoadingSkeleton();
+                    kpi4.HideLoadingSkeleton();
+                    chartReport1.HideLoadingSkeleton();
+                    chartReport2.HideLoadingSkeleton();
+                }
                 lblLoading.Visible = false;
                 btnRunReport.Enabled = true;
             }

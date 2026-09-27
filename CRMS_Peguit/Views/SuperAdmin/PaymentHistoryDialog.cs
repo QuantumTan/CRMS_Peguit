@@ -24,6 +24,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         private readonly Label _lblPaidThrough;
         private readonly Label _lblSummaryTotal;
         private readonly Label _lblEmptyNotice;
+        private readonly GridSkeletonOverlay _gridSkeleton;
 
         public PaymentHistoryDialog(TenantSubscriptionDto subscription)
         {
@@ -195,6 +196,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 RowTemplate = { Height = 54 }
             };
             UiGridHelper.ApplyModernGridStyle(_grid);
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(_grid);
 
             // Columns matching requirements:
             // AmountPaid (right-aligned, currency formatted)
@@ -370,37 +372,48 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
         private async Task LoadHistoryAsync()
         {
-            _records = await _controller.GetPaymentRecordsAsync(_subscription.SubscriptionId);
-
-            if (_records.Count == 0 && _subscription.CompanyId > 0)
+            _gridSkeleton?.ShowSkeleton();
+            try
             {
-                _records = await _controller.GetCompanyPaymentHistoryAsync(_subscription.CompanyId);
+                _records = await _controller.GetPaymentRecordsAsync(_subscription.SubscriptionId);
+
+                if (_records.Count == 0 && _subscription.CompanyId > 0)
+                {
+                    _records = await _controller.GetCompanyPaymentHistoryAsync(_subscription.CompanyId);
+                }
+
+                var displayList = _records.Select(r => new
+                {
+                    r.PaymentRecordId,
+                    r.SubscriptionId,
+                    PaymentDateFormatted = r.PaymentDate.ToString("MMM dd, yyyy"),
+                    r.PaymentReference,
+                    r.PaymentMethodDisplay,
+                    r.RecordedByName,
+                    Notes = string.IsNullOrWhiteSpace(r.Notes) ? "—" : r.Notes,
+                    AmountPaidFormatted = $"₱{r.AmountPaid:N2}"
+                }).ToList();
+
+                _grid.DataSource = displayList;
+
+                decimal totalAmount = _records.Sum(r => r.AmountPaid);
+                _lblSummaryTotal.Text = $"Total Recorded: {_records.Count} payment{(_records.Count == 1 ? "" : "s")} · ₱{totalAmount:N2}";
+
+                // Refresh header details
+                _statusText.SetStatus(_subscription.Status);
+                _lblPaidThrough.Text = $"Paid Through: {(_subscription.PaidThroughDate.HasValue ? _subscription.PaidThroughDate.Value.ToString("MMM dd, yyyy") : "Lifetime")}";
             }
-
-            var displayList = _records.Select(r => new
+            finally
             {
-                r.PaymentRecordId,
-                r.SubscriptionId,
-                PaymentDateFormatted = r.PaymentDate.ToString("MMM dd, yyyy"),
-                r.PaymentReference,
-                r.PaymentMethodDisplay,
-                r.RecordedByName,
-                Notes = string.IsNullOrWhiteSpace(r.Notes) ? "—" : r.Notes,
-                AmountPaidFormatted = $"₱{r.AmountPaid:N2}"
-            }).ToList();
-
-            _grid.DataSource = displayList;
-
-            bool hasData = _records.Count > 0;
-            _lblEmptyNotice.Visible = !hasData;
-            _grid.Visible = hasData;
-
-            decimal totalAmount = _records.Sum(r => r.AmountPaid);
-            _lblSummaryTotal.Text = $"Total Recorded: {_records.Count} payment{(_records.Count == 1 ? "" : "s")} · ₱{totalAmount:N2}";
-
-            // Refresh header details
-            _statusText.SetStatus(_subscription.Status);
-            _lblPaidThrough.Text = $"Paid Through: {(_subscription.PaidThroughDate.HasValue ? _subscription.PaidThroughDate.Value.ToString("MMM dd, yyyy") : "Lifetime")}";
+                _gridSkeleton?.HideSkeleton();
+                bool hasData = _records.Count > 0;
+                _lblEmptyNotice.Visible = !hasData;
+                _grid.Visible = hasData;
+                if (!hasData)
+                {
+                    _lblEmptyNotice.BringToFront();
+                }
+            }
         }
 
         private async void BtnRecordNew_Click(object? sender, EventArgs e)

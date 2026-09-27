@@ -26,6 +26,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         private List<SystemSettingDto> _settings = new();
 
         private DataGridView _grid = null!;
+        private GridSkeletonOverlay? _gridSkeleton;
         private TextBox _txtSearch = null!;
         private Button _btnEdit = null!;
         private Label _lblCount = null!;
@@ -292,6 +293,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             };
 
             pnlCard.Controls.Add(_grid);
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(_grid);
             pnlWrapper.Controls.Add(pnlCard);
 
             // Add in reverse docking order: Fill -> Notice -> Toolbar -> Header
@@ -303,6 +305,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
         private async Task LoadDataAsync()
         {
+            _gridSkeleton?.ShowSkeleton();
             try
             {
                 _settings = await _controller.GetSystemSettingsAsync();
@@ -312,6 +315,10 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             {
                 MessageBox.Show($"Failed to load settings: {ex.Message}",
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _gridSkeleton?.HideSkeleton();
             }
         }
 

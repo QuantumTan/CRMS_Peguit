@@ -35,6 +35,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
         // ── Main Layout ──────────────────────────────────────────────────────
         private FlowLayoutPanel _pnlTenantCards = null!;
+        private ListSkeletonOverlay? _cardsSkeleton;
         private Panel _pnlRight = null!;
 
         // ── Right Side: Included Features Controls ───────────────────────────
@@ -193,6 +194,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Padding = new Padding(0, 0, 16, 0),
                 BackColor = Color.Transparent
             };
+            _cardsSkeleton = ListSkeletonOverlay.CreateForContainer(_pnlTenantCards, 110);
 
             // Right side: Features & Billing History (Dock = Fill)
             _pnlRight = new Panel
@@ -430,6 +432,12 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
         private async Task LoadDataAsync()
         {
+            _kpiMrr.ShowLoadingSkeleton();
+            _kpiActiveTenants.ShowLoadingSkeleton();
+            _kpiExpiringSoon.ShowLoadingSkeleton();
+            _kpiTotalSeats.ShowLoadingSkeleton();
+            _cardsSkeleton?.ShowSkeleton(3);
+
             try
             {
                 _allSubscriptions = await _controller.GetAllSubscriptionsAsync();
@@ -447,6 +455,14 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             {
                 MessageBox.Show($"Failed to load subscriptions: {ex.Message}",
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _kpiMrr.HideLoadingSkeleton();
+                _kpiActiveTenants.HideLoadingSkeleton();
+                _kpiExpiringSoon.HideLoadingSkeleton();
+                _kpiTotalSeats.HideLoadingSkeleton();
+                _cardsSkeleton?.HideSkeleton();
             }
         }
 

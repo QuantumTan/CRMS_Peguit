@@ -25,11 +25,14 @@ namespace CRMS_Peguit.winforms.Views.Activities
         private Panel _pnlEmptyState = null!;
         private PaginationControl _pagination = null!;
         private ScreenFilterCoordinator _filterCoord = null!;
+        private GridSkeletonOverlay _gridSkeleton = null!;
 
         public ActivitiesView()
         {
             InitializeComponent();
             _controller = new ActivityController();
+
+            _gridSkeleton = GridSkeletonOverlay.CreateForGrid(grid);
 
             InitGridColumns();
             InitPagination();
@@ -37,6 +40,13 @@ namespace CRMS_Peguit.winforms.Views.Activities
             ApplyStyling();
             BindEvents();
             UpdateFilterPillStyles();
+
+            kpiTotal.ShowLoadingSkeleton();
+            kpiCalls.ShowLoadingSkeleton();
+            kpiEmails.ShowLoadingSkeleton();
+            kpiMeetings.ShowLoadingSkeleton();
+            _gridSkeleton.ShowSkeleton();
+
             _ = RefreshDataAsync(resetPage: true);
 
             this.Load += (_, _) => LayoutToolbar();
@@ -327,6 +337,18 @@ namespace CRMS_Peguit.winforms.Views.Activities
             if (_isLoadingData) return;
             _isLoadingData = true;
 
+            bool isFullLoad = _items.Count == 0 || kpiTotal.IsLoading;
+            if (isFullLoad)
+            {
+                kpiTotal.ShowLoadingSkeleton();
+                kpiCalls.ShowLoadingSkeleton();
+                kpiEmails.ShowLoadingSkeleton();
+                kpiMeetings.ShowLoadingSkeleton();
+            }
+
+            _pnlEmptyState.Visible = false;
+            _gridSkeleton.ShowSkeleton();
+
             try
             {
                 int? queryAgentId = (RbacService.IsManager || RbacService.HasFullOversight) ? null : CurrentSession.UserId;
@@ -373,8 +395,15 @@ namespace CRMS_Peguit.winforms.Views.Activities
                 _pnlEmptyState.Visible = !hasData;
                 grid.Visible = hasData;
             }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ActivitiesView] RefreshDataAsync error: {ex.Message}");
+                _pnlEmptyState.Visible = true;
+                grid.Visible = false;
+            }
             finally
             {
+                _gridSkeleton.HideSkeleton();
                 _isLoadingData = false;
             }
         }

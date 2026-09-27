@@ -27,12 +27,98 @@ namespace CRMS_Peguit.winforms.Services
                 .ToList();
         }
 
+        public List<EmailTemplate> GetAllTemplates(int tenantId = 1)
+        {
+            using var db = LocalDb.CreateContext(tenantId);
+            return db.EmailTemplates
+                .AsNoTracking()
+                .Where(t => t.TenantId == tenantId && !t.IsDeleted)
+                .OrderBy(t => t.IsActive ? 0 : 1)
+                .ThenBy(t => t.IsSystem ? 0 : 1)
+                .ThenBy(t => t.Name)
+                .ToList();
+        }
+
+        public List<EmailTemplate> GetArchivedTemplates(int tenantId = 1)
+        {
+            using var db = LocalDb.CreateContext(tenantId);
+            return db.EmailTemplates
+                .AsNoTracking()
+                .Where(t => t.TenantId == tenantId && !t.IsDeleted && !t.IsActive)
+                .OrderBy(t => t.Name)
+                .ToList();
+        }
+
         public EmailTemplate? GetTemplateById(int templateId, int tenantId = 1)
         {
             using var db = LocalDb.CreateContext(tenantId);
             return db.EmailTemplates
                 .AsNoTracking()
                 .FirstOrDefault(t => t.TemplateId == templateId && t.TenantId == tenantId && !t.IsDeleted);
+        }
+
+        public bool ArchiveTemplate(int templateId, int tenantId, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+
+            if (RbacService.IsAgent)
+            {
+                errorMessage = "Access Denied: Sales Agents cannot archive email templates.";
+                return false;
+            }
+
+            try
+            {
+                using var db = LocalDb.CreateContext(tenantId);
+                var existing = db.EmailTemplates.FirstOrDefault(t => t.TemplateId == templateId && t.TenantId == tenantId);
+                if (existing == null || existing.IsDeleted)
+                {
+                    errorMessage = "Template not found.";
+                    return false;
+                }
+
+                existing.IsActive = false;
+                existing.UpdatedAt = DateTime.UtcNow;
+                db.SaveChanges();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Database error: {ex.Message}";
+                return false;
+            }
+        }
+
+        public bool UnarchiveTemplate(int templateId, int tenantId, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+
+            if (RbacService.IsAgent)
+            {
+                errorMessage = "Access Denied: Sales Agents cannot unarchive email templates.";
+                return false;
+            }
+
+            try
+            {
+                using var db = LocalDb.CreateContext(tenantId);
+                var existing = db.EmailTemplates.FirstOrDefault(t => t.TemplateId == templateId && t.TenantId == tenantId);
+                if (existing == null || existing.IsDeleted)
+                {
+                    errorMessage = "Template not found.";
+                    return false;
+                }
+
+                existing.IsActive = true;
+                existing.UpdatedAt = DateTime.UtcNow;
+                db.SaveChanges();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Database error: {ex.Message}";
+                return false;
+            }
         }
 
         public bool SaveTemplate(EmailTemplate template, int tenantId, out string errorMessage)
