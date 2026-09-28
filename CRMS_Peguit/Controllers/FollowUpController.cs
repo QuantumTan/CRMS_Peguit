@@ -425,18 +425,18 @@ namespace CRMS_Peguit.winforms.Controllers
         /// Returns customers assigned to the currently authenticated Agent.
         /// Managers and Admins see all tenant customers.
         /// </summary>
-        public List<Customer> GetAssignedCustomers()
+        public List<Customer> GetAssignedCustomers(int? includeCustomerId = null)
         {
             int currentUserId = CurrentSession.UserId;
             if (currentUserId <= 0) return new List<Customer>();
 
             var query = _db.Customers
                 .AsNoTracking()
-                .Where(c => !c.IsDeleted);
+                .Where(c => !c.IsDeleted || (includeCustomerId.HasValue && c.CustomerId == includeCustomerId.Value));
 
             if (!RbacService.HasFullOversight)
             {
-                query = query.Where(c => c.AssignedAgentId == currentUserId);
+                query = query.Where(c => c.AssignedAgentId == currentUserId || c.CreatedByUserId == currentUserId || (includeCustomerId.HasValue && c.CustomerId == includeCustomerId.Value));
             }
 
             return query
@@ -449,18 +449,18 @@ namespace CRMS_Peguit.winforms.Controllers
         /// Returns leads assigned to the currently authenticated Agent.
         /// Managers and Admins see all tenant leads.
         /// </summary>
-        public List<Lead> GetAssignedLeads()
+        public List<Lead> GetAssignedLeads(int? includeLeadId = null)
         {
             int currentUserId = CurrentSession.UserId;
             if (currentUserId <= 0) return new List<Lead>();
 
             var query = _db.Leads
                 .AsNoTracking()
-                .Where(l => !l.IsDeleted && l.Stage != "lost");
+                .Where(l => !l.IsDeleted && (l.Stage != "lost" || (includeLeadId.HasValue && l.LeadId == includeLeadId.Value)));
 
             if (!RbacService.HasFullOversight)
             {
-                query = query.Where(l => l.AssignedAgentId == currentUserId);
+                query = query.Where(l => l.AssignedAgentId == currentUserId || l.CreatedByUserId == currentUserId || (includeLeadId.HasValue && l.LeadId == includeLeadId.Value));
             }
 
             return query

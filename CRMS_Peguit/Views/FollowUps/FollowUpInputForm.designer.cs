@@ -353,6 +353,9 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.White;
             this.ClientSize = new System.Drawing.Size(560, 580);
+            this.AcceptButton = this.btnSave;
+            this.CancelButton = this.btnCancel;
+            this.MinimumSize = new System.Drawing.Size(560, 520);
             this.Controls.Add(this.pnlContent);
             this.Controls.Add(this.pnlFooter);
             this.Controls.Add(this.pnlHeader);

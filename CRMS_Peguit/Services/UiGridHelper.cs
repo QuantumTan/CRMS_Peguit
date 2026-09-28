@@ -59,14 +59,14 @@ namespace CRMS_Peguit.winforms.Models.Services
             grid.DefaultCellStyle.Padding = new Padding(12, 12, 12, 12);
             grid.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
 
-            // Alternating Row Styling (Zebra Striping, Vertically Centered with min 12px vertical padding)
+            // Alternating Row Styling (Zebra Striping, inherit column alignment and padding to avoid zigzag)
             grid.AlternatingRowsDefaultCellStyle.BackColor = RowAlternate;
             grid.AlternatingRowsDefaultCellStyle.ForeColor = TextDark;
             grid.AlternatingRowsDefaultCellStyle.SelectionBackColor = SelectionBg;
             grid.AlternatingRowsDefaultCellStyle.SelectionForeColor = TextDark;
             grid.AlternatingRowsDefaultCellStyle.Font = new Font("Segoe UI", 9.5f);
-            grid.AlternatingRowsDefaultCellStyle.Padding = new Padding(12, 12, 12, 12);
-            grid.AlternatingRowsDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
+            grid.AlternatingRowsDefaultCellStyle.Padding = Padding.Empty;
+            grid.AlternatingRowsDefaultCellStyle.Alignment = DataGridViewContentAlignment.NotSet;
 
             // Smooth Row Hover Tracking
             int hoverRow = -1;
@@ -286,6 +286,16 @@ namespace CRMS_Peguit.winforms.Models.Services
                 e.Graphics.FillRectangle(bgBrush, e.CellBounds);
             }
 
+            if (e.ColumnIndex >= 0 && e.ColumnIndex < grid.Columns.Count)
+            {
+                var alignment = grid.Columns[e.ColumnIndex].DefaultCellStyle.Alignment;
+                if (alignment == DataGridViewContentAlignment.MiddleRight || alignment == DataGridViewContentAlignment.TopRight || alignment == DataGridViewContentAlignment.BottomRight)
+                {
+                    flags &= ~TextFormatFlags.Left;
+                    flags |= TextFormatFlags.Right;
+                }
+            }
+
             var textRect = new Rectangle(
                 e.CellBounds.X + leftPadding,
                 e.CellBounds.Y,
@@ -391,17 +401,22 @@ namespace CRMS_Peguit.winforms.Models.Services
             {
                 string header = col.HeaderText?.ToLowerInvariant() ?? "";
                 string name = col.Name?.ToLowerInvariant() ?? "";
+                Type? vType = col.ValueType;
+                bool isNumericType = vType != null && (vType == typeof(decimal) || vType == typeof(double) || vType == typeof(float) || vType == typeof(int) || vType == typeof(long));
 
                 bool isNumeric = header.Contains("value") || header.Contains("amount") ||
                                  header.Contains("commission") || header.Contains("price") ||
                                  header.Contains("balance") || header.Contains("total") ||
                                  header.Contains("budget") || header.Contains("rate") ||
                                  header.Contains("count") || header.Contains("score") ||
+                                 header.Contains("revenue") || header.Contains("volume") ||
+                                 header.Contains("payout") || header.Contains("margin") ||
                                  name.Contains("value") || name.Contains("amount") ||
                                  name.Contains("commission") || name.Contains("price") ||
-                                 name.Contains("balance") || name.Contains("total");
+                                 name.Contains("balance") || name.Contains("total") ||
+                                 name.Contains("budget") || isNumericType;
 
-                if (isNumeric && !name.Contains("id") && !name.Contains("ref") && !name.Contains("number"))
+                if (isNumeric && !name.Contains("id") && !name.Contains("ref") && !name.Contains("number") && !name.Contains("phone") && !name.Contains("zip"))
                 {
                     if (!string.IsNullOrEmpty(col.Name))
                         AlignNumericColumn(grid, col.Name);

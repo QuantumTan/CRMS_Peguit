@@ -113,8 +113,8 @@ namespace CRMS_Peguit.winforms.Models.Services
             _logPath = Path.Combine(AppContext.BaseDirectory, "sync-log.txt");
         }
 
-        public SyncService(string? localConnection, string? cloudConnection)
-            : this(DbConfiguration.GetApiBaseUrl())
+        public SyncService(string? localConnection, string? cloudConnection, string? apiBaseUrl = null)
+            : this(apiBaseUrl ?? DbConfiguration.GetApiBaseUrl())
         {
             if (!string.IsNullOrWhiteSpace(localConnection)) _localConnection = localConnection;
             if (!string.IsNullOrWhiteSpace(cloudConnection)) _cloudConnection = cloudConnection;
@@ -985,7 +985,7 @@ namespace CRMS_Peguit.winforms.Models.Services
 
         public PendingSyncQueue EnqueueOfflineCreate<T>(string entityType, T entity, int tenantId, int userId, string? localId = null)
         {
-            string json = JsonSerializer.Serialize(entity);
+            string json = JsonSerializer.Serialize(entity, new JsonSerializerOptions { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles });
             var item = new PendingSyncQueue
             {
                 TenantId = tenantId,
@@ -1034,7 +1034,7 @@ namespace CRMS_Peguit.winforms.Models.Services
 
         public PendingSyncQueue EnqueueOfflineUpdate<T>(string entityType, int serverId, T entity, int tenantId, int userId, DateTime? cachedVersionTimestamp)
         {
-            string json = JsonSerializer.Serialize(entity);
+            string json = JsonSerializer.Serialize(entity, new JsonSerializerOptions { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles });
             var item = new PendingSyncQueue
             {
                 TenantId = tenantId,

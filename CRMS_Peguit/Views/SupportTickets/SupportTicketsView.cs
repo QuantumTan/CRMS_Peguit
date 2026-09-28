@@ -290,7 +290,7 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             }
         }
 
-        private void RefreshGrid(bool reloadFromDb = true)
+        public void RefreshGrid(bool reloadFromDb = true)
         {
             _ = RefreshGridAsync(resetPage: false);
         }

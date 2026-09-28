@@ -383,7 +383,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                     Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                     ForeColor = Theme.TextPrimary,
                     Location = new Point(22, y),
-                    AutoSize = true,
+                    Size = new Size(Math.Max(50, _pnlTierDist.ClientSize.Width - 44 - 110), 20),
+                    AutoEllipsis = true,
                     Tag = "tier"
                 };
 
@@ -554,6 +555,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                         AutoEllipsis = true
                     };
                     rowPanel.Controls.Add(lblDetail);
+                    new ToolTip().SetToolTip(lblDetail, log.Detail);
 
                     // Timestamp
                     var lblTime = new Label

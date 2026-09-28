@@ -439,6 +439,12 @@ namespace CRMS_Peguit.winforms.Controllers
             var item = _db.Customers.SingleOrDefault(x => x.CustomerId == customer.CustomerId);
             if (item is null) return;
 
+            // If not assigned to an agent, assign to the staff member who passed/created it
+            if (!item.AssignedAgentId.HasValue && item.CreatedByUserId > 0)
+            {
+                item.AssignedAgentId = item.CreatedByUserId;
+            }
+
             item.AssignmentStatus = "approved";
             item.AssignmentReviewedByUserId = CurrentSession.UserId;
             item.AssignmentReviewedAt = DateTime.UtcNow;
@@ -512,7 +518,7 @@ namespace CRMS_Peguit.winforms.Controllers
             using var db = LocalDb.CreateContext(TenantId);
             return db.Customers
                 .AsNoTracking()
-                .Where(c => c.AssignmentStatus == "pending_review" || c.AssignedAgentId == null)
+                .Where(c => !c.IsDeleted && (c.AssignmentStatus == "pending_review" || c.AssignedAgentId == null))
                 .OrderByDescending(c => c.CreatedAt)
                 .ToList();
         }

@@ -418,11 +418,11 @@ namespace CRMS_Peguit.winforms.Views.Management
 
         private void ApproveItemImmediately(PendingApprovalItem item)
         {
-            _approvalController.ApproveAssignment(item, "Approved directly from Approvals Center.");
+            _approvalController.ApproveImmediately(item, "Approved directly from Approvals Center.");
 
             MessageBox.Show(
-                $"Submission for '{item.Title}' has been approved.",
-                "Approved",
+                $"Submission for '{item.Title}' has been approved and assigned to the staff member who submitted it.",
+                "Approved & Assigned",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
 

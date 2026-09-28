@@ -196,6 +196,14 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             DateTime selectedDate = dtpDueDate.Value.Date;
             TimeSpan selectedTime = dtpDueTime.Value.TimeOfDay;
             DateTime localDue = selectedDate.Add(selectedTime);
+
+            if (localDue < DateTime.Now)
+            {
+                MessageBox.Show("Follow-up due date and time cannot be scheduled in the past. Please select a current or future date and time.", "Invalid Due Date", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                dtpDueDate.Focus();
+                return;
+            }
+
             DateTime utcDue = localDue.ToUniversalTime();
 
             string channelType = cmbType.SelectedItem?.ToString() ?? "Call";

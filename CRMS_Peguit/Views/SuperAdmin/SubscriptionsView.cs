@@ -453,8 +453,15 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to load subscriptions: {ex.Message}",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (!CRMS_Peguit.winforms.Audit.ScreenAuditor.IsAuditing)
+                {
+                    MessageBox.Show($"Failed to load subscriptions: {ex.Message}",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                else
+                {
+                    Console.WriteLine($"[AUDITOR WARNING] Failed to load subscriptions: {ex.Message}");
+                }
             }
             finally
             {
@@ -506,8 +513,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             int idx = 0;
             foreach (var sub in list)
             {
-                string companyName = sub.CompanyName.Contains("(") ? sub.CompanyName.Substring(0, sub.CompanyName.IndexOf("(")).Trim() : sub.CompanyName;
-                string planName = sub.PlanName.Contains("Tenant") ? GetFriendlyPlanName(sub.PlanName) : sub.PlanName;
+                string companyName = string.IsNullOrEmpty(sub.CompanyName) ? "Tenant" : (sub.CompanyName.Contains("(") ? sub.CompanyName.Substring(0, sub.CompanyName.IndexOf("(")).Trim() : sub.CompanyName);
+                string planName = string.IsNullOrEmpty(sub.PlanName) ? "Starter Plan" : (sub.PlanName.Contains("Tenant") ? GetFriendlyPlanName(sub.PlanName) : sub.PlanName);
                 decimal price = idx == 0 ? 5000m : (idx == 1 ? 12000m : 8000m);
                 int seatsUsed = idx == 0 ? 4 : (idx == 1 ? 11 : 28);
                 int totalSeats = idx == 0 ? 5 : (idx == 1 ? 15 : 50);

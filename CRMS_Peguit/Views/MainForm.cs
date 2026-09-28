@@ -8,6 +8,11 @@ using CRMS_Peguit.winforms.Views.Marketing;
 using CRMS_Peguit.winforms.Views.Shared;
 using CRMS_Peguit.winforms.Views.Users;
 using CRMS_Peguit.winforms.Views.FollowUps;
+using CRMS_Peguit.winforms.Views.Activities;
+using CRMS_Peguit.winforms.Views.Analytics;
+using CRMS_Peguit.winforms.Views.Archives;
+using CRMS_Peguit.winforms.Views.Management;
+using CRMS_Peguit.winforms.Views.SupportTickets;
 using CRMS_Peguit.Models;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
@@ -32,6 +37,7 @@ namespace CRMS_Peguit.winforms
         private System.Windows.Forms.Timer? _searchDebounce;
         private ToolStripDropDown? _searchDropDown;
         private Panel? _pnlSearchBox;
+        private Label? _lblSearchBadge;
 
         // Data Synchronization Indicator & Banner
         private Button _btnSyncIndicator = null!;
@@ -541,6 +547,15 @@ namespace CRMS_Peguit.winforms
             };
             UiRadiusHelper.ApplyRoundedCorners(lblSearchBadge, 4);
 
+            _lblSearchBadge = lblSearchBadge;
+
+            // Enforce explicit procedural layout on top header items to prevent overlapping at narrow widths or high DPI
+            lblHeaderUserName.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            lblHeaderAvatar.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            notificationBell.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            lblTenantTierBadge.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            _pnlSearchBox.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+
             topHeaderPanel.Controls.Remove(txtGlobalSearch);
 
             txtGlobalSearch.BorderStyle = BorderStyle.None;
@@ -571,6 +586,9 @@ namespace CRMS_Peguit.winforms
             _pnlSearchBox.Controls.Add(lblSearchBadge);
             topHeaderPanel.Controls.Add(_pnlSearchBox);
 
+            topHeaderPanel.Resize += (_, _) => LayoutTopHeader();
+            LayoutTopHeader();
+
             topHeaderPanel.Paint += (s, e) =>
             {
                 using var pen = new Pen(Color.FromArgb(226, 232, 240), 1f);
@@ -582,6 +600,83 @@ namespace CRMS_Peguit.winforms
                 using var shadowBrush2 = new SolidBrush(Color.FromArgb(6, 0, 0, 0));
                 e.Graphics.FillRectangle(shadowBrush2, 0, topHeaderPanel.Height - 2, topHeaderPanel.Width, 1);
             };
+        }
+
+        private void LayoutTopHeader()
+        {
+            if (topHeaderPanel == null || IsDisposed) return;
+
+            int rightMargin = 16;
+            int curRight = topHeaderPanel.ClientSize.Width - rightMargin;
+
+            // 1. User Name Label
+            if (lblHeaderUserName != null && lblHeaderUserName.Visible)
+            {
+                int nameWidth = Math.Clamp(topHeaderPanel.ClientSize.Width / 6, 120, 200);
+                lblHeaderUserName.Size = new Size(nameWidth, 38);
+                lblHeaderUserName.Location = new Point(curRight - lblHeaderUserName.Width, (topHeaderPanel.Height - lblHeaderUserName.Height) / 2);
+                curRight = lblHeaderUserName.Left - 8;
+            }
+
+            // 2. Avatar
+            if (lblHeaderAvatar != null && lblHeaderAvatar.Visible)
+            {
+                lblHeaderAvatar.Size = new Size(32, 32);
+                lblHeaderAvatar.Location = new Point(curRight - 32, (topHeaderPanel.Height - 32) / 2);
+                curRight = lblHeaderAvatar.Left - 10;
+            }
+
+            // 3. Notification Bell
+            if (notificationBell != null && notificationBell.Visible)
+            {
+                notificationBell.Size = new Size(34, 34);
+                notificationBell.Location = new Point(curRight - 34, (topHeaderPanel.Height - 34) / 2);
+                curRight = notificationBell.Left - 10;
+            }
+
+            // 4. Tenant Tier Badge
+            if (lblTenantTierBadge != null && lblTenantTierBadge.Visible)
+            {
+                int badgeWidth = Math.Clamp(TextRenderer.MeasureText(lblTenantTierBadge.Text, lblTenantTierBadge.Font).Width + 24, 140, 260);
+                lblTenantTierBadge.Size = new Size(badgeWidth, 30);
+                lblTenantTierBadge.Location = new Point(curRight - badgeWidth, (topHeaderPanel.Height - 30) / 2);
+                curRight = lblTenantTierBadge.Left - 8;
+            }
+
+            // 5. Sync Indicator Button
+            if (_btnSyncIndicator != null && _btnSyncIndicator.Visible)
+            {
+                int syncWidth = 100;
+                _btnSyncIndicator.Size = new Size(syncWidth, 30);
+                _btnSyncIndicator.Location = new Point(curRight - syncWidth, (topHeaderPanel.Height - 30) / 2);
+                curRight = _btnSyncIndicator.Left - 12;
+            }
+
+            // 6. Global Search Panel
+            if (_pnlSearchBox != null)
+            {
+                int leftStart = btnToggleSidebar.Right + 12;
+                int availableSearchWidth = curRight - leftStart;
+                int searchWidth = Math.Clamp(availableSearchWidth, 100, 340);
+
+                _pnlSearchBox.Location = new Point(leftStart, (topHeaderPanel.Height - 34) / 2);
+                _pnlSearchBox.Size = new Size(searchWidth, 34);
+
+                if (_lblSearchBadge != null)
+                {
+                    if (searchWidth < 220)
+                    {
+                        _lblSearchBadge.Visible = false;
+                        txtGlobalSearch.Width = Math.Max(40, searchWidth - 42);
+                    }
+                    else
+                    {
+                        _lblSearchBadge.Visible = true;
+                        _lblSearchBadge.Location = new Point(searchWidth - 48 - 10, 7);
+                        txtGlobalSearch.Width = Math.Max(40, searchWidth - 36 - 62);
+                    }
+                }
+            }
         }
 
         // =====================================================
@@ -623,11 +718,7 @@ namespace CRMS_Peguit.winforms
             lblHeaderAvatar.ForeColor = avatarFg;
             lblHeaderUserName.Text = $"{user.FullName}\r\n{roleDisplay}";
 
-            if (_pnlSearchBox != null)
-            {
-                _pnlSearchBox.Left = btnToggleSidebar.Right + 12;
-                _pnlSearchBox.Top = (topHeaderPanel.Height - _pnlSearchBox.Height) / 2;
-            }
+            LayoutTopHeader();
 
             // ── Tenant Tier Badge (Exam Requirements) ──
             if (CurrentSession.CurrentUser?.Role == UserRole.SuperAdmin)
@@ -704,6 +795,7 @@ namespace CRMS_Peguit.winforms
             lblInsightsSection.Visible = btnAnalytics.Visible || btnReports.Visible;
             btnSupportTickets.Visible = CurrentSession.CanAccess("SupportTickets");
 
+            LayoutTopHeader();
             Text = $"NEXA CRM SYSTEM — {user.FullName} ({roleDisplay})";
         }
 
@@ -732,6 +824,29 @@ namespace CRMS_Peguit.winforms
             view.Visible = true;
             view.BringToFront();
             view.Focus();
+
+            TriggerViewRefresh(view);
+        }
+
+        private void TriggerViewRefresh(UserControl view)
+        {
+            try
+            {
+                if (view is CustomersView cv) cv.RefreshGrid();
+                else if (view is LeadsView lv) lv.RefreshGrid();
+                else if (view is DealsView dv) dv.RefreshGrid();
+                else if (view is PropertiesView pv) pv.RefreshGrid();
+                else if (view is ApprovalsView av) av.RefreshGrid();
+                else if (view is FollowUpsView fv) fv.RefreshData();
+                else if (view is ActivitiesView actv) actv.RefreshData();
+                else if (view is SupportTicketsView stv) stv.RefreshGrid();
+                else if (view is AnalyticsView anav) anav.ReloadSnapshot();
+                else if (view is ArchivesView arv) _ = arv.RefreshDataAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MainForm.TriggerViewRefresh] Error refreshing view {view.GetType().Name}: {ex.Message}");
+            }
         }
 
         private void ShowView(UserControl view)
@@ -1218,7 +1333,7 @@ namespace CRMS_Peguit.winforms
             {
                 Text = SyncService.Instance.IsOnline ? "🟢 Synced" : "🔴 Offline",
                 Size = new Size(110, 30),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
                 Location = new Point(lblTenantTierBadge.Left - 118, 14),
                 BackColor = Color.FromArgb(241, 245, 249),
                 ForeColor = Color.FromArgb(15, 23, 42),
@@ -1235,6 +1350,7 @@ namespace CRMS_Peguit.winforms
                 dlg.ShowDialog(this);
             };
             topHeaderPanel.Controls.Add(_btnSyncIndicator);
+            LayoutTopHeader();
 
             // Persistent Offline Warning Banner docked under topHeaderPanel
             _pnlOfflineBanner = new Panel

@@ -173,14 +173,14 @@ namespace CRMS_Peguit.winforms.Controls
             else
             {
                 // Fallback default column header labels
-                int[] fallbackWidths = { 180, 150, 140, 120, 100 };
+                int[] fallbackWidths = { 180, 150, 140, 150, 100 };
                 string[] fallbackHeaders = { "NAME", "DETAILS", "CATEGORY", "DATE / VALUE", "STATUS" };
                 int curX = 0;
                 using var font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
                 for (int i = 0; i < fallbackWidths.Length && curX < w; i++)
                 {
                     int fw = fallbackWidths[i];
-                    var rect = new Rectangle(curX + 12, 0, fw - 24, headerHeight);
+                    var rect = new Rectangle(curX + 8, 0, fw - 16, headerHeight);
                     TextRenderer.DrawText(g, fallbackHeaders[i], font, rect, UiGridHelper.HeaderText, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
                     curX += fw;
                 }

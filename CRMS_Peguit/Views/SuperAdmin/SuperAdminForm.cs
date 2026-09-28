@@ -472,7 +472,7 @@ namespace CRMS_Peguit.winforms
             _avatarHeader = new AvatarLabel(adminName, "Super Admin")
             {
                 Size = new Size(180, 40),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
                 AvatarSize = 34
             };
             _avatarHeader.Location = new Point(_header.Width - 200, 12);
@@ -488,18 +488,24 @@ namespace CRMS_Peguit.winforms
                 BackColor = Color.Transparent,
                 ForeColor = Theme.TextSecondary,
                 Cursor = Cursors.Hand,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
                 Location = new Point(_header.Width - 246, 14)
             };
             btnBell.FlatAppearance.BorderSize = 0;
             UiRadiusHelper.StyleButton(btnBell, 8);
             _header.Controls.Add(btnBell);
 
-            _header.SizeChanged += (_, _) =>
+            void LayoutHeader()
             {
                 _avatarHeader.Location = new Point(_header.Width - 200, 12);
                 btnBell.Location = new Point(_header.Width - 246, 14);
-            };
+                int availableSearch = btnBell.Left - 20 - 170;
+                pnlSearchContainer.Width = Math.Clamp(availableSearch, 180, 360);
+                _txtHeaderSearch.Width = pnlSearchContainer.Width - 50;
+            }
+
+            _header.SizeChanged += (_, _) => LayoutHeader();
+            LayoutHeader();
         }
 
         // ──────────────────────────────────────────────────────────────────────

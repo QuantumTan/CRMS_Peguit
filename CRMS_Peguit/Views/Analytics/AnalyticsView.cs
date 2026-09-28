@@ -482,7 +482,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             };
         }
 
-        private async void ReloadSnapshot()
+        public async void ReloadSnapshot()
         {
             lblLoading.Visible = false;
             lblSubtitle.Visible = false;
@@ -575,15 +575,15 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             RenderTicketBreakdownChart(snapshot.TicketBreakdown);
 
             // 6. Chart: Top-Performing Agents (Manager/Admin only)
-            if (chartAgents.Visible && snapshot.TopAgents != null)
+            if (chartAgents.Visible)
             {
-                RenderTopAgentsChart(snapshot.TopAgents);
+                RenderTopAgentsChart(snapshot.TopAgents ?? new List<AgentPerformance>());
             }
 
-            // 7. Chart: Lead Source Breakdown (Manager/Admin only)
-            if (chartSources.Visible && snapshot.LeadSourceBreakdown != null)
+            // 7. Chart: Lead Source Breakdown
+            if (chartSources.Visible)
             {
-                RenderLeadSourcesChart(snapshot.LeadSourceBreakdown);
+                RenderLeadSourcesChart(snapshot.LeadSourceBreakdown ?? new List<SourceMetric>());
             }
 
             // 8. Recent Activity Feed

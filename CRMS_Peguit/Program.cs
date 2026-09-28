@@ -32,6 +32,12 @@ namespace CRMS_Peguit.winforms
                 Environment.SetEnvironmentVariable("CRMS_CLOUD_CONNECTION", cloudConnection);
             }
 
+            if (args.Contains("--audit-all") || args.Contains("--audit-ui"))
+            {
+                CRMS_Peguit.winforms.Audit.ScreenAuditor.RunAudit(args);
+                return;
+            }
+
             if (args.Contains("--verify-assets"))
             {
                 var logo = AppBrand.Logo;

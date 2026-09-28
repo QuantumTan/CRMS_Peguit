@@ -198,8 +198,6 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             {
                 Text = "Cancel",
                 Size = new Size(100, 36),
-                Location = new Point(230, 12),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 BackColor = Color.White,
                 ForeColor = Color.FromArgb(71, 85, 105),
                 FlatStyle = FlatStyle.Flat,
@@ -213,8 +211,6 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             {
                 Text = "Complete Follow-Up",
                 Size = new Size(160, 36),
-                Location = new Point(340, 12),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 BackColor = Color.FromArgb(22, 101, 52), // Success green
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
@@ -223,6 +219,12 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             };
             _btnComplete.FlatAppearance.BorderSize = 0;
             _btnComplete.Click += BtnCompleteClick;
+
+            pnlFooter.Resize += (_, _) =>
+            {
+                _btnComplete.Location = new Point(pnlFooter.Width - _btnComplete.Width - 20, 12);
+                _btnCancel.Location = new Point(_btnComplete.Left - _btnCancel.Width - 10, 12);
+            };
 
             pnlFooter.Controls.Add(_btnCancel);
             pnlFooter.Controls.Add(_btnComplete);

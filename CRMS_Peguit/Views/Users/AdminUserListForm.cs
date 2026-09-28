@@ -90,7 +90,9 @@ namespace CRMS_Peguit.winforms.Views.Users
             int rightPadding = UiStyleConstants.PageMarginRight;
             int leftMargin = UiStyleConstants.PageMarginLeft;
             int totalWidth = ClientSize.Width;
-            int y = 88;
+            lblTitle.Location = new Point(leftMargin, 20);
+            lblSubtitle.Location = new Point(leftMargin, lblTitle.Bottom + 4);
+            int y = Math.Max(88, lblSubtitle.Bottom + 14);
 
             // Position toolbar action button
             int rightEdge = totalWidth - rightPadding;
@@ -100,7 +102,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             rightEdge = btnAdd.Left - 16;
 
             // Check if search + role + checkbox fit in single row
-            int filtersWidth = 150 + 12 + chkIncludeInactive.Width;
+            int filtersWidth = 155 + 12 + chkIncludeInactive.Width;
             int availableForSearch = rightEdge - leftMargin - filtersWidth - 20;
 
             if (availableForSearch >= 180)
@@ -114,13 +116,15 @@ namespace CRMS_Peguit.winforms.Views.Users
                 cmbRoleFilter.Top = y;
                 cmbRoleFilter.Left = txtSearch.Right + 12;
                 cmbRoleFilter.Height = UiStyleConstants.ToolbarRowHeight;
-                cmbRoleFilter.Width = 140;
+                cmbRoleFilter.Width = 155;
 
                 chkIncludeInactive.Top = y + (UiStyleConstants.ToolbarRowHeight - chkIncludeInactive.Height) / 2;
                 chkIncludeInactive.Left = cmbRoleFilter.Right + 16;
 
                 int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
                 pnlCard.Top = cardTop;
+                pnlCard.Left = leftMargin;
+                pnlCard.Width = totalWidth - leftMargin - rightPadding;
                 pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - UiStyleConstants.PageMarginBottom);
             }
             else
@@ -135,13 +139,15 @@ namespace CRMS_Peguit.winforms.Views.Users
                 cmbRoleFilter.Top = row2Y;
                 cmbRoleFilter.Left = leftMargin;
                 cmbRoleFilter.Height = UiStyleConstants.ToolbarRowHeight;
-                cmbRoleFilter.Width = 140;
+                cmbRoleFilter.Width = 155;
 
                 chkIncludeInactive.Top = row2Y + (UiStyleConstants.ToolbarRowHeight - chkIncludeInactive.Height) / 2;
                 chkIncludeInactive.Left = cmbRoleFilter.Right + 16;
 
                 int cardTop = row2Y + UiStyleConstants.ToolbarRowHeight + 14;
                 pnlCard.Top = cardTop;
+                pnlCard.Left = leftMargin;
+                pnlCard.Width = totalWidth - leftMargin - rightPadding;
                 pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 20);
             }
 

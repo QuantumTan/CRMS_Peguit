@@ -153,6 +153,33 @@ namespace CRMS_Peguit.winforms.Controllers
             }
         }
 
+        public void ApproveImmediately(PendingApprovalItem item, string? notes = null)
+        {
+            string reviewNotes = notes ?? "Approved immediately and assigned to submitter.";
+
+            if (item.Type == "Lead" && item.OriginalEntity is Lead lead)
+            {
+                int? targetAgent = lead.CreatedByUserId > 0
+                    ? lead.CreatedByUserId
+                    : lead.AssignedAgentId;
+                _leadController.AssignAgent(lead, targetAgent, approve: true, reviewNotes);
+            }
+            else if (item.Type == "Customer" && item.OriginalEntity is Customer cust)
+            {
+                int? targetAgent = cust.CreatedByUserId > 0
+                    ? cust.CreatedByUserId
+                    : cust.AssignedAgentId;
+                _customerController.AssignAgent(cust, targetAgent, approve: true, reviewNotes);
+            }
+            else if (item.Type == "Property" && item.OriginalEntity is Property prop)
+            {
+                int? targetAgent = prop.CreatedByUserId > 0
+                    ? prop.CreatedByUserId
+                    : prop.ListedByAgentId;
+                _propertyController.AssignAgent(prop, targetAgent, approve: true, reviewNotes);
+            }
+        }
+
         private string GetUserName(int? userId)
         {
             if (!userId.HasValue || userId.Value <= 0) return "—";

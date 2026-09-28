@@ -397,8 +397,15 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to load backup history: {ex.Message}",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (!CRMS_Peguit.winforms.Audit.ScreenAuditor.IsAuditing)
+                {
+                    MessageBox.Show($"Failed to load backup history: {ex.Message}",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                else
+                {
+                    Console.WriteLine($"[AUDITOR WARNING] Failed to load backup history: {ex.Message}");
+                }
             }
             finally
             {

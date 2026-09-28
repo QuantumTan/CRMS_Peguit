@@ -424,10 +424,18 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             var buyerTypes = new[] { "buyer", "both" };
 
-            return _db.Customers
+            var query = _db.Customers
                 .AsNoTracking()
-                .Where(c => (buyerTypes.Contains(c.Type.ToLower()) && c.Status.ToLower() != "inactive") ||
-                            (includeCustomerId.HasValue && c.CustomerId == includeCustomerId.Value))
+                .Where(c => !c.IsDeleted && (((buyerTypes.Contains(c.Type.ToLower()) && c.Status.ToLower() != "inactive")) ||
+                            (includeCustomerId.HasValue && c.CustomerId == includeCustomerId.Value)));
+
+            if (RbacService.IsAgent && !RbacService.HasFullOversight)
+            {
+                int currentUserId = CurrentSession.UserId;
+                query = query.Where(c => c.AssignedAgentId == currentUserId || c.CreatedByUserId == currentUserId || (includeCustomerId.HasValue && c.CustomerId == includeCustomerId.Value));
+            }
+
+            return query
                 .OrderBy(c => c.LastName)
                 .ThenBy(c => c.FirstName)
                 .ToList()

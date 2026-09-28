@@ -78,6 +78,7 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
                 Size = new Size(190, 25),
                 Font = new Font("Segoe UI", 9.5f),
                 Format = DateTimePickerFormat.Short,
+                MinDate = DateTime.Today,
                 Value = DateTime.Today.AddDays(1)
             };
 
@@ -186,6 +187,13 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             DateTime selectedDate = _dtpDate.Value.Date;
             TimeSpan selectedTime = _dtpTime.Value.TimeOfDay;
             DateTime localCombined = selectedDate.Add(selectedTime);
+
+            if (localCombined < DateTime.Now)
+            {
+                MessageBox.Show("Rescheduled follow-up date and time cannot be in the past. Please select a current or future date and time.", "Invalid Date", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                _dtpDate.Focus();
+                return;
+            }
 
             NewDueDate = localCombined.ToUniversalTime();
             DialogResult = DialogResult.OK;

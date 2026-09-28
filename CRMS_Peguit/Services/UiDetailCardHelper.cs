@@ -128,15 +128,19 @@ namespace CRMS_Peguit.winforms.Models.Services
                 Location = new Point(0, 4),
                 AutoSize = true
             };
+            string displayVal1 = string.IsNullOrWhiteSpace(value1) ? "—" : value1;
             var lblVal1 = new Label
             {
-                Text = string.IsNullOrWhiteSpace(value1) ? "—" : value1,
+                Text = displayVal1,
                 Font = new Font("Segoe UI", 10f, FontStyle.Regular),
                 ForeColor = ValueTextColor,
                 Location = new Point(0, 24),
-                AutoSize = true,
-                MaximumSize = new Size(300, 24)
+                AutoSize = false,
+                AutoEllipsis = true,
+                Size = new Size(300, 22)
             };
+            var rowToolTip = new ToolTip();
+            rowToolTip.SetToolTip(lblVal1, displayVal1);
             row.Controls.Add(lblCaption1);
             row.Controls.Add(lblVal1);
 
@@ -151,15 +155,18 @@ namespace CRMS_Peguit.winforms.Models.Services
                     Location = new Point(330, 4),
                     AutoSize = true
                 };
+                string displayVal2 = string.IsNullOrWhiteSpace(value2) ? "—" : value2;
                 var lblVal2 = new Label
                 {
-                    Text = string.IsNullOrWhiteSpace(value2) ? "—" : value2,
+                    Text = displayVal2,
                     Font = new Font("Segoe UI", 10f, FontStyle.Regular),
                     ForeColor = ValueTextColor,
                     Location = new Point(330, 24),
-                    AutoSize = true,
-                    MaximumSize = new Size(300, 24)
+                    AutoSize = false,
+                    AutoEllipsis = true,
+                    Size = new Size(300, 22)
                 };
+                rowToolTip.SetToolTip(lblVal2, displayVal2);
                 row.Controls.Add(lblCaption2);
                 row.Controls.Add(lblVal2);
             }

@@ -95,13 +95,9 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
             btnRunReport.BackColor = BiDisplayConstants.PrimaryAccent;
             btnRunReport.ForeColor = Theme.Surface;
-            btnExportExcel.BackColor = Theme.Surface;
-            btnExportExcel.ForeColor = Theme.TextPrimary;
-            btnExportPdf.BackColor = Theme.Surface;
-            btnExportPdf.ForeColor = Theme.TextPrimary;
-
-            btnExportExcel.Enabled = false;
-            btnExportPdf.Enabled = false;
+            btnExportCsv.BackColor = Theme.Surface;
+            btnExportCsv.ForeColor = Theme.TextPrimary;
+            btnExportCsv.Enabled = false;
 
             // Remove docking and anchor constraints so absolute sizing in LayoutReportControls works unhindered
             pnlCharts.Dock = DockStyle.None;
@@ -212,8 +208,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
             cboReportType.SelectedIndexChanged += (s, e) =>
             {
                 UpdateSecondaryFilter();
-                btnExportExcel.Text = "Export Excel";
-                btnExportPdf.Text = "Export PDF";
+                btnExportCsv.Text = "📄 Export CSV";
             };
             cboDateRange.SelectedIndexChanged += (s, e) =>
             {
@@ -224,8 +219,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
             };
 
             btnRunReport.Click += BtnRunReport_Click;
-            btnExportExcel.Click += BtnExportExcel_Click;
-            btnExportPdf.Click += BtnExportPdf_Click;
+            btnExportCsv.Click += BtnExportCsv_Click;
 
             btnViewBoth.Click += (_, _) => SetViewMode(ViewDisplayMode.Both);
             btnViewCharts.Click += (_, _) => SetViewMode(ViewDisplayMode.ChartsOnly);
@@ -392,8 +386,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
             lblLoading.Visible = false;
             btnRunReport.Enabled = false;
-            btnExportExcel.Enabled = false;
-            btnExportPdf.Enabled = false;
+            btnExportCsv.Enabled = false;
             lblReportHeader.Text = "Generating report and analytical charts...";
 
             // Show animated loading skeleton placeholders on KPIs, charts, and table
@@ -451,17 +444,13 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 bool isFinancialReport = rpt.Contains("Commission");
                 if (isFinancialReport && !RbacService.CanExportFinancialSettlements)
                 {
-                    btnExportExcel.Enabled = false;
-                    btnExportPdf.Enabled = false;
-                    btnExportExcel.Text = "Export (Admin Only)";
-                    btnExportPdf.Text = "Export (Admin Only)";
+                    btnExportCsv.Enabled = false;
+                    btnExportCsv.Text = "Export (Admin Only)";
                 }
                 else
                 {
-                    btnExportExcel.Enabled = _currentData != null;
-                    btnExportPdf.Enabled = _currentData != null;
-                    btnExportExcel.Text = "Export Excel";
-                    btnExportPdf.Text = "Export PDF";
+                    btnExportCsv.Enabled = _currentData != null;
+                    btnExportCsv.Text = "📄 Export CSV";
                 }
 
                 // Update dynamic KPI summary cards
@@ -509,18 +498,22 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 decimal totalComm = sales.Sum(s => s.Commission);
                 decimal avgSize = count == 0 ? 0 : totalVolume / count;
 
+                kpi1.SetTitle("TOTAL DEALS");
                 kpi1.SetValue(count);
                 kpi1.SetSubtitle("Closed & active deals");
                 kpi1.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Briefcase, BiDisplayConstants.PrimaryAccent);
 
+                kpi2.SetTitle("GROSS VOLUME");
                 kpi2.SetValue(BiDisplayConstants.FormatCompactCurrency(totalVolume));
                 kpi2.SetSubtitle($"Gross: {BiDisplayConstants.FormatCurrency(totalVolume)}");
                 kpi2.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Currency, BiDisplayConstants.StatusWon);
 
+                kpi3.SetTitle("TOTAL COMMISSION");
                 kpi3.SetValue(BiDisplayConstants.FormatCompactCurrency(totalComm));
                 kpi3.SetSubtitle($"Net: {BiDisplayConstants.FormatCurrency(totalComm)}");
                 kpi3.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Currency, BiDisplayConstants.StatusWon);
 
+                kpi4.SetTitle("AVERAGE DEAL SIZE");
                 kpi4.SetValue(BiDisplayConstants.FormatCompactCurrency(avgSize));
                 kpi4.SetSubtitle("Per deal average");
                 kpi4.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Target, BiDisplayConstants.HighlightAccent);
@@ -532,25 +525,30 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 decimal agentPayouts = comms.Sum(c => c.AgentPayoutAmount);
                 decimal brokerageNet = comms.Sum(c => c.BrokerageRetainedAmount);
 
+                kpi1.SetTitle("TOTAL TRANSACTIONS");
                 kpi1.SetValue(count);
                 kpi1.SetSubtitle("Commission records");
                 kpi1.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Briefcase, BiDisplayConstants.PrimaryAccent);
 
+                kpi2.SetTitle("GROSS COMMISSION");
                 kpi2.SetValue(BiDisplayConstants.FormatCompactCurrency(grossComm));
                 kpi2.SetSubtitle($"Total: {BiDisplayConstants.FormatCurrency(grossComm)}");
                 kpi2.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Currency, BiDisplayConstants.StatusWon);
 
+                kpi3.SetTitle("AGENT DISBURSEMENTS");
                 kpi3.SetValue(BiDisplayConstants.FormatCompactCurrency(agentPayouts));
                 kpi3.SetSubtitle($"Disbursed: {BiDisplayConstants.FormatCurrency(agentPayouts)}");
                 kpi3.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Currency, BiDisplayConstants.StatusPending);
 
                 if (RbacService.CanViewBrokerageMargins)
                 {
+                    kpi4.SetTitle("BROKERAGE NET");
                     kpi4.SetValue(BiDisplayConstants.FormatCompactCurrency(brokerageNet));
                     kpi4.SetSubtitle($"Retained: {BiDisplayConstants.FormatCurrency(brokerageNet)}");
                 }
                 else
                 {
+                    kpi4.SetTitle("SETTLEMENT ACCESS");
                     kpi4.SetValue("Restricted");
                     kpi4.SetSubtitle("Admin oversight only");
                 }
@@ -563,18 +561,22 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 double avgDom = count == 0 ? 0 : props.Average(p => p.DaysOnMarket);
                 int activeDeals = props.Sum(p => p.AssociatedDeals);
 
+                kpi1.SetTitle("TOTAL PROPERTIES");
                 kpi1.SetValue(count);
                 kpi1.SetSubtitle("Tracked properties");
                 kpi1.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Building, BiDisplayConstants.PrimaryAccent);
 
+                kpi2.SetTitle("PORTFOLIO VALUE");
                 kpi2.SetValue(BiDisplayConstants.FormatCompactCurrency(totalValue));
                 kpi2.SetSubtitle($"Total: {BiDisplayConstants.FormatCurrency(totalValue)}");
                 kpi2.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Currency, BiDisplayConstants.StatusWon);
 
+                kpi3.SetTitle("AVG DAYS ON MARKET");
                 kpi3.SetValue($"{avgDom:F1}d");
                 kpi3.SetSubtitle("Listing absorption speed");
                 kpi3.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Clock, BiDisplayConstants.StatusPending);
 
+                kpi4.SetTitle("ACTIVE DEALS");
                 kpi4.SetValue(activeDeals);
                 kpi4.SetSubtitle("Linked under negotiation");
                 kpi4.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Target, BiDisplayConstants.HighlightAccent);
@@ -586,18 +588,22 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 double convRate = count == 0 ? 0 : ((double)converted / count) * 100;
                 decimal estBudget = leads.Sum(l => l.EstimatedBudget);
 
+                kpi1.SetTitle("TOTAL LEADS");
                 kpi1.SetValue(count);
                 kpi1.SetSubtitle("Acquired in period");
                 kpi1.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Target, BiDisplayConstants.PrimaryAccent);
 
+                kpi2.SetTitle("CONVERTED CLIENTS");
                 kpi2.SetValue(converted);
                 kpi2.SetSubtitle("Won to customers");
                 kpi2.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Users, BiDisplayConstants.StatusWon);
 
+                kpi3.SetTitle("CONVERSION RATE");
                 kpi3.SetValue(BiDisplayConstants.FormatPercent(convRate));
                 kpi3.SetSubtitle("Pipeline efficiency");
                 kpi3.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Refresh, BiDisplayConstants.HighlightAccent);
 
+                kpi4.SetTitle("ESTIMATED BUDGET");
                 kpi4.SetValue(BiDisplayConstants.FormatCompactCurrency(estBudget));
                 kpi4.SetSubtitle($"Est: {BiDisplayConstants.FormatCurrency(estBudget)}");
                 kpi4.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Currency, BiDisplayConstants.SkyAccent);
@@ -610,18 +616,22 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 int missed = tickets.Count(t => t.SlaMet == "No");
                 double slaRate = count == 0 ? 0 : ((double)met / count) * 100;
 
+                kpi1.SetTitle("TOTAL TICKETS");
                 kpi1.SetValue(count);
                 kpi1.SetSubtitle("Logged support requests");
                 kpi1.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Ticket, BiDisplayConstants.PrimaryAccent);
 
+                kpi2.SetTitle("RESOLVED TICKETS");
                 kpi2.SetValue(resolved);
                 kpi2.SetSubtitle("Closed & satisfied");
                 kpi2.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Target, BiDisplayConstants.StatusWon);
 
+                kpi3.SetTitle("SLA COMPLIANCE RATE");
                 kpi3.SetValue(BiDisplayConstants.FormatPercent(slaRate));
                 kpi3.SetSubtitle($"{met} met SLA target");
                 kpi3.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Clock, slaRate >= 80 ? BiDisplayConstants.StatusWon : BiDisplayConstants.StatusLost);
 
+                kpi4.SetTitle("SLA BREACHES");
                 kpi4.SetValue(missed);
                 kpi4.SetSubtitle("Missed resolution SLA");
                 kpi4.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.AlertTriangle, BiDisplayConstants.StatusLost);
@@ -633,18 +643,22 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 decimal totalVolume = acts.Sum(a => a.TotalSalesVolume);
                 int totalTickets = acts.Sum(a => a.TicketsResolved);
 
+                kpi1.SetTitle("ACTIVE AGENTS");
                 kpi1.SetValue(count);
                 kpi1.SetSubtitle("Frontline personnel");
                 kpi1.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Users, BiDisplayConstants.PrimaryAccent);
 
+                kpi2.SetTitle("DEALS CLOSED");
                 kpi2.SetValue(totalDeals);
                 kpi2.SetSubtitle("Team closed transactions");
                 kpi2.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Briefcase, BiDisplayConstants.StatusWon);
 
+                kpi3.SetTitle("TOTAL SALES VOLUME");
                 kpi3.SetValue(BiDisplayConstants.FormatCompactCurrency(totalVolume));
                 kpi3.SetSubtitle($"Gross: {BiDisplayConstants.FormatCurrency(totalVolume)}");
                 kpi3.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Currency, BiDisplayConstants.StatusWon);
 
+                kpi4.SetTitle("TICKETS RESOLVED");
                 kpi4.SetValue(totalTickets);
                 kpi4.SetSubtitle("Client issues resolved");
                 kpi4.SetIcon(CRMS_Peguit.winforms.Models.Services.KpiIconType.Ticket, BiDisplayConstants.SkyAccent);
@@ -1009,8 +1023,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
             };
         }
 
-
-        private void BtnExportPdf_Click(object? sender, EventArgs e)
+        private void BtnExportCsv_Click(object? sender, EventArgs e)
         {
             if (_currentData == null || _currentHeader == null) return;
             var rpt = cboReportType.SelectedItem?.ToString() ?? "";
@@ -1020,42 +1033,17 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 return;
             }
 
-            using var sfd = new SaveFileDialog { Filter = "PDF Files|*.pdf", FileName = $"{_currentHeader.ReportName.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd}.pdf" };
+            using var sfd = new SaveFileDialog { Filter = "CSV Files (*.csv)|*.csv", FileName = $"{_currentHeader.ReportName.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd}.csv" };
             if (sfd.ShowDialog() == DialogResult.OK)
             {
                 try
                 {
-                    ExportDynamic(sfd.FileName, "pdf");
-                    MessageBox.Show("Exported to PDF successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    ExportDynamic(sfd.FileName, "csv");
+                    MessageBox.Show("Exported to CSV successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Failed to export PDF: {ex.Message}", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
-        }
-
-        private void BtnExportExcel_Click(object? sender, EventArgs e)
-        {
-            if (_currentData == null || _currentHeader == null) return;
-            var rpt = cboReportType.SelectedItem?.ToString() ?? "";
-            if (rpt.Contains("Commission") && !RbacService.CanExportFinancialSettlements)
-            {
-                MessageBox.Show("Commission and financial settlement exports are restricted to Administrators.", "Access Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            using var sfd = new SaveFileDialog { Filter = "Excel Files|*.xlsx", FileName = $"{_currentHeader.ReportName.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd}.xlsx" };
-            if (sfd.ShowDialog() == DialogResult.OK)
-            {
-                try
-                {
-                    ExportDynamic(sfd.FileName, "excel");
-                    MessageBox.Show("Exported to Excel successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Failed to export Excel: {ex.Message}", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show($"Failed to export CSV: {ex.Message}", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
@@ -1077,33 +1065,33 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
             if (rpt.Contains("Sales"))
             {
-                if (format == "excel") _controller.ExportToExcel((List<SalesReportRow>)_currentData, filePath, _currentHeader, activeFilter);
-                else if (format == "pdf") _controller.ExportToPdf((List<SalesReportRow>)_currentData, filePath, _currentHeader, activeFilter);
+                if (format == "csv") _controller.ExportToCsv((List<SalesReportRow>)_currentData, filePath, _currentHeader, activeFilter);
+                else if (format == "excel") _controller.ExportToExcel((List<SalesReportRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Commission"))
             {
-                if (format == "excel") _controller.ExportToExcel((List<CommissionReportRow>)_currentData, filePath, _currentHeader, activeFilter);
-                else if (format == "pdf") _controller.ExportToPdf((List<CommissionReportRow>)_currentData, filePath, _currentHeader, activeFilter);
+                if (format == "csv") _controller.ExportToCsv((List<CommissionReportRow>)_currentData, filePath, _currentHeader, activeFilter);
+                else if (format == "excel") _controller.ExportToExcel((List<CommissionReportRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Property"))
             {
-                if (format == "excel") _controller.ExportToExcel((List<PropertyInventoryReportRow>)_currentData, filePath, _currentHeader, activeFilter);
-                else if (format == "pdf") _controller.ExportToPdf((List<PropertyInventoryReportRow>)_currentData, filePath, _currentHeader, activeFilter);
+                if (format == "csv") _controller.ExportToCsv((List<PropertyInventoryReportRow>)_currentData, filePath, _currentHeader, activeFilter);
+                else if (format == "excel") _controller.ExportToExcel((List<PropertyInventoryReportRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Lead"))
             {
-                if (format == "excel") _controller.ExportToExcel((List<LeadProgressRow>)_currentData, filePath, _currentHeader, activeFilter);
-                else if (format == "pdf") _controller.ExportToPdf((List<LeadProgressRow>)_currentData, filePath, _currentHeader, activeFilter);
+                if (format == "csv") _controller.ExportToCsv((List<LeadProgressRow>)_currentData, filePath, _currentHeader, activeFilter);
+                else if (format == "excel") _controller.ExportToExcel((List<LeadProgressRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Ticket"))
             {
-                if (format == "excel") _controller.ExportToExcel((List<TicketResolutionRow>)_currentData, filePath, _currentHeader, activeFilter);
-                else if (format == "pdf") _controller.ExportToPdf((List<TicketResolutionRow>)_currentData, filePath, _currentHeader, activeFilter);
+                if (format == "csv") _controller.ExportToCsv((List<TicketResolutionRow>)_currentData, filePath, _currentHeader, activeFilter);
+                else if (format == "excel") _controller.ExportToExcel((List<TicketResolutionRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Agent"))
             {
-                if (format == "excel") _controller.ExportToExcel((List<AgentActivityRow>)_currentData, filePath, _currentHeader, activeFilter);
-                else if (format == "pdf") _controller.ExportToPdf((List<AgentActivityRow>)_currentData, filePath, _currentHeader, activeFilter);
+                if (format == "csv") _controller.ExportToCsv((List<AgentActivityRow>)_currentData, filePath, _currentHeader, activeFilter);
+                else if (format == "excel") _controller.ExportToExcel((List<AgentActivityRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
         }
 

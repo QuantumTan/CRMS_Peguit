@@ -762,6 +762,16 @@ namespace CRMS_Peguit.winforms.Views.Leads
 
         private void ConvertLead(Lead lead)
         {
+            if (!string.Equals(lead.AssignmentStatus, "approved", StringComparison.OrdinalIgnoreCase) || !lead.AssignedAgentId.HasValue)
+            {
+                MessageBox.Show(
+                    "This lead cannot be converted into a customer yet because its assignment has not been approved by a manager or administrator.\n\nPlease ensure the lead is assigned and approved before converting.",
+                    "Approval Required",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
             var confirmation = MessageBox.Show(
                 $"Convert '{lead.FullName}' into a customer?\n\n" +
                 "A new customer record will be created and this lead will be marked as converted.",
@@ -769,13 +779,20 @@ namespace CRMS_Peguit.winforms.Views.Leads
 
             if (confirmation != DialogResult.Yes) return;
 
-            Customer customer = _controller.ConvertToCustomer(lead);
+            try
+            {
+                Customer customer = _controller.ConvertToCustomer(lead);
 
-            MessageBox.Show(
-                $"'{lead.FullName}' is now customer #{customer.CustomerId}.",
-                "Conversion Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(
+                    $"'{lead.FullName}' is now customer #{customer.CustomerId}.",
+                    "Conversion Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-            RefreshGrid();
+                RefreshGrid();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Conversion Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         private void ExportToCsv()

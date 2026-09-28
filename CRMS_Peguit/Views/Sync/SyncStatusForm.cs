@@ -288,6 +288,10 @@ namespace CRMS_Peguit.winforms.Views.Sync
 
             pnlBottom.Controls.AddRange(new Control[] { lblTip, btnClose });
 
+            this.CancelButton = btnClose;
+            this.AcceptButton = _btnSyncNow;
+            this.MinimumSize = new Size(860, 560);
+
             this.Controls.Add(pnlGrid);
             this.Controls.Add(pnlFilter);
             this.Controls.Add(pnlTop);
