@@ -324,6 +324,8 @@ namespace CRMS_Peguit.winforms.Controllers
                 .SingleOrDefault(x => x.LeadId == lead.LeadId);
             if (item is null) return;
 
+            var oldStage = item.Stage;
+
             item.FirstName = lead.FirstName;
             item.MiddleName = lead.MiddleName;
             item.LastName = lead.LastName;
@@ -359,12 +361,12 @@ namespace CRMS_Peguit.winforms.Controllers
                     LogActivity("Lead Assignment Changed", item.LeadId, null,
                         $"Lead '{item.FullName}' assignment changed from Agent #{oldAgentId?.ToString() ?? "Unassigned"} to Agent #{newAgentId?.ToString() ?? "Unassigned"} by User #{CurrentSession.UserId}.");
                 }
-                else if (item.Stage != lead.Stage && item.AssignedAgentId.HasValue && item.AssignedAgentId.Value > 0)
+                else if (oldStage != lead.Stage && item.AssignedAgentId.HasValue && item.AssignedAgentId.Value > 0)
                 {
                     _notifCtrl.CreateNotification(TenantId, item.AssignedAgentId.Value, NotificationType.LeadStageChanged, "Lead Stage Updated", $"Lead '{item.FullName}' stage changed to {lead.Stage}.", "Lead", item.LeadId);
                 }
             }
-            else if (item.Stage != lead.Stage && item.AssignedAgentId.HasValue && item.AssignedAgentId.Value > 0)
+            else if (oldStage != lead.Stage && item.AssignedAgentId.HasValue && item.AssignedAgentId.Value > 0)
             {
                 _notifCtrl.CreateNotification(TenantId, item.AssignedAgentId.Value, NotificationType.LeadStageChanged, "Lead Stage Updated", $"Lead '{item.FullName}' stage changed to {lead.Stage}.", "Lead", item.LeadId);
             }
@@ -505,13 +507,34 @@ namespace CRMS_Peguit.winforms.Controllers
                 DeletedAt = null
             };
 
-            _db.Customers.Add(customer);
-            _db.SaveChanges();
+            var strategy = _db.Database.CreateExecutionStrategy();
+            strategy.Execute(() =>
+            {
+                using var tx = _db.Database.BeginTransaction();
+                try
+                {
+                    _db.Customers.Add(customer);
+                    _db.SaveChanges();
 
-            item.Stage = "converted";
-            item.AssignmentStatus = "approved";
-            item.ConvertedCustomerId = customer.CustomerId;
-            _db.SaveChanges();
+                    item.Stage = "converted";
+                    item.AssignmentStatus = "approved";
+                    item.ConvertedCustomerId = customer.CustomerId;
+                    if (!ReferenceEquals(lead, item))
+                    {
+                        lead.Stage = item.Stage;
+                        lead.AssignmentStatus = item.AssignmentStatus;
+                        lead.ConvertedCustomerId = item.ConvertedCustomerId;
+                    }
+                    _db.SaveChanges();
+                    tx.Commit();
+                }
+                catch
+                {
+                    tx.Rollback();
+                    throw;
+                }
+            });
+
             LogActivity("Lead Converted", item.LeadId, customer.CustomerId, $"Lead '{item.FullName}' was converted to customer #{customer.CustomerId}.");
 
             SyncService.Instance.EnqueueOfflineCreate("Customer", customer, TenantId, CurrentSession.UserId, customer.CustomerId.ToString());

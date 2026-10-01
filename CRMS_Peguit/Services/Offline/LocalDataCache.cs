@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
@@ -22,10 +23,13 @@ namespace CRMS_Peguit.winforms.Services.Offline
 
         public LocalDataCache()
         {
-            var dbPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "CRMS_Peguit", "local_cache.db"
-            );
+            string? overridePath = Environment.GetEnvironmentVariable("CRMS_LOCAL_CACHE_DB");
+            var dbPath = !string.IsNullOrWhiteSpace(overridePath)
+                ? overridePath
+                : Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "CRMS_Peguit", "local_cache.db"
+                );
             Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
             _connectionString = $"Data Source={dbPath}";
             EnsureTablesExist();
@@ -281,7 +285,7 @@ namespace CRMS_Peguit.winforms.Services.Offline
                            Operation, PayloadJson, CreatedAt, Status, FailureReason,
                            ServerVersionTimestamp, ServerConflictPayload, AttemptCount, LastAttemptAt
                     FROM PendingSyncQueue
-                    WHERE TenantId = $tenantId AND Status IN ('Pending', 'Syncing', 'Failed')
+                    WHERE TenantId = $tenantId AND Status IN ('Pending', 'Syncing')
                     ORDER BY QueueId ASC;";
                 cmd.Parameters.AddWithValue("$tenantId", tenantId);
 
@@ -447,6 +451,18 @@ namespace CRMS_Peguit.winforms.Services.Offline
             }
         }
 
+        public void ClearFailedQueue(int tenantId)
+        {
+            lock (_dbLock)
+            {
+                using var conn = CreateOpenConnection();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "DELETE FROM PendingSyncQueue WHERE TenantId = $tenantId AND Status = 'Failed';";
+                cmd.Parameters.AddWithValue("$tenantId", tenantId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
         public void ClearAllQueue(int tenantId)
         {
             lock (_dbLock)
@@ -491,6 +507,42 @@ namespace CRMS_Peguit.winforms.Services.Offline
             }
         }
 
+        public DateTime? GetLastSuccessfulSync(int tenantId)
+        {
+            lock (_dbLock)
+            {
+                using var conn = CreateOpenConnection();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT MAX(CreatedAt)
+                    FROM PendingSyncQueue
+                    WHERE TenantId = $tenantId AND Status = 'Synced';";
+                cmd.Parameters.AddWithValue("$tenantId", tenantId);
+                var val = cmd.ExecuteScalar();
+                if (val != null && val != DBNull.Value && DateTime.TryParse(val.ToString(), out var dt))
+                {
+                    return dt;
+                }
+                return null;
+            }
+        }
+
+        private static DateTime ParseIsoDate(string? s, DateTime fallback = default)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return fallback;
+            return DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt)
+                ? dt
+                : (DateTime.TryParse(s, out var dt2) ? dt2 : fallback);
+        }
+
+        private static DateTime? ParseNullableIsoDate(string? s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return null;
+            return DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt)
+                ? dt
+                : (DateTime.TryParse(s, out var dt2) ? dt2 : null);
+        }
+
         private static PendingSyncQueue ReadQueueItem(SqliteDataReader reader)
         {
             return new PendingSyncQueue
@@ -503,13 +555,13 @@ namespace CRMS_Peguit.winforms.Services.Offline
                 ServerEntityId = reader.IsDBNull(5) ? null : reader.GetInt32(5),
                 Operation = reader.GetString(6),
                 PayloadJson = reader.GetString(7),
-                CreatedAt = DateTime.Parse(reader.GetString(8)),
+                CreatedAt = ParseIsoDate(reader.GetString(8)),
                 Status = reader.GetString(9),
                 FailureReason = reader.IsDBNull(10) ? null : reader.GetString(10),
-                ServerVersionTimestamp = reader.IsDBNull(11) ? null : DateTime.Parse(reader.GetString(11)),
+                ServerVersionTimestamp = reader.IsDBNull(11) ? null : ParseNullableIsoDate(reader.GetString(11)),
                 ServerConflictPayload = reader.IsDBNull(12) ? null : reader.GetString(12),
                 AttemptCount = reader.GetInt32(13),
-                LastAttemptAt = reader.IsDBNull(14) ? null : DateTime.Parse(reader.GetString(14))
+                LastAttemptAt = reader.IsDBNull(14) ? null : ParseNullableIsoDate(reader.GetString(14))
             };
         }
 
@@ -607,7 +659,7 @@ namespace CRMS_Peguit.winforms.Services.Offline
                 string query = "SELECT CustomerId, PersonId, FirstName, MiddleName, LastName, Suffix, Phone, Email, Type, Status, CreatedByUserId, AssignedAgentId, AssignmentStatus, CreatedAt, IsDeleted FROM CustomerMirror WHERE TenantId = $tenantId AND IsDeleted = 0";
                 if (isAgent && userId.HasValue && userId.Value > 0)
                 {
-                    query += " AND ((AssignedAgentId IS NOT NULL AND AssignedAgentId = $userId) OR (AssignedAgentId IS NULL AND CreatedByUserId = $userId))";
+                    query += " AND (AssignedAgentId = $userId OR CreatedByUserId = $userId OR CustomerId IN (SELECT CustomerId FROM DealMirror WHERE TenantId = $tenantId AND (AgentId = $userId OR CreatedByUserId = $userId)))";
                     cmd.Parameters.AddWithValue("$userId", userId.Value);
                 }
                 query += " ORDER BY LastName, FirstName;";
@@ -637,13 +689,13 @@ namespace CRMS_Peguit.winforms.Services.Offline
                         LastName = p.LastName,
                         Suffix = p.Suffix,
                         Phone = p.Phone,
-                        Email = p.Email,
+                        Email = p.Email ?? string.Empty,
                         Type = reader.GetString(8),
                         Status = reader.GetString(9),
                         CreatedByUserId = reader.GetInt32(10),
                         AssignedAgentId = reader.IsDBNull(11) ? null : reader.GetInt32(11),
                         AssignmentStatus = reader.GetString(12),
-                        CreatedAt = DateTime.Parse(reader.GetString(13)),
+                        CreatedAt = ParseIsoDate(reader.GetString(13)),
                         IsDeleted = reader.GetInt32(14) == 1
                     };
                     list.Add(c);
@@ -781,7 +833,7 @@ namespace CRMS_Peguit.winforms.Services.Offline
                         LastName = p.LastName,
                         Suffix = p.Suffix,
                         Phone = p.Phone,
-                        Email = p.Email,
+                        Email = p.Email ?? string.Empty,
                         Source = reader.IsDBNull(8) ? null : reader.GetString(8),
                         Notes = reader.IsDBNull(9) ? null : reader.GetString(9),
                         Stage = reader.GetString(10),
@@ -790,7 +842,7 @@ namespace CRMS_Peguit.winforms.Services.Offline
                         CreatedByUserId = reader.GetInt32(13),
                         AssignedAgentId = reader.IsDBNull(14) ? null : reader.GetInt32(14),
                         AssignmentStatus = reader.GetString(15),
-                        CreatedAt = DateTime.Parse(reader.GetString(16)),
+                        CreatedAt = ParseIsoDate(reader.GetString(16)),
                         IsDeleted = reader.GetInt32(17) == 1
                     };
                     list.Add(l);
@@ -916,9 +968,9 @@ namespace CRMS_Peguit.winforms.Services.Offline
                         Value = Convert.ToDecimal(reader.GetDouble(7)),
                         CommissionRate = Convert.ToDecimal(reader.GetDouble(8)),
                         Stage = reader.GetString(9),
-                        ExpectedCloseDate = reader.IsDBNull(10) ? null : DateTime.Parse(reader.GetString(10)),
+                        ExpectedCloseDate = reader.IsDBNull(10) ? null : ParseNullableIsoDate(reader.GetString(10)),
                         PaymentScheme = reader.IsDBNull(11) ? null : reader.GetString(11),
-                        CreatedAt = DateTime.Parse(reader.GetString(12))
+                        CreatedAt = ParseIsoDate(reader.GetString(12))
                     };
                     list.Add(d);
                 }
@@ -1005,7 +1057,7 @@ namespace CRMS_Peguit.winforms.Services.Offline
                         RelatedCustomerId = reader.IsDBNull(3) ? null : reader.GetInt32(3),
                         LoggedByAgentId = reader.GetInt32(4),
                         Notes = reader.IsDBNull(5) ? null : reader.GetString(5),
-                        ActivityDate = DateTime.Parse(reader.GetString(6)),
+                        ActivityDate = ParseIsoDate(reader.GetString(6)),
                         DurationMinutes = reader.IsDBNull(7) ? null : reader.GetInt32(7)
                     };
                     list.Add(a);
@@ -1103,7 +1155,7 @@ namespace CRMS_Peguit.winforms.Services.Offline
                     {
                         TaskReminderId = reader.GetInt32(0),
                         Title = reader.GetString(1),
-                        DueDate = DateTime.Parse(reader.GetString(2)),
+                        DueDate = ParseIsoDate(reader.GetString(2)),
                         AssignedToUserId = reader.GetInt32(3),
                         RelatedCustomerId = reader.IsDBNull(4) ? null : reader.GetInt32(4),
                         RelatedLeadId = reader.IsDBNull(5) ? null : reader.GetInt32(5),
@@ -1111,9 +1163,9 @@ namespace CRMS_Peguit.winforms.Services.Offline
                         Type = reader.GetString(7),
                         Notes = reader.IsDBNull(8) ? null : reader.GetString(8),
                         Priority = reader.GetString(9),
-                        CreatedAt = DateTime.Parse(reader.GetString(10)),
-                        UpdatedAt = reader.IsDBNull(11) ? null : DateTime.Parse(reader.GetString(11)),
-                        CompletedAt = reader.IsDBNull(12) ? null : DateTime.Parse(reader.GetString(12))
+                        CreatedAt = ParseIsoDate(reader.GetString(10)),
+                        UpdatedAt = reader.IsDBNull(11) ? null : ParseNullableIsoDate(reader.GetString(11)),
+                        CompletedAt = reader.IsDBNull(12) ? null : ParseNullableIsoDate(reader.GetString(12))
                     };
                     list.Add(r);
                 }
@@ -1223,8 +1275,8 @@ namespace CRMS_Peguit.winforms.Services.Offline
                         Description = reader.GetString(7),
                         Priority = reader.GetString(8),
                         Status = reader.GetString(9),
-                        DueDate = reader.IsDBNull(10) ? null : DateTime.Parse(reader.GetString(10)),
-                        CreatedAt = DateTime.Parse(reader.GetString(11))
+                        DueDate = reader.IsDBNull(10) ? null : ParseNullableIsoDate(reader.GetString(10)),
+                        CreatedAt = ParseIsoDate(reader.GetString(11))
                     };
                     list.Add(t);
                 }

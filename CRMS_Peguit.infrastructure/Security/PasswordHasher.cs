@@ -43,9 +43,9 @@ namespace CRMS_Peguit.infrastructure.Security
                         return true;
                 }
 
-                // Plaintext is not permitted in production paths; only allowed in Development
+                // Plaintext is strictly prohibited in production; only allowed if environment is explicitly Development
                 var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-                bool isDevelopment = string.IsNullOrWhiteSpace(env) || env.Equals("Development", StringComparison.OrdinalIgnoreCase);
+                bool isDevelopment = !string.IsNullOrWhiteSpace(env) && env.Equals("Development", StringComparison.OrdinalIgnoreCase);
                 if (isDevelopment && plainTextPassword == trimmedHash)
                 {
                     return true;
@@ -56,7 +56,7 @@ namespace CRMS_Peguit.infrastructure.Security
             catch (SaltParseException)
             {
                 var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-                bool isDevelopment = string.IsNullOrWhiteSpace(env) || env.Equals("Development", StringComparison.OrdinalIgnoreCase);
+                bool isDevelopment = !string.IsNullOrWhiteSpace(env) && env.Equals("Development", StringComparison.OrdinalIgnoreCase);
                 return isDevelopment && plainTextPassword == trimmedHash;
             }
             catch (Exception)

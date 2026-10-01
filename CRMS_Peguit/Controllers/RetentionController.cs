@@ -342,6 +342,12 @@ namespace CRMS_Peguit.winforms.Controllers
                 throw new ArgumentException("Retention details and justification are required.", nameof(retentionDetails));
             }
 
+            bool hasPending = await _db.RetentionRequests.AnyAsync(r => r.CustomerId == customerId && r.Status == "Pending");
+            if (hasPending)
+            {
+                throw new InvalidOperationException("A pending retention request already exists for this customer.");
+            }
+
             var request = new RetentionRequest
             {
                 TenantId = TenantId,
@@ -548,10 +554,13 @@ namespace CRMS_Peguit.winforms.Controllers
                 request.AddedToCampaign = true;
 
                 // Build email from template for this segment
-                var template = await _db.EmailTemplates
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(t => t.Category == "Retention" && t.Name.Contains(request.TargetSegment))
-                    ?? await _db.EmailTemplates.AsNoTracking().FirstOrDefaultAsync(t => t.Category == "Retention");
+                var template = !string.IsNullOrWhiteSpace(request.TargetSegment)
+                    ? await _db.EmailTemplates
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(t => t.Category == "Retention" && t.Name != null && t.Name.Contains(request.TargetSegment))
+                    : null;
+
+                template ??= await _db.EmailTemplates.AsNoTracking().FirstOrDefaultAsync(t => t.Category == "Retention");
 
                 string subject = template?.Subject ?? "Exclusive Client Privilege from NEXA Real Estate Advisory";
                 string body = template?.Body ?? "Dear {{customer_name}},\n\nAs a valued client, we are pleased to offer you: {{proposed_incentive}}.\n\nWarm regards,\n{{agent_name}}\nNEXA Real Estate Advisory";
@@ -615,6 +624,12 @@ namespace CRMS_Peguit.winforms.Controllers
             if (request.Status != "Pending")
             {
                 throw new InvalidOperationException($"Request #{requestId} is already {request.Status}.");
+            }
+
+            var currentRole = CurrentSession.CurrentUser?.Role;
+            if (currentRole == UserRole.SalesStaff)
+            {
+                throw new UnauthorizedAccessException("Agents are not authorized to review retention requests.");
             }
 
             int currentUserId = CurrentSession.UserId;
@@ -758,8 +773,8 @@ namespace CRMS_Peguit.winforms.Controllers
                 }
             }
 
-            log.Subject = editedSubject.Trim();
-            log.Body = editedBody.Trim();
+            log.Subject = (editedSubject ?? log.Subject ?? string.Empty).Trim();
+            log.Body = (editedBody ?? log.Body ?? string.Empty).Trim();
 
             // Dispatch via ContactEmailService
             var sendResult = await ContactEmailService.SendAsync(
@@ -823,9 +838,9 @@ namespace CRMS_Peguit.winforms.Controllers
             }
 
             if (settings.TargetAudience.Equals("Buyers", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(d => d.Customer!.Type.ToLower() == "buyer");
+                query = query.Where(d => d.Customer != null && d.Customer.Type != null && d.Customer.Type.ToLower() == "buyer");
             else if (settings.TargetAudience.Equals("Sellers", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(d => d.Customer!.Type.ToLower() == "seller");
+                query = query.Where(d => d.Customer != null && d.Customer.Type != null && d.Customer.Type.ToLower() == "seller");
 
             var deals = await query
                 .OrderByDescending(d => d.ContractSignedDate ?? d.CreatedAt)
@@ -844,6 +859,8 @@ namespace CRMS_Peguit.winforms.Controllers
                 .Select(l => l.CustomerId)
                 .ToListAsync();
 
+            int effectiveFrequency = Math.Clamp(settings.FrequencyDays, 1, 365);
+
             foreach (var deal in latestDealsByCustomer)
             {
                 var customer = deal.Customer;
@@ -854,7 +871,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 if (!forceAll && customer.LastRetentionEmailSentAt.HasValue)
                 {
                     double daysSince = (now - customer.LastRetentionEmailSentAt.Value).TotalDays;
-                    if (daysSince < settings.FrequencyDays) continue;
+                    if (daysSince < effectiveFrequency) continue;
                 }
 
                 var metrics = MarketUpdateBackgroundService.CalculateValuation(settings, deal);
@@ -1102,41 +1119,33 @@ namespace CRMS_Peguit.winforms.Controllers
             }
         }
 
-        public void ExportRetentionToCsv(List<RetentionCustomerRow> customers, string filePath)
+        public void ExportRetentionToPdf(List<RetentionCustomerRow> customers, string filePath)
         {
             AssertTenantAccess();
 
-            var sb = new StringBuilder();
-            // UTF-8 BOM
-            sb.Append('\uFEFF');
-
-            // Header line
-            sb.AppendLine("Customer ID,Full Name,Email,Phone,Current Segment,Last Closed Deal,Last Activity Date,Assigned Agent,Cooldown Active,Days Remaining");
-
-            foreach (var c in customers)
+            string[] headers = new[] { "ID", "Customer Name", "Email", "Phone", "Segment", "Last Closed", "Last Activity", "Assigned Agent", "Cooldown" };
+            var rows = customers.Select(c => new string[]
             {
-                sb.AppendLine(string.Join(",",
-                    c.CustomerId,
-                    EscapeCsv(c.FullName),
-                    EscapeCsv(c.Email),
-                    EscapeCsv(c.Phone),
-                    EscapeCsv(c.CurrentSegment),
-                    c.LastClosedDate?.ToString("yyyy-MM-dd") ?? "N/A",
-                    c.LastActivityDate?.ToString("yyyy-MM-dd") ?? "N/A",
-                    EscapeCsv(c.AssignedAgentName),
-                    c.IsOnCooldown ? "YES" : "NO",
-                    c.DaysUntilCooldownExpires
-                ));
-            }
+                c.CustomerId.ToString(),
+                c.FullName,
+                c.Email ?? "—",
+                c.Phone ?? "—",
+                c.CurrentSegment,
+                c.LastClosedDate?.ToString("yyyy-MM-dd") ?? "N/A",
+                c.LastActivityDate?.ToString("yyyy-MM-dd") ?? "N/A",
+                c.AssignedAgentName ?? "Unassigned",
+                c.IsOnCooldown ? $"YES ({c.DaysUntilCooldownExpires}d)" : "NO"
+            }).ToList();
 
-            File.WriteAllText(filePath, sb.ToString(), Encoding.UTF8);
-        }
+            var kpis = new List<(string Title, string Value, string ColorHex)>
+            {
+                ("Total Clients", customers.Count.ToString(), "#25679C"),
+                ("VIP Champions", customers.Count(x => string.Equals(x.CurrentSegment, "VIP Champion", StringComparison.OrdinalIgnoreCase)).ToString(), "#8B5CF6"),
+                ("At Risk", customers.Count(x => string.Equals(x.CurrentSegment, "At Risk", StringComparison.OrdinalIgnoreCase)).ToString(), "#DC2626"),
+                ("On Cooldown", customers.Count(x => x.IsOnCooldown).ToString(), "#D97706")
+            };
 
-        private static string EscapeCsv(string? val)
-        {
-            if (string.IsNullOrEmpty(val)) return "\"\"";
-            string s = val.Replace("\"", "\"\"");
-            return $"\"{s}\"";
+            CRMS_Peguit.winforms.Services.PdfExportHelper.ExportTable("Client Retention & VIP Lifecycle Roster", headers, rows, filePath, kpis: kpis);
         }
 
         #endregion

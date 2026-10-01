@@ -73,7 +73,12 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPost]
         public async Task<IActionResult> AddCampaign([FromBody] AddCampaignRequest req)
         {
-            if (string.IsNullOrWhiteSpace(req.Name))
+            var user = CurrentUser;
+            if (user.TenantId <= 0) return Unauthorized();
+            if (!ApiSecurityHelper.HasFullOversight(user.Role))
+                return StatusCode(StatusCodes.Status403Forbidden, "Only Manager or Admin can manage campaigns.");
+
+            if (req is null || string.IsNullOrWhiteSpace(req.Name))
                 return BadRequest("Campaign name is required.");
 
             string trimmedName = req.Name.Trim();
@@ -91,9 +96,6 @@ namespace CRMS_Peguit.api.Controllers
             }
             else
             {
-                var user = CurrentUser;
-                if (user.TenantId <= 0) return Unauthorized();
-
                 _db.Campaigns.Add(new Campaign
                 {
                     TenantId = user.TenantId,
@@ -113,6 +115,9 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPost("channels")]
         public async Task<IActionResult> AddCustomChannel([FromBody] AddChannelRequest req)
         {
+            if (req is null || string.IsNullOrWhiteSpace(req.ChannelName))
+                return BadRequest("ChannelName is required.");
+
             return await AddCampaign(new AddCampaignRequest(req.ChannelName));
         }
 

@@ -92,6 +92,7 @@ namespace CRMS_Peguit.winforms.Views.Branching
             UiRadiusHelper.StyleButton(btnRefresh, 6);
             btnRefresh.Click += (_, _) => LoadDataAsync();
             _pnlHeader.Controls.Add(btnRefresh);
+            ResponsiveLayout.BindHeader(_pnlHeader, lblTitle, lblSubtitle, btnRefresh);
 
             Controls.Add(_pnlHeader);
 
@@ -230,7 +231,15 @@ namespace CRMS_Peguit.winforms.Views.Branching
             UiRadiusHelper.StyleButton(_btnToggleStatus, 6);
             _btnToggleStatus.Click += BtnToggleStatus_Click;
             pnlToolbar.Controls.Add(_btnToggleStatus);
-            // (added to pnlContent later, in correct dock order)
+
+            // Only Admin can add, edit, or toggle branch operational status
+            bool canManageBranches = RbacService.IsAdmin;
+            _btnAdd.Visible = canManageBranches;
+            _btnEdit.Visible = canManageBranches;
+            _btnToggleStatus.Visible = canManageBranches;
+            _btnSetActiveBranch.Visible = CurrentSession.CanSwitchBranch;
+            ResponsiveLayout.BindToolbar(pnlToolbar, 4, _txtSearch, _btnAdd, _btnEdit, _btnSetActiveBranch, _btnToggleStatus);
+            pnlContent.SizeChanged += (_, _) => ResponsiveLayout.KpiGrid(pnlKpis, pnlContent.ClientSize.Width - pnlContent.Padding.Horizontal);
 
 
             // 5. GRID CARD
@@ -292,7 +301,7 @@ namespace CRMS_Peguit.winforms.Views.Branching
             pnlGridCard.Controls.Add(_grid);
             _gridSkeleton = GridSkeletonOverlay.CreateForGrid(_grid);
             pnlGridCard.Controls.Add(_pagination);
-            _pagination.BringToFront();
+            _pagination.SendToBack();
 
             // ── WinForms dock order: Fill added FIRST, then Top items added in REVERSE display order ──
             // Display order (top→bottom): pnlBanner → pnlKpis → pnlToolbar → pnlGridCard(Fill)
@@ -304,6 +313,7 @@ namespace CRMS_Peguit.winforms.Views.Branching
             pnlContent.Controls.Add(pnlBanner);        // Top — added last so it renders at the very top
 
             Controls.Add(pnlContent);
+            _pnlHeader.SendToBack();
         }
 
         private static void ConfigureKpi(KpiCard card, string title, object value, string subtitle, Color accentColor, KpiIconType icon)
@@ -398,6 +408,8 @@ namespace CRMS_Peguit.winforms.Views.Branching
             var displayList = pageItems.Select(b => new
             {
                 b.BranchId,
+                b.IsActive,
+                b.AssignedAgentsCount,
                 b.BranchCode,
                 b.BranchName,
                 b.Address,
@@ -409,10 +421,18 @@ namespace CRMS_Peguit.winforms.Views.Branching
 
             _grid.DataSource = displayList;
             if (_grid.Columns["BranchId"] is { } col) col.Visible = false;
+            if (_grid.Columns["IsActive"] is { } activeCol) activeCol.Visible = false;
+            if (_grid.Columns["AssignedAgentsCount"] is { } staffCol) staffCol.Visible = false;
         }
 
         private async void BtnAdd_Click(object? sender, EventArgs e)
         {
+            if (!RbacService.IsAdmin)
+            {
+                MessageBox.Show("Only administrators can add branches.", "Permission Denied", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             using var dlg = new BranchEditDialog();
             if (dlg.ShowDialog(this) == DialogResult.OK)
             {
@@ -427,6 +447,12 @@ namespace CRMS_Peguit.winforms.Views.Branching
 
         private async void BtnEdit_Click(object? sender, EventArgs e)
         {
+            if (!RbacService.IsAdmin)
+            {
+                MessageBox.Show("Only administrators can edit branches.", "Permission Denied", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             if (_grid.CurrentRow?.DataBoundItem == null)
             {
                 MessageBox.Show("Please select a branch to edit.", "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -463,6 +489,12 @@ namespace CRMS_Peguit.winforms.Views.Branching
 
         private async void BtnToggleStatus_Click(object? sender, EventArgs e)
         {
+            if (!RbacService.IsAdmin)
+            {
+                MessageBox.Show("Only administrators can modify branch status.", "Permission Denied", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             if (_grid.CurrentRow?.DataBoundItem == null)
             {
                 MessageBox.Show("Please select a branch.", "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -472,15 +504,39 @@ namespace CRMS_Peguit.winforms.Views.Branching
             dynamic row = _grid.CurrentRow.DataBoundItem;
             int branchId = row.BranchId;
 
+            if ((bool)row.IsActive && (int)row.AssignedAgentsCount > 0)
+            {
+                MessageBox.Show(
+                    "This branch still has assigned user accounts. Reassign or deactivate those accounts before deactivating the branch.",
+                    "Branch Is In Use",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
             bool ok = await _controller.ToggleBranchStatusAsync(branchId);
             if (ok)
             {
                 LoadDataAsync();
             }
+            else
+            {
+                MessageBox.Show("The branch status could not be changed. Verify that it has no active assigned users.", "Branch Update", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         private void BtnSetActiveBranch_Click(object? sender, EventArgs e)
         {
+            if (!CurrentSession.CanSwitchBranch)
+            {
+                MessageBox.Show(
+                    $"Your account is assigned to '{CurrentSession.ActiveBranchName ?? "your branch"}'. You do not have permission to switch branches unless assigned to all branches.",
+                    "Branch Context Locked",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
             if (_grid.CurrentRow?.DataBoundItem == null)
             {
                 // Reset to all branches

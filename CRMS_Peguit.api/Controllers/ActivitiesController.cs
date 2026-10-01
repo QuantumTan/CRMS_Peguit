@@ -74,7 +74,7 @@ namespace CRMS_Peguit.api.Controllers
                 return Unauthorized();
             }
 
-            if (activity.LoggedByAgentId <= 0)
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) || activity.LoggedByAgentId <= 0)
             {
                 activity.LoggedByAgentId = user.UserId;
             }
@@ -106,7 +106,10 @@ namespace CRMS_Peguit.api.Controllers
             item.Type = updated.Type;
             item.RelatedLeadId = updated.RelatedLeadId;
             item.RelatedCustomerId = updated.RelatedCustomerId;
-            item.LoggedByAgentId = updated.LoggedByAgentId;
+            if (ApiSecurityHelper.CanAssignRecords(user.Role) && updated.LoggedByAgentId > 0)
+            {
+                item.LoggedByAgentId = updated.LoggedByAgentId;
+            }
             item.Notes = updated.Notes;
             item.ActivityDate = updated.ActivityDate;
             item.Outcome = updated.Outcome;
@@ -144,6 +147,11 @@ namespace CRMS_Peguit.api.Controllers
             [FromQuery] int pageSize = 25)
         {
             var user = CurrentUser;
+            if (agentId.HasValue && !ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && agentId.Value != user.UserId)
+            {
+                return Forbid();
+            }
+
             int effectiveAgentId = agentId ?? user.UserId;
 
             var query = _db.Activities
@@ -175,7 +183,7 @@ namespace CRMS_Peguit.api.Controllers
             }
 
             int validPage = Math.Max(1, page);
-            int validSize = Math.Max(1, pageSize);
+            int validSize = Math.Clamp(pageSize, 1, 100);
             int total = await query.CountAsync();
 
             var items = await query
@@ -191,6 +199,11 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> GetActivityStatsForAgent([FromQuery] int? agentId = null)
         {
             var user = CurrentUser;
+            if (agentId.HasValue && !ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && agentId.Value != user.UserId)
+            {
+                return Forbid();
+            }
+
             int effectiveAgentId = agentId ?? user.UserId;
 
             var query = _db.Activities.AsNoTracking().AsQueryable();
@@ -213,7 +226,13 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> GetRecentActivitiesForAgent([FromQuery] int? agentId = null, [FromQuery] int maxCount = 5)
         {
             var user = CurrentUser;
+            if (agentId.HasValue && !ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && agentId.Value != user.UserId)
+            {
+                return Forbid();
+            }
+
             int effectiveAgentId = agentId ?? user.UserId;
+            int validMax = Math.Clamp(maxCount, 1, 50);
 
             var query = _db.Activities
                 .AsNoTracking()
@@ -229,7 +248,7 @@ namespace CRMS_Peguit.api.Controllers
 
             var items = await query
                 .OrderByDescending(a => a.ActivityDate)
-                .Take(maxCount)
+                .Take(validMax)
                 .ToListAsync();
 
             return Ok(items);
@@ -238,6 +257,23 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("timeline")]
         public async Task<IActionResult> GetTimeline([FromQuery] int? customerId, [FromQuery] int? leadId, [FromQuery] string? filter = null)
         {
+            var user = CurrentUser;
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)
+            {
+                if (customerId.HasValue && customerId.Value > 0)
+                {
+                    var cust = await _db.Customers.FindAsync(customerId.Value);
+                    if (cust != null && cust.AssignedAgentId != user.UserId && cust.CreatedByUserId != user.UserId)
+                        return Forbid();
+                }
+                if (leadId.HasValue && leadId.Value > 0)
+                {
+                    var lead = await _db.Leads.FindAsync(leadId.Value);
+                    if (lead != null && lead.AssignedAgentId != user.UserId && lead.CreatedByUserId != user.UserId)
+                        return Forbid();
+                }
+            }
+
             var query = _db.Activities
                 .Include(a => a.LoggedByAgent)
                 .Include(a => a.RelatedCustomer)

@@ -1234,16 +1234,16 @@ namespace CRMS_Peguit.winforms.Audit
         {
             foreach (Control c in parent.Controls)
             {
-                // PDF Export button forbidden
-                if (c is Button btn && (btn.Text.Contains("PDF", StringComparison.OrdinalIgnoreCase) || btn.Name.Contains("Pdf", StringComparison.OrdinalIgnoreCase)))
+                // CSV Export button forbidden - Standard requires PDF exports only
+                if (c is Button btn && (btn.Text.Contains("CSV", StringComparison.OrdinalIgnoreCase) || btn.Name.Contains("Csv", StringComparison.OrdinalIgnoreCase)))
                 {
                     _defects.Add(new DefectRecord
                     {
                         Screen = screenName,
                         Category = "H (Consistency with NEXA Standards)",
                         Severity = "High",
-                        Description = $"PDF Export button present ('{btn.Text}'): NEXA standard requires CSV exports only",
-                        RootCause = $"btnExportPdf in '{screenName}'"
+                        Description = $"CSV Export button present ('{btn.Text}'): Standard requires PDF exports only",
+                        RootCause = $"btnExportCsv in '{screenName}'"
                     });
                 }
 

@@ -13,6 +13,7 @@ namespace CRMS_Peguit.infrastructure.data
         public DbSet<GlobalSetting> GlobalSettings => Set<GlobalSetting>();
         public DbSet<PlatformAuditLog> PlatformAuditLogs => Set<PlatformAuditLog>();
         public DbSet<PaymentRecord> PaymentRecords => Set<PaymentRecord>();
+        public DbSet<TenantBranding> TenantBrandings => Set<TenantBranding>();
 
         public MasterCrmsDbContext(
             DbContextOptions<MasterCrmsDbContext> options
@@ -173,6 +174,23 @@ namespace CRMS_Peguit.infrastructure.data
                 entity.HasIndex(x => x.ActionType);
                 entity.HasIndex(x => x.CreatedAt);
                 entity.HasIndex(x => x.TargetCompanyId);
+            });
+
+            builder.Entity<TenantBranding>(entity =>
+            {
+                entity.HasKey(x => x.CompanyId);
+                entity.Property(x => x.DisplayName).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.AccentColor).HasMaxLength(20);
+                entity.Property(x => x.ContactEmail).HasMaxLength(255);
+                entity.Property(x => x.ContactPhone).HasMaxLength(50);
+                entity.Property(x => x.Address).HasMaxLength(500);
+                entity.Property(x => x.LogoVersion).IsRequired();
+                entity.Property(x => x.UpdatedAt).IsRequired();
+
+                entity.HasOne(x => x.Company)
+                    .WithOne(c => c.Branding)
+                    .HasForeignKey<TenantBranding>(x => x.CompanyId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

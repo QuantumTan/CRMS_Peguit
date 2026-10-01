@@ -82,7 +82,7 @@ namespace CRMS_Peguit.api.Controllers
             if (page.HasValue || pageSize.HasValue)
             {
                 int pageNum = Math.Max(1, page.GetValueOrDefault(1));
-                int size = Math.Max(1, pageSize.GetValueOrDefault(25));
+                int size = Math.Clamp(pageSize.GetValueOrDefault(25), 1, 100);
 
                 int totalCount = await query.CountAsync();
                 var items = await query
@@ -151,7 +151,7 @@ namespace CRMS_Peguit.api.Controllers
             await _db.SaveChangesAsync();
 
             // Log activity
-            LogActivityInternal("Customer Created", null, customer.CustomerId, $"Customer '{customer.FullName}' was created.", user.UserId);
+            await LogActivityInternalAsync("Customer Created", null, customer.CustomerId, $"Customer '{customer.FullName}' was created.", user.UserId);
 
             return CreatedAtAction(nameof(GetById), new { id = customer.CustomerId }, customer);
         }
@@ -192,20 +192,23 @@ namespace CRMS_Peguit.api.Controllers
                 var newAgentId = updated.AssignedAgentId <= 0 ? null : updated.AssignedAgentId;
 
                 item.AssignedAgentId = newAgentId;
-                item.AssignmentStatus = updated.AssignmentStatus;
-                item.AssignmentReviewedByUserId = updated.AssignmentReviewedByUserId;
-                item.AssignmentReviewedAt = updated.AssignmentReviewedAt;
-                item.AssignmentReviewNotes = updated.AssignmentReviewNotes;
+                if (!string.IsNullOrWhiteSpace(updated.AssignmentStatus) && updated.AssignmentStatus != item.AssignmentStatus)
+                {
+                    item.AssignmentStatus = updated.AssignmentStatus;
+                    item.AssignmentReviewedByUserId = user.UserId > 0 ? user.UserId : null;
+                    item.AssignmentReviewedAt = DateTime.UtcNow;
+                    item.AssignmentReviewNotes = updated.AssignmentReviewNotes;
+                }
 
                 if (oldAgentId != newAgentId)
                 {
-                    LogActivityInternal("Customer Assignment Changed", null, item.CustomerId,
+                    await LogActivityInternalAsync("Customer Assignment Changed", null, item.CustomerId,
                         $"Customer '{item.FullName}' assignment changed from Agent #{oldAgentId?.ToString() ?? "Unassigned"} to Agent #{newAgentId?.ToString() ?? "Unassigned"} by User #{user.UserId}.", user.UserId);
                 }
             }
 
             await _db.SaveChangesAsync();
-            LogActivityInternal("Customer Updated", null, item.CustomerId, $"Customer '{item.FullName}' was updated.", user.UserId);
+            await LogActivityInternalAsync("Customer Updated", null, item.CustomerId, $"Customer '{item.FullName}' was updated.", user.UserId);
 
             return Ok(item);
         }
@@ -229,7 +232,7 @@ namespace CRMS_Peguit.api.Controllers
             item.DeletedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
 
-            LogActivityInternal("Customer Archived", null, item.CustomerId, $"Customer '{item.FullName}' was archived.", user.UserId);
+            await LogActivityInternalAsync("Customer Archived", null, item.CustomerId, $"Customer '{item.FullName}' was archived.", user.UserId);
             return NoContent();
         }
 
@@ -237,24 +240,64 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> Restore(int id)
         {
             var user = CurrentUser;
-            var item = await _db.Customers.IgnoreQueryFilters().SingleOrDefaultAsync(x => x.CustomerId == id);
+            if (user.UserId <= 0) return Unauthorized();
+
+            var query = _db.Customers
+                .IgnoreQueryFilters()
+                .Include(c => c.CreatedByUser).ThenInclude(u => u.Role)
+                .Where(x => x.CustomerId == id && x.IsDeleted);
+
+            if (!ApiSecurityHelper.IsSuperAdmin(user.Role))
+            {
+                query = query.Where(x => x.CreatedByUser != null && x.CreatedByUser.Role != null && x.CreatedByUser.Role.TenantId == user.TenantId);
+            }
+
+            var item = await query.SingleOrDefaultAsync();
             if (item is null) return NotFound();
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)
+            {
+                bool allowed = (item.AssignedAgentId.HasValue && item.AssignedAgentId.Value > 0)
+                    ? item.AssignedAgentId.Value == user.UserId
+                    : item.CreatedByUserId == user.UserId;
+                if (!allowed) return Forbid();
+            }
 
             item.IsDeleted = false;
             item.DeletedAt = null;
             await _db.SaveChangesAsync();
 
-            LogActivityInternal("Customer Restored", null, item.CustomerId, $"Customer '{item.FullName}' was restored from archive.", user.UserId);
+            await LogActivityInternalAsync("Customer Restored", null, item.CustomerId, $"Customer '{item.FullName}' was restored from archive.", user.UserId);
             return Ok(item);
         }
 
         [HttpGet("archived")]
         public async Task<IActionResult> GetArchived()
         {
-            var items = await _db.Customers
+            var user = CurrentUser;
+            if (user.UserId <= 0) return Unauthorized();
+
+            var query = _db.Customers
                 .IgnoreQueryFilters()
-                .Where(c => c.IsDeleted)
+                .Include(c => c.CreatedByUser).ThenInclude(u => u.Role)
+                .Where(c => c.IsDeleted);
+
+            if (!ApiSecurityHelper.IsSuperAdmin(user.Role))
+            {
+                query = query.Where(c => c.CreatedByUser != null && c.CreatedByUser.Role != null && c.CreatedByUser.Role.TenantId == user.TenantId);
+            }
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)
+            {
+                query = query.Where(c =>
+                    (c.AssignedAgentId.HasValue && c.AssignedAgentId.Value > 0)
+                        ? c.AssignedAgentId.Value == user.UserId
+                        : c.CreatedByUserId == user.UserId);
+            }
+
+            var items = await query
                 .OrderByDescending(c => c.DeletedAt)
+                .Take(100)
                 .ToListAsync();
             return Ok(items);
         }
@@ -296,7 +339,7 @@ namespace CRMS_Peguit.api.Controllers
 
             if (newAgentId.HasValue && !await _db.Users.AnyAsync(u => u.UserId == newAgentId.Value))
             {
-                newAgentId = null;
+                return BadRequest(new { message = $"Agent with ID {newAgentId.Value} does not exist." });
             }
 
             item.AssignedAgentId = newAgentId;
@@ -309,7 +352,7 @@ namespace CRMS_Peguit.api.Controllers
 
             if (oldAgentId != newAgentId)
             {
-                LogActivityInternal("Customer Assignment Changed", null, item.CustomerId,
+                await LogActivityInternalAsync("Customer Assignment Changed", null, item.CustomerId,
                     $"Customer '{item.FullName}' assigned to Agent #{newAgentId?.ToString() ?? "Unassigned"} by User #{user.UserId}.", user.UserId);
             }
 
@@ -332,7 +375,7 @@ namespace CRMS_Peguit.api.Controllers
             item.AssignmentReviewNotes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
 
             await _db.SaveChangesAsync();
-            LogActivityInternal("Customer Assignment Approved", null, item.CustomerId, $"Assignment for '{item.FullName}' was approved.", user.UserId);
+            await LogActivityInternalAsync("Customer Assignment Approved", null, item.CustomerId, $"Assignment for '{item.FullName}' was approved.", user.UserId);
 
             return Ok(item);
         }
@@ -340,6 +383,10 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("pending-review")]
         public async Task<IActionResult> GetPendingReview()
         {
+            var user = CurrentUser;
+            if (!ApiSecurityHelper.HasFullOversight(user.Role))
+                return StatusCode(StatusCodes.Status403Forbidden, "Only Manager or Admin can view records pending review.");
+
             var items = await _db.Customers
                 .AsNoTracking()
                 .Where(c => !c.IsDeleted && (c.AssignmentStatus == "pending_review" || c.AssignedAgentId == null))
@@ -359,7 +406,7 @@ namespace CRMS_Peguit.api.Controllers
 
             var agents = await _db.Users
                 .AsNoTracking()
-                .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status.ToLower() != "inactive")
+                .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status != null && !u.Status.Equals("inactive", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(u => u.LastName)
                 .ThenBy(u => u.FirstName)
                 .Select(u => new AgentPickerDto(u.UserId, u.FullName, u.Email))
@@ -408,7 +455,7 @@ namespace CRMS_Peguit.api.Controllers
             var customer = await _db.Customers.SingleOrDefaultAsync(c => c.CustomerId == id);
             if (customer == null) return NotFound();
 
-            LogActivityInternal("Email", null, id, $"Email sent to '{customer.FullName}'. Subject: {req.Subject}", user.UserId);
+            await LogActivityInternalAsync("Email", null, id, $"Email sent to '{customer.FullName}'. Subject: {req.Subject}", user.UserId);
             return Ok(new { success = true });
         }
 
@@ -419,7 +466,7 @@ namespace CRMS_Peguit.api.Controllers
             var customer = await _db.Customers.SingleOrDefaultAsync(c => c.CustomerId == id);
             if (customer == null) return NotFound();
 
-            LogActivityInternal("Call", null, id, $"Call logged for '{customer.FullName}': {req.Notes}", user.UserId);
+            await LogActivityInternalAsync("Call", null, id, $"Call logged for '{customer.FullName}': {req.Notes}", user.UserId);
             return Ok(new { success = true });
         }
 
@@ -430,15 +477,15 @@ namespace CRMS_Peguit.api.Controllers
             var customer = await _db.Customers.SingleOrDefaultAsync(c => c.CustomerId == id);
             if (customer == null) return NotFound();
 
-            LogActivityInternal("Meeting", null, id, $"Meeting held with '{customer.FullName}': {req.Notes}", user.UserId);
+            await LogActivityInternalAsync("Meeting", null, id, $"Meeting held with '{customer.FullName}': {req.Notes}", user.UserId);
             return Ok(new { success = true });
         }
 
-        private void LogActivityInternal(string type, int? leadId, int? customerId, string notes, int agentId)
+        private async Task LogActivityInternalAsync(string type, int? leadId, int? customerId, string notes, int agentId)
         {
             try
             {
-                if (agentId <= 0) agentId = 1;
+                if (agentId <= 0) return;
                 _db.Activities.Add(new Activity
                 {
                     Type = type,
@@ -448,7 +495,7 @@ namespace CRMS_Peguit.api.Controllers
                     Notes = notes,
                     ActivityDate = DateTime.UtcNow
                 });
-                _db.SaveChanges();
+                await _db.SaveChangesAsync();
             }
             catch { }
         }

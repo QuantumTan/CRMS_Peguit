@@ -53,7 +53,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             {
                 _lblBranch = new Label
                 {
-                    Text = "Assigned Branch (Tenant C)",
+                    Text = "Assigned Branch *",
                     Location = new Point(cmbRole.Left, cmbRole.Bottom + 12),
                     AutoSize = true,
                     Font = new Font("Segoe UI", 9f, FontStyle.Bold),
@@ -111,10 +111,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             {
                 var branchController = new BranchController();
                 var branches = await branchController.GetAllBranchesAsync();
-                var branchOptions = new List<object>
-                {
-                    new { BranchId = 0, BranchDisplay = "🌐 (Company-wide / All Branches)" }
-                };
+                var branchOptions = new List<object>();
                 foreach (var b in branches.Where(b => b.IsActive))
                 {
                     branchOptions.Add(new { BranchId = b.BranchId, BranchDisplay = $"🏢 {b.BranchName} ({b.BranchCode})" });
@@ -134,7 +131,13 @@ namespace CRMS_Peguit.winforms.Views.Users
                 }
                 else
                 {
-                    _cmbBranch.SelectedValue = 0;
+                    _cmbBranch.SelectedIndex = branchOptions.Count > 0 ? 0 : -1;
+                }
+
+                if (branchOptions.Count == 0)
+                {
+                    _cmbBranch.Enabled = false;
+                    _lblBranch!.Text = "Assigned Branch * (create an active branch first)";
                 }
             }
         }
@@ -175,6 +178,17 @@ namespace CRMS_Peguit.winforms.Views.Users
                 if (CurrentSession.CanAccessBranching && _cmbBranch?.SelectedValue is int bId && bId > 0)
                 {
                     branchId = bId;
+                }
+
+                if (CurrentSession.CanAccessBranching && !branchId.HasValue)
+                {
+                    MessageBox.Show(
+                        "Every Manager and Agent account must be assigned to an active branch. Create or activate a branch, then select it here.",
+                        "Branch Assignment Required",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    _cmbBranch?.Focus();
+                    return;
                 }
 
                 if (_user == null)

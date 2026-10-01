@@ -46,11 +46,13 @@ namespace CRMS_Peguit.api.Controllers
             int resolvedUserId = CurrentUser.UserId;
             if (resolvedUserId <= 0) return Unauthorized();
 
+            int clampedTake = Math.Clamp(take, 1, 100);
+
             var items = await _db.Notifications
                 .AsNoTracking()
                 .Where(n => n.RecipientUserId == resolvedUserId)
                 .OrderByDescending(n => n.CreatedAt)
-                .Take(take)
+                .Take(clampedTake)
                 .ToListAsync();
 
             return Ok(items);
@@ -177,6 +179,9 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateNotification([FromBody] CreateNotificationDto dto)
         {
+            var user = CurrentUser;
+            if (user.UserId <= 0) return Unauthorized();
+
             // Debounce check: duplicate within 2 minutes
             var cutoff = DateTime.UtcNow.AddMinutes(-2);
             bool duplicate = await _db.Notifications.AnyAsync(n =>
@@ -214,9 +219,14 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPost("notify-managers")]
         public async Task<IActionResult> NotifyManagers([FromBody] BroadcastNotificationDto dto)
         {
+            var user = CurrentUser;
+            if (user.UserId <= 0) return Unauthorized();
+            if (!ApiSecurityHelper.HasFullOversight(user.Role))
+                return StatusCode(StatusCodes.Status403Forbidden, "Only Manager or Admin can broadcast notifications.");
+
             var managerUsers = await _db.Users
                 .Include(u => u.Role)
-                .Where(u => u.Role != null && (u.Role.RoleName.ToLower() == "manager" || u.Role.RoleName.ToLower() == "admin") && u.Status.ToLower() != "inactive")
+                .Where(u => u.Role != null && (u.Role.RoleName.ToLower() == "manager" || u.Role.RoleName.ToLower() == "admin") && u.Status != null && !u.Status.Equals("inactive", StringComparison.OrdinalIgnoreCase))
                 .ToListAsync();
 
             int sent = 0;
@@ -244,9 +254,14 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPost("notify-admins")]
         public async Task<IActionResult> NotifyAdmins([FromBody] BroadcastNotificationDto dto)
         {
+            var user = CurrentUser;
+            if (user.UserId <= 0) return Unauthorized();
+            if (!ApiSecurityHelper.HasFullOversight(user.Role))
+                return StatusCode(StatusCodes.Status403Forbidden, "Only Manager or Admin can broadcast notifications.");
+
             var adminUsers = await _db.Users
                 .Include(u => u.Role)
-                .Where(u => u.Role != null && u.Role.RoleName.ToLower() == "admin" && u.Status.ToLower() != "inactive")
+                .Where(u => u.Role != null && u.Role.RoleName.ToLower() == "admin" && u.Status != null && !u.Status.Equals("inactive", StringComparison.OrdinalIgnoreCase))
                 .ToListAsync();
 
             int sent = 0;
@@ -278,7 +293,8 @@ namespace CRMS_Peguit.api.Controllers
             int resolvedUserId = CurrentUser.UserId;
             if (resolvedUserId <= 0) return Unauthorized();
 
-            var cutoff = DateTime.UtcNow.AddDays(-daysOld);
+            int clampedDays = Math.Clamp(daysOld, 1, 3650);
+            var cutoff = DateTime.UtcNow.AddDays(-clampedDays);
             var oldNotifications = await _db.Notifications
                 .Where(n => n.RecipientUserId == resolvedUserId && n.IsRead && n.CreatedAt < cutoff)
                 .ToListAsync();

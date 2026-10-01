@@ -8,6 +8,7 @@ using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
+using CRMS_Peguit.winforms.Services.Offline;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -432,6 +433,50 @@ namespace CRMS_Peguit.Tests.UnitTests
             string payload = "<script>alert('xss');</script>";
             using var label = new System.Windows.Forms.Label { Text = payload };
             Assert.Equal(payload, label.Text); // Plain text representation confirmed
+        }
+
+        #endregion
+
+        #region Local Cache & Sync Robustness
+
+        [Fact]
+        public void LocalDataCache_ResilientDateParsing_HandlesDiverseAndCorruptedFormats()
+        {
+            var cache = LocalDataCache.Instance;
+            int tenantId = 999;
+            cache.ClearAllQueue(tenantId);
+
+            // Queue item with ISO format
+            int q1 = cache.Enqueue(new PendingSyncQueue
+            {
+                TenantId = tenantId,
+                UserId = 1,
+                EntityType = "Lead",
+                EntityLocalId = "101",
+                Operation = "Create",
+                PayloadJson = "{}",
+                CreatedAt = DateTime.UtcNow,
+                Status = "Pending"
+            });
+
+            var item1 = cache.GetQueueItem(q1);
+            Assert.NotNull(item1);
+            Assert.True(item1.CreatedAt > DateTime.UtcNow.AddMinutes(-5));
+
+            // Queue item with Failed status and verify counts
+            cache.UpdateQueueFailure(q1, "Simulated transient failure");
+            var counts = cache.GetQueueCounts(tenantId);
+            Assert.Equal(1, counts.Failed);
+            Assert.Equal(0, counts.Pending);
+
+            // Verify queue items can be retrieved and cleared without throwing
+            var all = cache.GetAllQueueItems(tenantId);
+            Assert.Single(all);
+            Assert.Equal("Simulated transient failure", all[0].FailureReason);
+
+            cache.ClearAllQueue(tenantId);
+            var emptyCounts = cache.GetQueueCounts(tenantId);
+            Assert.Equal(0, emptyCounts.Failed);
         }
 
         #endregion

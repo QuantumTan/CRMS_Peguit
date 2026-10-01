@@ -55,10 +55,16 @@ namespace CRMS_Peguit.infrastructure.repositories
         /// </summary>
         public async Task<IList<Customer>> GetDeletedAsync()
         {
-            return await _dbContext.Customers
+            var query = _dbContext.Customers
                 .IgnoreQueryFilters()
-                .Where(c => c.IsDeleted)
-                .ToListAsync();
+                .Where(c => c.IsDeleted);
+
+            if (_dbContext.TenantId > 0)
+            {
+                query = query.Where(c => c.CreatedByUser != null && c.CreatedByUser.Role != null && c.CreatedByUser.Role.TenantId == _dbContext.TenantId);
+            }
+
+            return await query.ToListAsync();
         }
 
         public async Task AddAsync(Customer customer)
@@ -79,9 +85,16 @@ namespace CRMS_Peguit.infrastructure.repositories
         /// </summary>
         public async Task SoftDeleteAsync(int customerId)
         {
-            var customer = await _dbContext.Customers
+            var query = _dbContext.Customers
                 .IgnoreQueryFilters()
-                .FirstOrDefaultAsync(c => c.CustomerId == customerId);
+                .Where(c => c.CustomerId == customerId);
+
+            if (_dbContext.TenantId > 0)
+            {
+                query = query.Where(c => c.CreatedByUser != null && c.CreatedByUser.Role != null && c.CreatedByUser.Role.TenantId == _dbContext.TenantId);
+            }
+
+            var customer = await query.FirstOrDefaultAsync();
 
             if (customer != null)
             {
@@ -96,9 +109,16 @@ namespace CRMS_Peguit.infrastructure.repositories
         /// </summary>
         public async Task RestoreAsync(int customerId)
         {
-            var customer = await _dbContext.Customers
+            var query = _dbContext.Customers
                 .IgnoreQueryFilters()
-                .FirstOrDefaultAsync(c => c.CustomerId == customerId);
+                .Where(c => c.CustomerId == customerId);
+
+            if (_dbContext.TenantId > 0)
+            {
+                query = query.Where(c => c.CreatedByUser != null && c.CreatedByUser.Role != null && c.CreatedByUser.Role.TenantId == _dbContext.TenantId);
+            }
+
+            var customer = await query.FirstOrDefaultAsync();
 
             if (customer != null)
             {

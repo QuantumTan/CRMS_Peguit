@@ -27,7 +27,7 @@ namespace CRMS_Peguit.api.Controllers
             if (ApiSecurityHelper.IsAgent(User) && !ApiSecurityHelper.HasFullOversight(User))
             {
                 int userId = ApiSecurityHelper.GetUserId(User);
-                query = query.Where(d => d.AgentId == userId);
+                query = query.Where(d => d.AgentId == userId || (d.AgentId == null && d.CreatedByUserId == userId));
             }
             return query;
         }
@@ -38,7 +38,7 @@ namespace CRMS_Peguit.api.Controllers
             if (ApiSecurityHelper.IsAgent(User) && !ApiSecurityHelper.HasFullOversight(User))
             {
                 int userId = ApiSecurityHelper.GetUserId(User);
-                query = query.Where(l => l.AssignedAgentId == userId);
+                query = query.Where(l => l.AssignedAgentId == userId || (l.AssignedAgentId == null && l.CreatedByUserId == userId));
             }
             return query;
         }
@@ -49,7 +49,7 @@ namespace CRMS_Peguit.api.Controllers
             if (ApiSecurityHelper.IsAgent(User) && !ApiSecurityHelper.HasFullOversight(User))
             {
                 int userId = ApiSecurityHelper.GetUserId(User);
-                query = query.Where(t => t.AssignedToUserId == userId);
+                query = query.Where(t => t.AssignedToUserId == userId || t.RaisedByUserId == userId);
             }
             return query;
         }
@@ -60,7 +60,7 @@ namespace CRMS_Peguit.api.Controllers
             if (ApiSecurityHelper.IsAgent(User) && !ApiSecurityHelper.HasFullOversight(User))
             {
                 int userId = ApiSecurityHelper.GetUserId(User);
-                query = query.Where(p => p.ListedByAgentId == userId);
+                query = query.Where(p => p.ListedByAgentId == userId || (p.ListedByAgentId == null && p.CreatedByUserId == userId));
             }
             return query;
         }
@@ -309,7 +309,8 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("recent-activity")]
         public async Task<ActionResult<List<ActivityFeedItem>>> GetRecentActivityFeed([FromQuery] int count = 15)
         {
-            return Ok(await QueryRecentActivity(count));
+            int validCount = Math.Clamp(count, 1, 100);
+            return Ok(await QueryRecentActivity(validCount));
         }
 
         private async Task<List<ActivityFeedItem>> QueryRecentActivity(int count)
@@ -432,7 +433,7 @@ namespace CRMS_Peguit.api.Controllers
             {
                 string ticketTitle = !string.IsNullOrWhiteSpace(t.Category)
                     ? (t.Customer != null ? $"{t.Category} ({t.Customer.FullName})" : t.Category)
-                    : (t.Description.Length > 40 ? t.Description[..40] + "..." : t.Description);
+                    : (string.IsNullOrEmpty(t.Description) ? "No description" : (t.Description.Length > 40 ? t.Description[..40] + "..." : t.Description));
 
                 list.Add(new AnalyticsDetailRow
                 {

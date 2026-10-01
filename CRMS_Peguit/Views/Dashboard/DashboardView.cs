@@ -1684,15 +1684,20 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             int rightMargin = 30;
             int totalWidth = ClientSize.Width;
 
-            lblTitle.Location = new Point(leftMargin, 20);
-            lblSubtitle.Location = new Point(leftMargin + 2, lblTitle.Bottom + 4);
+            int headingWidth = Math.Max(1, totalWidth - leftMargin - rightMargin - SystemInformation.VerticalScrollBarWidth);
+            ResponsiveLayout.LabelBlock(lblTitle, leftMargin, 20, headingWidth);
+            ResponsiveLayout.LabelBlock(lblSubtitle, leftMargin, lblTitle.Bottom + 4, headingWidth);
             lblLoading.Location = lblSubtitle.Location;
 
-            pnlQuickActions.Location = new Point(totalWidth - rightMargin - pnlQuickActions.Width, 22);
+            pnlQuickActions.Width = Math.Min(pnlQuickActions.Width, headingWidth);
+            pnlQuickActions.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            pnlQuickActions.MaximumSize = new Size(headingWidth, 0);
+            pnlQuickActions.WrapContents = true;
+            pnlQuickActions.Location = new Point(leftMargin, lblSubtitle.Bottom + 12);
 
-            int kpiTop = Math.Max(84, lblSubtitle.Bottom + 16);
+            int kpiTop = Math.Max(84, pnlQuickActions.Visible ? pnlQuickActions.Bottom + 12 : lblSubtitle.Bottom + 16);
             pnlKpiContainer.Location = new Point(leftMargin, kpiTop);
-            pnlKpiContainer.Size = new Size(totalWidth - leftMargin - rightMargin, 104);
+            ResponsiveLayout.KpiGrid(pnlKpiContainer, headingWidth);
 
             int splitTop = pnlKpiContainer.Bottom + 16;
             int minContentHeight = _currentRole == UserRole.Admin ? 300 : 460;
@@ -1741,4 +1746,4 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             }
         }
     }
-}
+}

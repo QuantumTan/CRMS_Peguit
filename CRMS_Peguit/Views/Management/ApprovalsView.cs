@@ -1,4 +1,5 @@
 using System;
+using CRMS_Peguit.winforms.Services;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -51,7 +52,7 @@ namespace CRMS_Peguit.winforms.Views.Management
             _pagination.PageChanged += (_, _) => FilterAndDisplay(resetPage: false);
             _pagination.PageSizeChanged += (_, _) => FilterAndDisplay(resetPage: true);
             pnlCard.Controls.Add(_pagination);
-            _pagination.BringToFront();
+            _pagination.SendToBack();
         }
 
         private void InitEmptyState()
@@ -461,68 +462,10 @@ namespace CRMS_Peguit.winforms.Views.Management
             return null;
         }
 
-        private void LayoutToolbar()
+private void LayoutToolbar()
         {
-            if (this.IsDisposed) return;
-
-            int rightPadding = 30;
-            int leftMargin = 30;
-            int totalWidth = ClientSize.Width;
-            int y = 88;
-
-            // Position header action buttons
-            int rightEdge = totalWidth - rightPadding;
-            btnRefresh.Left = rightEdge - btnRefresh.Width;
-            btnRefresh.Top = 24;
-
-            // Layout filter pills
-            var pills = new[] { btnFilterProperties, btnFilterCustomers, btnFilterLeads, btnFilterAll };
-            int filterRight = totalWidth - rightPadding;
-            int totalFilterWidth = 0;
-            foreach (var p in pills) totalFilterWidth += p.Width + 6;
-
-            int availableForSearch = totalWidth - leftMargin - rightPadding - totalFilterWidth - 20;
-
-            if (availableForSearch >= 180)
-            {
-                // Single row: search on left, filters aligned to right
-                foreach (var p in pills)
-                {
-                    p.Top = y;
-                    p.Left = filterRight - p.Width;
-                    filterRight = p.Left - 6;
-                }
-
-                txtSearch.Top = y;
-                txtSearch.Left = leftMargin;
-                txtSearch.Width = Math.Min(360, availableForSearch);
-
-                pnlCard.Top = 126;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - 126 - 30);
-            }
-            else
-            {
-                // Two rows: search on row 1, filter pills wrapped to row 2
-                txtSearch.Top = y;
-                txtSearch.Left = leftMargin;
-                txtSearch.Width = Math.Max(180, totalWidth - leftMargin - rightPadding);
-
-                int filterX = leftMargin;
-                int pillY = y + 36;
-                var forwardPills = new[] { btnFilterAll, btnFilterLeads, btnFilterCustomers, btnFilterProperties };
-                foreach (var p in forwardPills)
-                {
-                    p.Top = pillY;
-                    p.Left = filterX;
-                    filterX += p.Width + 6;
-                }
-
-                pnlCard.Top = pillY + 38;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - pnlCard.Top - 20);
-            }
-
-            pnlCard.Left = leftMargin;
-            pnlCard.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
+            ResponsiveLayout.ListPage(this, lblTitle, lblSubtitle, null, txtSearch,
+                new Control[] { btnFilterAll, btnFilterLeads, btnFilterCustomers, btnFilterProperties }, new Control?[] { btnRefresh }, pnlCard);
         }
     }
 }

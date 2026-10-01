@@ -49,11 +49,11 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             Dock = DockStyle.Fill;
             BackColor = Theme.Background;
 
-            // 1. Page Header (Height = 96)
+            // 1. Page Header (Height = 100)
             var pnlPageHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 96,
+                Height = 100,
                 BackColor = Theme.Surface,
                 Padding = new Padding(28, 16, 28, 16)
             };
@@ -68,19 +68,22 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Text = "System Backups & Disaster Recovery",
                 Font = UiStyleConstants.PageTitleFont,
                 ForeColor = Theme.TextPrimary,
+                UseMnemonic = false,
                 AutoSize = true,
-                Location = new Point(28, 18)
+                Location = new Point(28, 14)
             };
             var lblSub = new Label
             {
                 Text = "Platform database backups, snapshot logs, and two-step disaster recovery — Infrastructure metadata only",
                 Font = UiStyleConstants.SubtitleFont,
                 ForeColor = Theme.TextSecondary,
+                UseMnemonic = false,
                 AutoSize = true,
                 Location = new Point(28, 56)
             };
             pnlPageHeader.Controls.Add(lblSub);
             pnlPageHeader.Controls.Add(lblTitle);
+            ResponsiveLayout.BindHeader(pnlPageHeader, lblTitle, lblSub);
 
             // 2. Toolbar (Height = 56)
             var pnlToolbar = new Panel
@@ -113,12 +116,6 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Location = new Point(pnlToolbar.Width - 564, 8),
                 BackColor = Color.Transparent
             };
-            pnlToolbar.SizeChanged += (_, _) =>
-            {
-                pnlActions.Location = new Point(pnlToolbar.Width - 564, 8);
-                _lblLastStatus.MaximumSize = new Size(Math.Max(150, pnlToolbar.Width - 580), 24);
-            };
-
             _btnRunBackup = new Button
             {
                 Text = "🗄  Run Backup Now",
@@ -148,6 +145,12 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             pnlActions.Controls.Add(_btnRunBackup);
             pnlActions.Controls.Add(_btnRestore);
             pnlToolbar.Controls.Add(pnlActions);
+            pnlToolbar.Controls.Add(_btnRunBackup);
+            pnlToolbar.Controls.Add(_btnRestore);
+            pnlToolbar.Controls.Remove(pnlActions);
+            pnlActions.Dispose();
+            _lblLastStatus.MaximumSize = Size.Empty;
+            ResponsiveLayout.BindToolbar(pnlToolbar, 12, _lblLastStatus, _btnRunBackup, _btnRestore);
 
             // 3. Danger / Warning Alert Banner (Height = 44)
             var pnlWarn = new Panel
@@ -376,7 +379,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _gridSkeleton = GridSkeletonOverlay.CreateForGrid(_grid);
             pnlCard.Controls.Add(_pnlEmptyState);
             pnlCard.Controls.Add(_pagination);
-            _pagination.BringToFront();
+            _pagination.SendToBack();
 
             pnlWrapper.Controls.Add(pnlCard);
 

@@ -18,6 +18,8 @@ namespace CRMS_Peguit.winforms.Views.Customers
             _existingCustomer = customer;
 
             InitializeComponent();
+            CRMS_Peguit.winforms.Services.ResponsiveLayout.BindInputPanel(pnlContent);
+            CRMS_Peguit.winforms.Services.ResponsiveLayout.BindToolbar(pnlFooter, 12, btnCancel, btnSave);
             UiRadiusHelper.StyleButton(btnSave, 8);
             UiRadiusHelper.StyleButton(btnCancel, 8);
             UiRadiusHelper.AttachHoverFeedback(btnCancel, Color.White, Color.FromArgb(241, 245, 249));
@@ -113,7 +115,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
                 _existingCustomer.MiddleName = NullIfEmpty(txtMiddleName.Text);
                 _existingCustomer.LastName = lastName;
                 _existingCustomer.Suffix = NullIfEmpty(cmbSuffix.Text);
-                _existingCustomer.Email = NullIfEmpty(txtEmail.Text);
+                _existingCustomer.Email = txtEmail.Text.Trim();
                 _existingCustomer.Phone = NullIfEmpty(txtPhone.Text);
                 _existingCustomer.Type = cmbType.SelectedItem?.ToString() ?? "buyer";
                 _existingCustomer.Status = cmbStatus.SelectedItem?.ToString() ?? "active";
@@ -127,7 +129,7 @@ namespace CRMS_Peguit.winforms.Views.Customers
                     MiddleName = NullIfEmpty(txtMiddleName.Text),
                     LastName = lastName,
                     Suffix = NullIfEmpty(cmbSuffix.Text),
-                    Email = NullIfEmpty(txtEmail.Text),
+                    Email = txtEmail.Text.Trim(),
                     Phone = NullIfEmpty(txtPhone.Text),
                     Type = cmbType.SelectedItem?.ToString() ?? "buyer",
                     Status = cmbStatus.SelectedItem?.ToString() ?? "active",

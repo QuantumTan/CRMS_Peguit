@@ -104,10 +104,15 @@ namespace CRMS_Peguit.infrastructure.Seeding
                 };
             }
 
+            var existingUserEntities = await db.Users
+                .Where(u => u.Email != null)
+                .ToListAsync();
+
             var toAdd = new List<User>();
             foreach (var bu in baseUsersToEnsure)
             {
-                if (!existingEmails.Contains(bu.Email.ToLower()))
+                var existing = existingUserEntities.FirstOrDefault(u => string.Equals(u.Email, bu.Email, StringComparison.OrdinalIgnoreCase));
+                if (existing == null)
                 {
                     toAdd.Add(new User
                     {
@@ -121,15 +126,19 @@ namespace CRMS_Peguit.infrastructure.Seeding
                         Status = "Active",
                         CreatedAt = DateTime.UtcNow.AddMonths(-18)
                     });
-                    existingEmails.Add(bu.Email.ToLower());
+                }
+                else if (!PasswordHasher.Verify(bu.Password, existing.PasswordHash))
+                {
+                    existing.PasswordHash = PasswordHasher.Hash(bu.Password);
+                    existing.Status = "Active";
                 }
             }
 
             if (toAdd.Count > 0)
             {
                 db.Users.AddRange(toAdd);
-                await db.SaveChangesAsync();
             }
+            await db.SaveChangesAsync();
 
             if (tenantId == 3 && hqBranchId != null)
             {
@@ -438,7 +447,7 @@ namespace CRMS_Peguit.infrastructure.Seeding
             {
                 var existingDeals = await db.Deals
                     .IgnoreQueryFilters()
-                    .Where(d => d.CreatedByUser.Role.TenantId == tenantId)
+                    .Where(d => d.CreatedByUser != null && d.CreatedByUser.Role.TenantId == tenantId)
                     .Select(d => new { d.CustomerId, d.PropertyId })
                     .ToListAsync();
                 var existingDealSet = existingDeals.Select(x => (x.CustomerId, x.PropertyId)).ToHashSet();
@@ -849,7 +858,13 @@ namespace CRMS_Peguit.infrastructure.Seeding
                     dealDate = now.AddDays(-rnd.Next(1, 5)).AddHours(-rnd.Next(1, 10));
                 }
 
-                var customer = customers[rnd.Next(customers.Count)];
+                var agent = agents[i % agents.Count]; // Even distribution across all sales agents
+                var agentCustomers = customers.Where(c => c.AssignedAgentId == agent.UserId).ToList();
+                var customer = agentCustomers.Count > 0 ? agentCustomers[rnd.Next(agentCustomers.Count)] : customers[rnd.Next(customers.Count)];
+                customer.AssignedAgentId = agent.UserId;
+                customer.AssignmentStatus = "approved";
+                customer.CreatedByUserId = agent.UserId;
+
                 var property = properties[rnd.Next(properties.Count)];
                 int dealAttempts = 0;
                 while (existingDeals.Contains((customer.CustomerId, property.PropertyId)) && dealAttempts < 20)
@@ -858,8 +873,6 @@ namespace CRMS_Peguit.infrastructure.Seeding
                     dealAttempts++;
                 }
                 existingDeals.Add((customer.CustomerId, property.PropertyId));
-
-                var agent = agents[i % agents.Count]; // Even distribution across all sales agents
 
                 string stage;
                 int roll = rnd.Next(100);

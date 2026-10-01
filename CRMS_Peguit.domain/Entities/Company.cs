@@ -14,6 +14,6 @@ namespace CRMS_Peguit.domain.entities
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public ICollection<Device> Devices { get; set; } = new List<Device>();
         public ICollection<Subscription> Subscriptions { get; set; } = new List<Subscription>();
-
+        public virtual TenantBranding? Branding { get; set; }
     }
 }

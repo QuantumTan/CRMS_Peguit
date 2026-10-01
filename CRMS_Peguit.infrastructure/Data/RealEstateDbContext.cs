@@ -47,6 +47,8 @@ namespace CRMS_Peguit.infrastructure.data
             _tenantId = tenantId;
         }
 
+        public int TenantId => _tenantId;
+
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
@@ -70,6 +72,7 @@ namespace CRMS_Peguit.infrastructure.data
                 entity.Ignore(x => x.Person);
                 entity.Property(x => x.PasswordHash).HasMaxLength(500).IsRequired();
                 entity.Property(x => x.Status).HasMaxLength(50);
+                entity.HasIndex(x => x.Email);
 
                 entity.HasOne(x => x.Role)
                     .WithMany()
@@ -276,7 +279,10 @@ namespace CRMS_Peguit.infrastructure.data
             builder.Entity<Activity>(entity =>
             {
                 entity.HasKey(x => x.ActivityId);
-                entity.Property(x => x.Type).HasMaxLength(100);
+                entity.Property(x => x.Type).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.Outcome)
+                    .HasConversion<string>()
+                    .HasMaxLength(50);
                 entity.Property(x => x.Notes).HasMaxLength(2000);
 
                 entity.HasOne(x => x.RelatedLead)
@@ -431,32 +437,6 @@ namespace CRMS_Peguit.infrastructure.data
                 entity.HasIndex(x => x.Name);
             });
 
-            builder.Entity<Activity>(entity =>
-            {
-                entity.HasKey(x => x.ActivityId);
-
-                entity.Property(x => x.Type).HasMaxLength(50).IsRequired();
-                entity.Property(x => x.Outcome)
-                    .HasConversion<string>()
-                    .HasMaxLength(50);
-                entity.Property(x => x.Notes).HasMaxLength(2000);
-
-                entity.HasOne(x => x.LoggedByAgent)
-                    .WithMany()
-                    .HasForeignKey(x => x.LoggedByAgentId)
-                    .OnDelete(DeleteBehavior.Restrict);
-
-                entity.HasOne(x => x.RelatedCustomer)
-                    .WithMany()
-                    .HasForeignKey(x => x.RelatedCustomerId)
-                    .OnDelete(DeleteBehavior.SetNull);
-
-                entity.HasOne(x => x.RelatedLead)
-                    .WithMany()
-                    .HasForeignKey(x => x.RelatedLeadId)
-                    .OnDelete(DeleteBehavior.SetNull);
-            });
-
             builder.Entity<Notification>(entity =>
             {
                 entity.HasKey(x => x.NotificationId);
@@ -496,7 +476,9 @@ namespace CRMS_Peguit.infrastructure.data
             builder.Entity<BuyerProfile>().HasQueryFilter(x => x.Customer.CreatedByUser.Role.TenantId == _tenantId);
             builder.Entity<Property>().HasQueryFilter(x => x.CreatedByUser.Role.TenantId == _tenantId);
             builder.Entity<Lead>().HasQueryFilter(x => x.CreatedByUser.Role.TenantId == _tenantId && !x.IsDeleted);
-            builder.Entity<Deal>().HasQueryFilter(x => x.CreatedByUser!.Role.TenantId == _tenantId);
+            builder.Entity<Deal>().HasQueryFilter(x => x.CreatedByUser != null && x.CreatedByUser.Role != null && x.CreatedByUser.Role.TenantId == _tenantId);
+            builder.Entity<DealContingency>().HasQueryFilter(x => x.Deal != null && x.Deal.CreatedByUser != null && x.Deal.CreatedByUser.Role != null && x.Deal.CreatedByUser.Role.TenantId == _tenantId);
+            builder.Entity<DealClause>().HasQueryFilter(x => x.Deal != null && x.Deal.CreatedByUser != null && x.Deal.CreatedByUser.Role != null && x.Deal.CreatedByUser.Role.TenantId == _tenantId);
             builder.Entity<Activity>().HasQueryFilter(x => x.LoggedByAgent.Role.TenantId == _tenantId);
             builder.Entity<PropertyShowingDetail>().HasQueryFilter(x => x.Activity.LoggedByAgent.Role.TenantId == _tenantId);
             builder.Entity<SupportTicket>().HasQueryFilter(x => x.RaisedByUser.Role.TenantId == _tenantId && !x.IsDeleted);
@@ -505,6 +487,8 @@ namespace CRMS_Peguit.infrastructure.data
             builder.Entity<SystemSetting>().HasQueryFilter(x => x.UpdatedByUser.Role.TenantId == _tenantId);
             builder.Entity<BackupLog>().HasQueryFilter(x => x.PerformedByUser.Role.TenantId == _tenantId);
             builder.Entity<Campaign>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<Branch>().HasQueryFilter(x => x.TenantId == _tenantId);
+            builder.Entity<EmailTemplate>().HasQueryFilter(x => x.TenantId == _tenantId && !x.IsDeleted);
             builder.Entity<Notification>().HasQueryFilter(x => x.RecipientUser.Role.TenantId == _tenantId);
             builder.Entity<NotificationPreference>().HasQueryFilter(x => x.User.Role.TenantId == _tenantId);
 

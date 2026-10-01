@@ -24,6 +24,8 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             _existing = existing;
 
             InitializeComponent();
+            CRMS_Peguit.winforms.Services.ResponsiveLayout.BindInputPanel(pnlContent);
+            CRMS_Peguit.winforms.Services.ResponsiveLayout.BindToolbar(pnlFooter, 12, btnCancel, btnSave);
             ApplyStyling();
             LoadData();
         }

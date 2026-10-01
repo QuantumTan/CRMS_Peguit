@@ -8,6 +8,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
 using CRMS_Peguit.domain.entities;
@@ -67,6 +68,7 @@ namespace CRMS_Peguit.winforms.Models.Services
         private System.Threading.Timer? _timer;
         private bool _isSyncing;
         private static readonly SemaphoreSlim _syncSemaphore = new(1, 1);
+        private static readonly SemaphoreSlim _drainSemaphore = new(1, 1);
         private static volatile bool _needsAnotherPass = false;
         private static DateTime _lastPeriodicMaintenanceUtc = DateTime.MinValue;
         private static DateTime _lastUserPushUtc = DateTime.MinValue;
@@ -139,7 +141,7 @@ namespace CRMS_Peguit.winforms.Models.Services
                     }
                 },
                 null,
-                TimeSpan.FromSeconds(3), // Initial check 3s after startup
+                TimeSpan.FromSeconds(15), // Keep initial sync away from sign-in and shell rendering.
                 TimeSpan.FromSeconds(intervalSeconds));
         }
 
@@ -227,6 +229,14 @@ namespace CRMS_Peguit.winforms.Models.Services
         /// </summary>
         public async Task SyncAsync(bool waitIfBusy = false, bool isFullSync = false)
         {
+            // Never perform tenant sync before authentication or for the platform
+            // SuperAdmin. Besides wasting work, the old fallback to Tenant 1 could
+            // compete with sign-in and touch the wrong tenant database.
+            if (CurrentSession.UserId <= 0 || CurrentSession.TenantId <= 0 || RbacService.IsSuperAdmin)
+            {
+                return;
+            }
+
             if (waitIfBusy)
             {
                 await _syncSemaphore.WaitAsync();
@@ -244,7 +254,6 @@ namespace CRMS_Peguit.winforms.Models.Services
             try
             {
                 int activeTenant = CurrentSession.TenantId;
-                if (activeTenant <= 0) activeTenant = 1;
 
                 NotifyProgress("Checking cloud database connection...", isRunning: true);
 
@@ -687,7 +696,7 @@ namespace CRMS_Peguit.winforms.Models.Services
 
                 // 1. Fetch all cloud roles in a single round-trip
                 var cloudRoles = new Dictionary<(int TenantId, string RoleName), int>();
-                using (var getRolesCmd = cloudConn.CreateCommand())
+                using (var getRolesCmd = CreateCloudCommand(cloudConn))
                 {
                     getRolesCmd.CommandText = "SELECT RoleId, TenantId, RoleName FROM Roles";
                     using var rdr = await getRolesCmd.ExecuteReaderAsync();
@@ -702,7 +711,7 @@ namespace CRMS_Peguit.winforms.Models.Services
 
                 // 2. Fetch all cloud users in a single round-trip
                 var cloudUsersByEmail = new Dictionary<string, List<CloudUserSummary>>(StringComparer.OrdinalIgnoreCase);
-                using (var getUsersCmd = cloudConn.CreateCommand())
+                using (var getUsersCmd = CreateCloudCommand(cloudConn))
                 {
                     getUsersCmd.CommandText = @"
                         SELECT u.UserId, u.Email, u.RoleId, r.TenantId, r.RoleName, u.FirstName, u.LastName, u.Status, u.Phone, u.BranchId
@@ -1157,6 +1166,7 @@ namespace CRMS_Peguit.winforms.Models.Services
 
         public async Task DrainQueueAsync()
         {
+            await _drainSemaphore.WaitAsync();
             try
             {
                 int tenantId = CurrentSession.TenantId;
@@ -1183,6 +1193,21 @@ namespace CRMS_Peguit.winforms.Models.Services
                 {
                     try
                     {
+                        if (cloudConn.State != ConnectionState.Open)
+                        {
+                            try { cloudConn.Close(); } catch { }
+                            try
+                            {
+                                await cloudConn.OpenAsync();
+                            }
+                            catch (Exception connEx)
+                            {
+                                Log($"Failed to reopen cloud connection: {connEx.Message}");
+                                _localCache.UpdateQueueFailure(item.QueueId, $"Cloud connection closed and failed to reopen: {connEx.Message}");
+                                continue;
+                            }
+                        }
+
                         _localCache.UpdateQueueStatus(item.QueueId, "Syncing");
                         NotifyProgress($"Syncing {item.EntityType} #{item.EntityLocalId} to cloud...", isRunning: true);
 
@@ -1231,6 +1256,18 @@ namespace CRMS_Peguit.winforms.Models.Services
                 Log($"DrainQueueAsync error: {ex.Message}");
                 NotifyProgress($"Drain failed: {ex.Message}", isRunning: false);
             }
+            finally
+            {
+                _drainSemaphore.Release();
+            }
+        }
+
+        private static SqlCommand CreateCloudCommand(SqlConnection conn, string? sql = null)
+        {
+            var cmd = conn.CreateCommand();
+            cmd.CommandTimeout = 90;
+            if (sql != null) cmd.CommandText = sql;
+            return cmd;
         }
 
         private async Task<int> ResolveCloudUserIdAsync(SqlConnection conn, RealEstateDbContext local, int localUserId)
@@ -1240,14 +1277,14 @@ namespace CRMS_Peguit.winforms.Models.Services
                 var localUser = await local.Users.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(u => u.UserId == localUserId);
                 if (!string.IsNullOrWhiteSpace(localUser?.Email))
                 {
-                    using var cmd = conn.CreateCommand();
+                    using var cmd = CreateCloudCommand(conn);
                     cmd.CommandText = "SELECT TOP 1 UserId FROM Users WHERE LOWER(Email) = LOWER(@Email)";
                     cmd.Parameters.AddWithValue("@Email", localUser.Email.Trim());
                     var obj = await cmd.ExecuteScalarAsync();
                     if (obj != null && obj != DBNull.Value) return Convert.ToInt32(obj);
                 }
 
-                using (var cmd = conn.CreateCommand())
+                using (var cmd = CreateCloudCommand(conn))
                 {
                     cmd.CommandText = "SELECT TOP 1 UserId FROM Users WHERE UserId = @Uid";
                     cmd.Parameters.AddWithValue("@Uid", localUserId);
@@ -1256,7 +1293,7 @@ namespace CRMS_Peguit.winforms.Models.Services
                 }
             }
 
-            using (var cmd = conn.CreateCommand())
+            using (var cmd = CreateCloudCommand(conn))
             {
                 cmd.CommandText = "SELECT TOP 1 UserId FROM Users ORDER BY UserId ASC";
                 var obj = await cmd.ExecuteScalarAsync();
@@ -1269,7 +1306,7 @@ namespace CRMS_Peguit.winforms.Models.Services
         private async Task<int?> ResolveCloudBranchIdAsync(SqlConnection conn, int? localBranchId)
         {
             if (!localBranchId.HasValue || localBranchId.Value <= 0) return null;
-            using var cmd = conn.CreateCommand();
+            using var cmd = CreateCloudCommand(conn);
             cmd.CommandText = "SELECT TOP 1 BranchId FROM Branches WHERE BranchId = @Bid";
             cmd.Parameters.AddWithValue("@Bid", localBranchId.Value);
             var obj = await cmd.ExecuteScalarAsync();
@@ -1282,7 +1319,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             if (!localCustomerId.HasValue || localCustomerId.Value <= 0) return null;
             if (tempIdMap.TryGetValue($"Customer:{localCustomerId.Value}", out int mappedId)) return mappedId;
 
-            using (var cmd = conn.CreateCommand())
+            using (var cmd = CreateCloudCommand(conn))
             {
                 cmd.CommandText = "SELECT TOP 1 CustomerId FROM Customers WHERE CustomerId = @Cid";
                 cmd.Parameters.AddWithValue("@Cid", localCustomerId.Value);
@@ -1293,7 +1330,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             var localCust = await local.Customers.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(c => c.CustomerId == localCustomerId.Value);
             if (localCust != null)
             {
-                using var cmd = conn.CreateCommand();
+                using var cmd = CreateCloudCommand(conn);
                 cmd.CommandText = @"
                     SELECT TOP 1 CustomerId 
                     FROM Customers 
@@ -1319,7 +1356,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             if (!localLeadId.HasValue || localLeadId.Value <= 0) return null;
             if (tempIdMap.TryGetValue($"Lead:{localLeadId.Value}", out int mappedId)) return mappedId;
 
-            using (var cmd = conn.CreateCommand())
+            using (var cmd = CreateCloudCommand(conn))
             {
                 cmd.CommandText = "SELECT TOP 1 LeadId FROM Leads WHERE LeadId = @Lid";
                 cmd.Parameters.AddWithValue("@Lid", localLeadId.Value);
@@ -1330,7 +1367,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             var localLead = await local.Leads.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(l => l.LeadId == localLeadId.Value);
             if (localLead != null)
             {
-                using var cmd = conn.CreateCommand();
+                using var cmd = CreateCloudCommand(conn);
                 cmd.CommandText = @"
                     SELECT TOP 1 LeadId 
                     FROM Leads 
@@ -1356,7 +1393,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             if (!localPropId.HasValue || localPropId.Value <= 0) return null;
             if (tempIdMap.TryGetValue($"Property:{localPropId.Value}", out int mappedId)) return mappedId;
 
-            using (var cmd = conn.CreateCommand())
+            using (var cmd = CreateCloudCommand(conn))
             {
                 cmd.CommandText = "SELECT TOP 1 PropertyId FROM Properties WHERE PropertyId = @Pid";
                 cmd.Parameters.AddWithValue("@Pid", localPropId.Value);
@@ -1367,7 +1404,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             var localProp = await local.Properties.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(p => p.PropertyId == localPropId.Value);
             if (localProp != null && !string.IsNullOrWhiteSpace(localProp.Address))
             {
-                using var cmd = conn.CreateCommand();
+                using var cmd = CreateCloudCommand(conn);
                 cmd.CommandText = "SELECT TOP 1 PropertyId FROM Properties WHERE LOWER(Address) = LOWER(@Address)";
                 cmd.Parameters.AddWithValue("@Address", localProp.Address.Trim());
                 var obj = await cmd.ExecuteScalarAsync();
@@ -1377,9 +1414,135 @@ namespace CRMS_Peguit.winforms.Models.Services
                     tempIdMap[$"Property:{localPropId.Value}"] = foundId;
                     return foundId;
                 }
+                // Auto-sync missing local property to cloud so foreign key dependencies are preserved
+                try
+                {
+                    int cloudCreatedBy = await ResolveCloudUserIdAsync(conn, local, localProp.CreatedByUserId);
+                    int? cloudAgent = localProp.ListedByAgentId.HasValue && localProp.ListedByAgentId.Value > 0
+                        ? await ResolveCloudUserIdAsync(conn, local, localProp.ListedByAgentId.Value)
+                        : null;
+                    int? cloudBranch = await ResolveCloudBranchIdAsync(conn, localProp.BranchId);
+                    int cloudOwner = 0;
+                    if (localProp.OwnerCustomerId > 0)
+                    {
+                        var resolvedOwner = await ResolveCloudCustomerIdAsync(conn, local, localProp.OwnerCustomerId, tempIdMap);
+                        if (resolvedOwner.HasValue) cloudOwner = resolvedOwner.Value;
+                    }
+                    if (cloudOwner <= 0)
+                    {
+                        using var pickCmd = CreateCloudCommand(conn);
+                        pickCmd.CommandText = "SELECT TOP 1 CustomerId FROM Customers ORDER BY CustomerId ASC";
+                        var cObj = await pickCmd.ExecuteScalarAsync();
+                        if (cObj != null && cObj != DBNull.Value) cloudOwner = Convert.ToInt32(cObj);
+                    }
+
+                    using var insertCmd = CreateCloudCommand(conn);
+                    insertCmd.CommandText = @"
+                        INSERT INTO Properties (
+                            PropertyType, Price, Status, OwnerCustomerId, ListedByAgentId,
+                            Address, CreatedByUserId, BranchId, CreatedAt, AssignmentStatus,
+                            AssignmentReviewedByUserId, AssignmentReviewedAt, AssignmentReviewNotes
+                        )
+                        OUTPUT INSERTED.PropertyId
+                        VALUES (
+                            @PropertyType, @Price, @Status, @OwnerId, @AgentId,
+                            @Address, @CreatedBy, @BranchId, @CreatedAt, @AssignmentStatus,
+                            @ReviewedBy, @ReviewedAt, @ReviewNotes
+                        );";
+                    insertCmd.Parameters.AddWithValue("@PropertyType", localProp.PropertyType ?? "Residential");
+                    insertCmd.Parameters.AddWithValue("@Price", localProp.Price);
+                    insertCmd.Parameters.AddWithValue("@Status", localProp.Status ?? "Available");
+                    insertCmd.Parameters.AddWithValue("@OwnerId", cloudOwner);
+                    insertCmd.Parameters.AddWithValue("@AgentId", (object?)cloudAgent ?? DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@Address", localProp.Address.Trim());
+                    insertCmd.Parameters.AddWithValue("@CreatedBy", cloudCreatedBy);
+                    insertCmd.Parameters.AddWithValue("@BranchId", (object?)cloudBranch ?? DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@CreatedAt", localProp.CreatedAt == default ? DateTime.UtcNow : localProp.CreatedAt);
+                    insertCmd.Parameters.AddWithValue("@AssignmentStatus", localProp.AssignmentStatus ?? "Unassigned");
+                    insertCmd.Parameters.AddWithValue("@ReviewedBy", (object?)localProp.AssignmentReviewedByUserId ?? DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@ReviewedAt", (object?)localProp.AssignmentReviewedAt ?? DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@ReviewNotes", (object?)localProp.AssignmentReviewNotes ?? DBNull.Value);
+
+                    var newPropId = await insertCmd.ExecuteScalarAsync();
+                    if (newPropId != null && newPropId != DBNull.Value)
+                    {
+                        int pushedId = Convert.ToInt32(newPropId);
+                        tempIdMap[$"Property:{localPropId.Value}"] = pushedId;
+                        return pushedId;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"ResolveCloudPropertyIdAsync auto-push warning: {ex.Message}");
+                }
             }
 
             return null;
+        }
+
+        private async Task<int?> ResolveCloudDealIdAsync(SqlConnection conn, RealEstateDbContext local, int? localDealId, Dictionary<string, int> tempIdMap)
+        {
+            if (!localDealId.HasValue || localDealId.Value <= 0) return null;
+            if (tempIdMap.TryGetValue($"Deal:{localDealId.Value}", out int mappedId)) return mappedId;
+
+            using (var cmd = CreateCloudCommand(conn))
+            {
+                cmd.CommandText = "SELECT TOP 1 DealId FROM Deals WHERE DealId = @Did";
+                cmd.Parameters.AddWithValue("@Did", localDealId.Value);
+                var obj = await cmd.ExecuteScalarAsync();
+                if (obj != null && obj != DBNull.Value) return Convert.ToInt32(obj);
+            }
+
+            var localDeal = await local.Deals.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(d => d.DealId == localDealId.Value);
+            if (localDeal != null)
+            {
+                var cloudCustId = await ResolveCloudCustomerIdAsync(conn, local, localDeal.CustomerId, tempIdMap);
+                var cloudPropId = await ResolveCloudPropertyIdAsync(conn, local, localDeal.PropertyId, tempIdMap);
+                if (cloudCustId.HasValue && cloudPropId.HasValue)
+                {
+                    using var cmd = CreateCloudCommand(conn);
+                    cmd.CommandText = "SELECT TOP 1 DealId FROM Deals WHERE CustomerId = @Cid AND PropertyId = @Pid";
+                    cmd.Parameters.AddWithValue("@Cid", cloudCustId.Value);
+                    cmd.Parameters.AddWithValue("@Pid", cloudPropId.Value);
+                    var obj = await cmd.ExecuteScalarAsync();
+                    if (obj != null && obj != DBNull.Value)
+                    {
+                        int foundId = Convert.ToInt32(obj);
+                        tempIdMap[$"Deal:{localDealId.Value}"] = foundId;
+                        return foundId;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static T DeserializePayload<T>(string? payloadJson, string entityType, int queueId)
+        {
+            if (string.IsNullOrWhiteSpace(payloadJson))
+            {
+                throw new InvalidOperationException($"Empty or missing payload data for {entityType} (Queue #{queueId}).");
+            }
+
+            try
+            {
+                var result = JsonSerializer.Deserialize<T>(payloadJson, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles
+                });
+
+                if (result == null)
+                {
+                    throw new InvalidOperationException($"Could not deserialize {entityType} payload (Queue #{queueId}).");
+                }
+
+                return result;
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException($"Corrupted or malformed JSON data in {entityType} queue item #{queueId}: {ex.Message}", ex);
+            }
         }
 
         private async Task<int> SyncLeadToCloudAsync(PendingSyncQueue item, SqlConnection conn, RealEstateDbContext local, Dictionary<string, int> tempIdMap)
@@ -1391,7 +1554,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
             if (lead == null)
             {
-                lead = JsonSerializer.Deserialize<Lead>(item.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                lead = DeserializePayload<Lead>(item.PayloadJson, "Lead", item.QueueId);
             }
             if (lead == null) throw new InvalidOperationException("Could not deserialize Lead payload.");
 
@@ -1404,7 +1567,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             int? targetCloudLeadId = item.ServerEntityId;
             if (!targetCloudLeadId.HasValue || targetCloudLeadId.Value <= 0)
             {
-                using var checkCmd = conn.CreateCommand();
+                using var checkCmd = CreateCloudCommand(conn);
                 checkCmd.CommandText = @"
                     SELECT TOP 1 LeadId FROM Leads 
                     WHERE (@Email IS NOT NULL AND LOWER(Email) = LOWER(@Email))
@@ -1418,7 +1581,7 @@ namespace CRMS_Peguit.winforms.Models.Services
 
             if (targetCloudLeadId.HasValue && targetCloudLeadId.Value > 0)
             {
-                using var updateCmd = conn.CreateCommand();
+                using var updateCmd = CreateCloudCommand(conn);
                 updateCmd.CommandText = @"
                     UPDATE Leads SET
                         FirstName = @First,
@@ -1467,7 +1630,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
             else
             {
-                using var insertCmd = conn.CreateCommand();
+                using var insertCmd = CreateCloudCommand(conn);
                 insertCmd.CommandText = @"
                     INSERT INTO Leads (
                         FirstName, MiddleName, LastName, Suffix, Email, Phone,
@@ -1518,7 +1681,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
             if (customer == null)
             {
-                customer = JsonSerializer.Deserialize<Customer>(item.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                customer = DeserializePayload<Customer>(item.PayloadJson, "Customer", item.QueueId);
             }
             if (customer == null) throw new InvalidOperationException("Could not deserialize Customer payload.");
 
@@ -1530,7 +1693,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             int? targetCloudCustId = item.ServerEntityId;
             if (!targetCloudCustId.HasValue || targetCloudCustId.Value <= 0)
             {
-                using var checkCmd = conn.CreateCommand();
+                using var checkCmd = CreateCloudCommand(conn);
                 checkCmd.CommandText = @"
                     SELECT TOP 1 CustomerId FROM Customers 
                     WHERE (@Email IS NOT NULL AND LOWER(Email) = LOWER(@Email))
@@ -1546,7 +1709,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             if (targetCloudCustId.HasValue && targetCloudCustId.Value > 0)
             {
                 finalCustomerId = targetCloudCustId.Value;
-                using var updateCmd = conn.CreateCommand();
+                using var updateCmd = CreateCloudCommand(conn);
                 updateCmd.CommandText = @"
                     UPDATE Customers SET
                         FirstName = @First,
@@ -1585,7 +1748,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
             else
             {
-                using var insertCmd = conn.CreateCommand();
+                using var insertCmd = CreateCloudCommand(conn);
                 insertCmd.CommandText = @"
                     INSERT INTO Customers (
                         FirstName, MiddleName, LastName, Suffix, Email, Phone,
@@ -1627,7 +1790,7 @@ namespace CRMS_Peguit.winforms.Models.Services
                 var bp = await local.BuyerProfiles.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(b => b.CustomerId == localId);
                 if (bp != null)
                 {
-                    using var bpCmd = conn.CreateCommand();
+                    using var bpCmd = CreateCloudCommand(conn);
                     bpCmd.CommandText = @"
                         IF EXISTS (SELECT 1 FROM BuyerProfiles WHERE CustomerId = @Cid)
                             UPDATE BuyerProfiles SET Budget = @Budget, PreferredLocation = @Location, PreferredPropertyType = @PropType WHERE CustomerId = @Cid
@@ -1653,7 +1816,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
             if (prop == null)
             {
-                prop = JsonSerializer.Deserialize<Property>(item.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                prop = DeserializePayload<Property>(item.PayloadJson, "Property", item.QueueId);
             }
             if (prop == null) throw new InvalidOperationException("Could not deserialize Property payload.");
 
@@ -1671,16 +1834,28 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
             if (cloudOwnerId <= 0)
             {
-                using var pickCmd = conn.CreateCommand();
+                using var pickCmd = CreateCloudCommand(conn);
                 pickCmd.CommandText = "SELECT TOP 1 CustomerId FROM Customers ORDER BY CustomerId ASC";
                 var obj = await pickCmd.ExecuteScalarAsync();
                 if (obj != null && obj != DBNull.Value) cloudOwnerId = Convert.ToInt32(obj);
+            }
+            if (cloudOwnerId <= 0)
+            {
+                bool localStillExists = (int.TryParse(item.EntityLocalId, out int localIdCheck) && await local.Properties.IgnoreQueryFilters().AnyAsync(p => p.PropertyId == localIdCheck)) ||
+                                        (prop.PropertyId > 0 && await local.Properties.IgnoreQueryFilters().AnyAsync(p => p.PropertyId == prop.PropertyId));
+                if (!localStillExists)
+                {
+                    Log($"Skipping phantom Property #{item.EntityLocalId} (Queue #{item.QueueId}) sync as it was deleted locally and owner customer could not be resolved.");
+                    return 0;
+                }
+
+                throw new InvalidOperationException($"Cannot sync Property: Owner customer could not be resolved on cloud (Local OwnerCustomerId={prop.OwnerCustomerId}).");
             }
 
             int? targetCloudPropId = item.ServerEntityId;
             if (!targetCloudPropId.HasValue || targetCloudPropId.Value <= 0)
             {
-                using var checkCmd = conn.CreateCommand();
+                using var checkCmd = CreateCloudCommand(conn);
                 checkCmd.CommandText = "SELECT TOP 1 PropertyId FROM Properties WHERE LOWER(Address) = LOWER(@Address)";
                 checkCmd.Parameters.AddWithValue("@Address", prop.Address.Trim());
                 var obj = await checkCmd.ExecuteScalarAsync();
@@ -1689,7 +1864,7 @@ namespace CRMS_Peguit.winforms.Models.Services
 
             if (targetCloudPropId.HasValue && targetCloudPropId.Value > 0)
             {
-                using var updateCmd = conn.CreateCommand();
+                using var updateCmd = CreateCloudCommand(conn);
                 updateCmd.CommandText = @"
                     UPDATE Properties SET
                         PropertyType = @PropertyType,
@@ -1720,7 +1895,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
             else
             {
-                using var insertCmd = conn.CreateCommand();
+                using var insertCmd = CreateCloudCommand(conn);
                 insertCmd.CommandText = @"
                     INSERT INTO Properties (
                         Address, PropertyType, Price, Status, OwnerCustomerId,
@@ -1757,11 +1932,12 @@ namespace CRMS_Peguit.winforms.Models.Services
             Deal? deal = null;
             if (int.TryParse(item.EntityLocalId, out int localId) && localId > 0)
             {
-                deal = await local.Deals.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(d => d.DealId == localId);
+                deal = await local.Deals.IgnoreQueryFilters().Include(d => d.DealClauses)
+                    .Include(d => d.Contingencies).AsNoTracking().FirstOrDefaultAsync(d => d.DealId == localId);
             }
             if (deal == null)
             {
-                deal = JsonSerializer.Deserialize<Deal>(item.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                deal = DeserializePayload<Deal>(item.PayloadJson, "Deal", item.QueueId);
             }
             if (deal == null) throw new InvalidOperationException("Could not deserialize Deal payload.");
 
@@ -1769,19 +1945,27 @@ namespace CRMS_Peguit.winforms.Models.Services
             var cloudPropId = await ResolveCloudPropertyIdAsync(conn, local, deal.PropertyId, tempIdMap);
             if (!cloudCustId.HasValue || !cloudPropId.HasValue)
             {
-                throw new InvalidOperationException($"Cannot sync Deal: Customer or Property could not be mapped to cloud.");
+                bool localStillExists = (int.TryParse(item.EntityLocalId, out int localIdCheck) && await local.Deals.IgnoreQueryFilters().AnyAsync(d => d.DealId == localIdCheck)) ||
+                                        (deal.DealId > 0 && await local.Deals.IgnoreQueryFilters().AnyAsync(d => d.DealId == deal.DealId));
+                if (!localStillExists)
+                {
+                    Log($"Skipping phantom Deal #{item.EntityLocalId} (Queue #{item.QueueId}) sync as it was deleted locally and dependencies are missing.");
+                    return 0;
+                }
+
+                throw new InvalidOperationException($"Cannot sync Deal: Customer or Property could not be mapped to cloud. DealCustId={deal.CustomerId}, CloudCustId={cloudCustId}, DealPropId={deal.PropertyId}, CloudPropId={cloudPropId}");
             }
 
-            int cloudAgentId = deal.AgentId.HasValue && deal.AgentId.Value > 0
+            int? cloudAgentId = deal.AgentId.HasValue && deal.AgentId.Value > 0
                 ? await ResolveCloudUserIdAsync(conn, local, deal.AgentId.Value)
-                : await ResolveCloudUserIdAsync(conn, local, deal.CreatedByUserId);
+                : null;
             int cloudCreatedByUserId = await ResolveCloudUserIdAsync(conn, local, deal.CreatedByUserId);
             int? cloudBranchId = await ResolveCloudBranchIdAsync(conn, deal.BranchId);
 
             int? targetCloudDealId = item.ServerEntityId;
             if (!targetCloudDealId.HasValue || targetCloudDealId.Value <= 0)
             {
-                using var checkCmd = conn.CreateCommand();
+                using var checkCmd = CreateCloudCommand(conn);
                 checkCmd.CommandText = "SELECT TOP 1 DealId FROM Deals WHERE CustomerId = @Cid AND PropertyId = @Pid";
                 checkCmd.Parameters.AddWithValue("@Cid", cloudCustId.Value);
                 checkCmd.Parameters.AddWithValue("@Pid", cloudPropId.Value);
@@ -1789,11 +1973,15 @@ namespace CRMS_Peguit.winforms.Models.Services
                 if (obj != null && obj != DBNull.Value) targetCloudDealId = Convert.ToInt32(obj);
             }
 
+            using var dealTransaction = conn.BeginTransaction();
             if (targetCloudDealId.HasValue && targetCloudDealId.Value > 0)
             {
-                using var updateCmd = conn.CreateCommand();
+                using var updateCmd = CreateCloudCommand(conn);
+                updateCmd.Transaction = dealTransaction;
                 updateCmd.CommandText = @"
                     UPDATE Deals SET
+                        CustomerId = @Cid,
+                        PropertyId = @Pid,
                         AgentId = @AgentId,
                         Value = @Value,
                         CommissionRate = @CommissionRate,
@@ -1810,7 +1998,9 @@ namespace CRMS_Peguit.winforms.Models.Services
                         ContractSignedDate = @ContractSignedDate,
                         BranchId = @BranchId
                     WHERE DealId = @DealId";
-                updateCmd.Parameters.AddWithValue("@AgentId", cloudAgentId);
+                updateCmd.Parameters.AddWithValue("@AgentId", (object?)cloudAgentId ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@Cid", cloudCustId.Value);
+                updateCmd.Parameters.AddWithValue("@Pid", cloudPropId.Value);
                 updateCmd.Parameters.AddWithValue("@Value", deal.Value);
                 updateCmd.Parameters.AddWithValue("@CommissionRate", deal.CommissionRate);
                 updateCmd.Parameters.AddWithValue("@Stage", deal.Stage ?? "Offer");
@@ -1828,11 +2018,14 @@ namespace CRMS_Peguit.winforms.Models.Services
                 updateCmd.Parameters.AddWithValue("@DealId", targetCloudDealId.Value);
                 await updateCmd.ExecuteNonQueryAsync();
 
+                await SyncDealTermsAsync(conn, dealTransaction, targetCloudDealId.Value, deal);
+                dealTransaction.Commit();
                 return targetCloudDealId.Value;
             }
             else
             {
-                using var insertCmd = conn.CreateCommand();
+                using var insertCmd = CreateCloudCommand(conn);
+                insertCmd.Transaction = dealTransaction;
                 insertCmd.CommandText = @"
                     INSERT INTO Deals (
                         CustomerId, PropertyId, AgentId, Value, CommissionRate, Stage,
@@ -1849,7 +2042,7 @@ namespace CRMS_Peguit.winforms.Models.Services
                     );";
                 insertCmd.Parameters.AddWithValue("@Cid", cloudCustId.Value);
                 insertCmd.Parameters.AddWithValue("@Pid", cloudPropId.Value);
-                insertCmd.Parameters.AddWithValue("@AgentId", cloudAgentId);
+                insertCmd.Parameters.AddWithValue("@AgentId", (object?)cloudAgentId ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@Value", deal.Value);
                 insertCmd.Parameters.AddWithValue("@CommissionRate", deal.CommissionRate);
                 insertCmd.Parameters.AddWithValue("@Stage", deal.Stage ?? "Offer");
@@ -1868,8 +2061,34 @@ namespace CRMS_Peguit.winforms.Models.Services
                 insertCmd.Parameters.AddWithValue("@BranchId", (object?)cloudBranchId ?? DBNull.Value);
 
                 var newId = await insertCmd.ExecuteScalarAsync();
-                return Convert.ToInt32(newId);
+                int cloudDealId = Convert.ToInt32(newId);
+                await SyncDealTermsAsync(conn, dealTransaction, cloudDealId, deal);
+                dealTransaction.Commit();
+                return cloudDealId;
             }
+        }
+
+        private static async Task SyncDealTermsAsync(SqlConnection conn, SqlTransaction transaction, int dealId, Deal deal)
+        {
+            // The deal and its normalized terms must commit together, including explicit empty selections.
+            using var command = CreateCloudCommand(conn, @"
+                DELETE FROM DealClauses WHERE DealId = @DealId;
+                INSERT INTO DealClauses (DealId, ClauseId, Title, ClauseText, IsApproved, ApprovedAt, CreatedAt)
+                SELECT @DealId, ClauseId, Title, ClauseText, IsApproved, ApprovedAt, CreatedAt
+                FROM OPENJSON(@Clauses) WITH (
+                    ClauseId nvarchar(50), Title nvarchar(200), ClauseText nvarchar(max),
+                    IsApproved bit, ApprovedAt datetime2, CreatedAt datetime2);
+                DELETE FROM DealContingencies WHERE DealId = @DealId;
+                INSERT INTO DealContingencies (DealId, ContingencyName, Description, DueDate, IsSatisfied, SatisfiedAt, CreatedAt)
+                SELECT @DealId, ContingencyName, Description, DueDate, IsSatisfied, SatisfiedAt, CreatedAt
+                FROM OPENJSON(@Contingencies) WITH (
+                    ContingencyName nvarchar(100), Description nvarchar(500), DueDate datetime2,
+                    IsSatisfied bit, SatisfiedAt datetime2, CreatedAt datetime2);");
+            command.Transaction = transaction;
+            command.Parameters.AddWithValue("@DealId", dealId);
+            command.Parameters.AddWithValue("@Clauses", JsonSerializer.Serialize(deal.DealClauses));
+            command.Parameters.AddWithValue("@Contingencies", JsonSerializer.Serialize(deal.Contingencies));
+            await command.ExecuteNonQueryAsync();
         }
 
         private async Task<int> SyncActivityToCloudAsync(PendingSyncQueue item, SqlConnection conn, RealEstateDbContext local, Dictionary<string, int> tempIdMap)
@@ -1881,7 +2100,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
             if (act == null)
             {
-                act = JsonSerializer.Deserialize<Activity>(item.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                act = DeserializePayload<Activity>(item.PayloadJson, "Activity", item.QueueId);
             }
             if (act == null) throw new InvalidOperationException("Could not deserialize Activity payload.");
 
@@ -1889,7 +2108,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             int? cloudLeadId = await ResolveCloudLeadIdAsync(conn, local, act.RelatedLeadId, tempIdMap);
             int cloudAgentId = await ResolveCloudUserIdAsync(conn, local, act.LoggedByAgentId);
 
-            using var insertCmd = conn.CreateCommand();
+            using var insertCmd = CreateCloudCommand(conn);
             insertCmd.CommandText = @"
                 INSERT INTO Activities (
                     Type, RelatedLeadId, RelatedCustomerId, LoggedByAgentId, Notes, ActivityDate, Outcome, DurationMinutes
@@ -1920,7 +2139,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
             if (reminder == null)
             {
-                reminder = JsonSerializer.Deserialize<TaskReminder>(item.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                reminder = DeserializePayload<TaskReminder>(item.PayloadJson, "TaskReminder", item.QueueId);
             }
             if (reminder == null) throw new InvalidOperationException("Could not deserialize TaskReminder payload.");
 
@@ -1931,7 +2150,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             int? targetReminderId = item.ServerEntityId;
             if (targetReminderId.HasValue && targetReminderId.Value > 0)
             {
-                using var updateCmd = conn.CreateCommand();
+                using var updateCmd = CreateCloudCommand(conn);
                 updateCmd.CommandText = @"
                     UPDATE TaskReminders SET
                         Title = @Title,
@@ -1968,7 +2187,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
             else
             {
-                using var insertCmd = conn.CreateCommand();
+                using var insertCmd = CreateCloudCommand(conn);
                 insertCmd.CommandText = @"
                     INSERT INTO TaskReminders (
                         Title, DueDate, AssignedToUserId, RelatedCustomerId, RelatedLeadId,
@@ -2008,14 +2227,14 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
             if (ticket == null)
             {
-                ticket = JsonSerializer.Deserialize<SupportTicket>(item.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                ticket = DeserializePayload<SupportTicket>(item.PayloadJson, "SupportTicket", item.QueueId);
             }
             if (ticket == null) throw new InvalidOperationException("Could not deserialize SupportTicket payload.");
 
             int? cloudCustId = await ResolveCloudCustomerIdAsync(conn, local, ticket.CustomerId, tempIdMap);
             if (!cloudCustId.HasValue)
             {
-                using var pickCmd = conn.CreateCommand();
+                using var pickCmd = CreateCloudCommand(conn);
                 pickCmd.CommandText = "SELECT TOP 1 CustomerId FROM Customers ORDER BY CustomerId ASC";
                 var obj = await pickCmd.ExecuteScalarAsync();
                 if (obj != null && obj != DBNull.Value) cloudCustId = Convert.ToInt32(obj);
@@ -2030,7 +2249,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             int? targetTicketId = item.ServerEntityId;
             if (targetTicketId.HasValue && targetTicketId.Value > 0)
             {
-                using var updateCmd = conn.CreateCommand();
+                using var updateCmd = CreateCloudCommand(conn);
                 updateCmd.CommandText = @"
                     UPDATE SupportTickets SET
                         CustomerId = @CustId,
@@ -2063,7 +2282,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
             else
             {
-                using var insertCmd = conn.CreateCommand();
+                using var insertCmd = CreateCloudCommand(conn);
                 insertCmd.CommandText = @"
                     INSERT INTO SupportTickets (
                         CustomerId, RaisedByUserId, AssignedToUserId, Description, Priority,
@@ -2107,7 +2326,7 @@ namespace CRMS_Peguit.winforms.Models.Services
                 }
                 if (cloudId.HasValue && cloudId.Value > 0)
                 {
-                    using var cmd = conn.CreateCommand();
+                    using var cmd = CreateCloudCommand(conn);
                     cmd.CommandText = "UPDATE Leads SET IsDeleted = 1, DeletedAt = GETUTCDATE() WHERE LeadId = @Id";
                     cmd.Parameters.AddWithValue("@Id", cloudId.Value);
                     await cmd.ExecuteNonQueryAsync();
@@ -2122,7 +2341,7 @@ namespace CRMS_Peguit.winforms.Models.Services
                 }
                 if (cloudId.HasValue && cloudId.Value > 0)
                 {
-                    using var cmd = conn.CreateCommand();
+                    using var cmd = CreateCloudCommand(conn);
                     cmd.CommandText = "UPDATE Customers SET IsDeleted = 1, DeletedAt = GETUTCDATE() WHERE CustomerId = @Id";
                     cmd.Parameters.AddWithValue("@Id", cloudId.Value);
                     await cmd.ExecuteNonQueryAsync();
@@ -2137,7 +2356,19 @@ namespace CRMS_Peguit.winforms.Models.Services
                 }
                 if (cloudId.HasValue && cloudId.Value > 0)
                 {
-                    using var cmd = conn.CreateCommand();
+                    using (var chkCmd = CreateCloudCommand(conn))
+                    {
+                        chkCmd.CommandText = "SELECT COUNT(1) FROM Deals WHERE PropertyId = @Id";
+                        chkCmd.Parameters.AddWithValue("@Id", cloudId.Value);
+                        int refDeals = Convert.ToInt32(await chkCmd.ExecuteScalarAsync());
+                        if (refDeals > 0)
+                        {
+                            Log($"Cannot delete Property #{cloudId.Value} from cloud: {refDeals} deal(s) still reference it.");
+                            return true;
+                        }
+                    }
+
+                    using var cmd = CreateCloudCommand(conn);
                     cmd.CommandText = "DELETE FROM Properties WHERE PropertyId = @Id";
                     cmd.Parameters.AddWithValue("@Id", cloudId.Value);
                     await cmd.ExecuteNonQueryAsync();
@@ -2146,9 +2377,20 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
             else if (string.Equals(item.EntityType, "Deal", StringComparison.OrdinalIgnoreCase))
             {
+                if (!cloudId.HasValue && int.TryParse(item.EntityLocalId, out int localId))
+                {
+                    cloudId = await ResolveCloudDealIdAsync(conn, local, localId, tempIdMap);
+                }
                 if (cloudId.HasValue && cloudId.Value > 0)
                 {
-                    using var cmd = conn.CreateCommand();
+                    using (var delChild = CreateCloudCommand(conn))
+                    {
+                        delChild.CommandText = "DELETE FROM DealContingencies WHERE DealId = @Id; DELETE FROM DealClauses WHERE DealId = @Id;";
+                        delChild.Parameters.AddWithValue("@Id", cloudId.Value);
+                        await delChild.ExecuteNonQueryAsync();
+                    }
+
+                    using var cmd = CreateCloudCommand(conn);
                     cmd.CommandText = "DELETE FROM Deals WHERE DealId = @Id";
                     cmd.Parameters.AddWithValue("@Id", cloudId.Value);
                     await cmd.ExecuteNonQueryAsync();
@@ -2328,9 +2570,9 @@ namespace CRMS_Peguit.winforms.Models.Services
                 if (isAgent && userId > 0)
                 {
                     custQuery = custQuery.Where(c =>
-                        (c.AssignedAgentId.HasValue && c.AssignedAgentId.Value > 0)
-                            ? c.AssignedAgentId.Value == userId
-                            : c.CreatedByUserId == userId);
+                        c.AssignedAgentId == userId ||
+                        c.CreatedByUserId == userId ||
+                        db.Deals.Any(d => d.CustomerId == c.CustomerId && (d.AgentId == userId || d.CreatedByUserId == userId)));
                 }
                 var customers = await custQuery.AsNoTracking().ToListAsync();
                 _localCache.SaveCustomersMirror(tenantId, customers);

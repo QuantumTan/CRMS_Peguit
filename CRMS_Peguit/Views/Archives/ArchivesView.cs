@@ -78,7 +78,7 @@ namespace CRMS_Peguit.winforms.Views.Archives
             _pagination.PageChanged += (_, _) => ApplyFilterAndDisplay(resetPage: false);
             _pagination.PageSizeChanged += (_, _) => ApplyFilterAndDisplay(resetPage: true);
             pnlCard.Controls.Add(_pagination);
-            _pagination.BringToFront();
+            _pagination.SendToBack();
         }
 
         private void InitializeComponent()
@@ -345,38 +345,10 @@ namespace CRMS_Peguit.winforms.Views.Archives
             }
         }
 
-        private void LayoutToolbar()
+private void LayoutToolbar()
         {
-            int leftMargin = 24;
-            int rightPadding = 24;
-            int y = 92;
-
-            // Action buttons on the right
-            btnEmptyBin.Top = y;
-            btnEmptyBin.Left = ClientSize.Width - rightPadding - btnEmptyBin.Width;
-
-            btnRestoreAll.Top = y;
-            btnRestoreAll.Left = btnEmptyBin.Left - 8 - btnRestoreAll.Width;
-
-            btnRefresh.Top = y;
-            btnRefresh.Left = btnRestoreAll.Left - 8 - btnRefresh.Width;
-
-            // Search and filter pills on the left
-            txtSearch.Top = y;
-            txtSearch.Left = leftMargin;
-
-            int pillX = txtSearch.Right + 10;
-            var pills = new[] { btnFilterAll, btnFilterCustomers, btnFilterLeads, btnFilterTasks, btnFilterTickets, btnFilterUsers };
-            foreach (var p in pills)
-            {
-                p.Top = y;
-                p.Left = pillX;
-                pillX += p.Width + 6;
-            }
-
-            int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
-            pnlCard.Location = new Point(leftMargin, cardTop);
-            pnlCard.Size = new Size(Math.Max(300, ClientSize.Width - leftMargin - rightPadding), Math.Max(200, ClientSize.Height - cardTop - 24));
+            ResponsiveLayout.ListPage(this, lblTitle, lblSubtitle, null, txtSearch,
+                new Control[] { btnFilterAll, btnFilterCustomers, btnFilterLeads, btnFilterTasks, btnFilterTickets, btnFilterUsers }, new Control?[] { btnRefresh, btnRestoreAll, btnEmptyBin }, pnlCard);
         }
 
         public async Task RefreshDataAsync()

@@ -26,6 +26,7 @@ namespace CRMS_Peguit.winforms.Models.Services
                 EnsureAssignmentColumns((SqlConnection)connection, "Properties");
                 EnsureNotificationTables((SqlConnection)connection);
                 DeduplicateTenantData((SqlConnection)connection);
+                AlignAgentCustomerDealData((SqlConnection)connection);
 
                 if (db is CRMS_Peguit.infrastructure.data.RealEstateDbContext reDb)
                 {
@@ -487,10 +488,79 @@ BEGIN
     END
 END";
                 cmd.ExecuteNonQuery();
+
+                AlignAgentCustomerDealData(connection);
             }
             catch
             {
                 // Silently ignore if schema or locks are transient
+            }
+        }
+
+        public static void AlignAgentCustomerDealData(SqlConnection connection)
+        {
+            try
+            {
+                using var cmd = connection.CreateCommand();
+                cmd.CommandTimeout = 90;
+                cmd.CommandText = @"
+-- Check if Users, Roles, Customers, and Deals exist
+IF OBJECT_ID('dbo.Users', 'U') IS NOT NULL AND OBJECT_ID('dbo.Roles', 'U') IS NOT NULL 
+   AND OBJECT_ID('dbo.Customers', 'U') IS NOT NULL AND OBJECT_ID('dbo.Deals', 'U') IS NOT NULL
+BEGIN
+    -- 1. Identify distinct active agents in this database
+    DECLARE @Agents TABLE (RowNum INT IDENTITY(1,1), UserId INT);
+    INSERT INTO @Agents (UserId)
+    SELECT u.UserId
+    FROM Users u
+    JOIN Roles r ON u.RoleId = r.RoleId
+    WHERE LOWER(r.RoleName) = 'agent' AND LOWER(u.Status) = 'active'
+    ORDER BY u.UserId ASC;
+
+    DECLARE @AgentCount INT = (SELECT COUNT(*) FROM @Agents);
+
+    IF @AgentCount > 0
+    BEGIN
+        -- 2. Distribute all non-deleted customers evenly among the active agents
+        ;WITH CustRank AS (
+            SELECT CustomerId,
+                   ROW_NUMBER() OVER (ORDER BY CustomerId ASC) AS RowNum
+            FROM Customers
+            WHERE IsDeleted = 0
+        )
+        UPDATE c
+        SET c.AssignedAgentId = a.UserId,
+            c.AssignmentStatus = 'approved',
+            c.CreatedByUserId = a.UserId
+        FROM Customers c
+        JOIN CustRank cr ON c.CustomerId = cr.CustomerId
+        JOIN @Agents a ON a.RowNum = ((cr.RowNum - 1) % @AgentCount) + 1;
+
+        -- 3. Align every deal with its customer's assigned agent
+        UPDATE d
+        SET d.AgentId = c.AssignedAgentId,
+            d.CreatedByUserId = c.AssignedAgentId
+        FROM Deals d
+        JOIN Customers c ON d.CustomerId = c.CustomerId
+        WHERE c.AssignedAgentId IS NOT NULL AND c.AssignedAgentId > 0;
+
+        -- 4. If any deal still has an unassigned customer or missing agent, assign customer to deal agent or fallback agent
+        DECLARE @FallbackAgent INT = (SELECT TOP 1 UserId FROM @Agents ORDER BY UserId ASC);
+
+        UPDATE c
+        SET c.AssignedAgentId = ISNULL(NULLIF(d.AgentId, 0), @FallbackAgent),
+            c.AssignmentStatus = 'approved',
+            c.CreatedByUserId = ISNULL(NULLIF(d.AgentId, 0), @FallbackAgent)
+        FROM Customers c
+        JOIN Deals d ON c.CustomerId = d.CustomerId
+        WHERE c.AssignedAgentId IS NULL OR c.AssignedAgentId <= 0;
+    END
+END";
+                cmd.ExecuteNonQuery();
+            }
+            catch
+            {
+                // Silently ignore if table locks or transient errors
             }
         }
     }

@@ -257,6 +257,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 .SingleOrDefault(r => r.TaskReminderId == id && (RbacService.HasFullOversight || r.AssignedToUserId == currentUserId) && !r.IsDeleted);
 
             if (item is null) return;
+            if (string.Equals(item.Status, "Completed", StringComparison.OrdinalIgnoreCase)) return;
 
             item.MarkComplete();
 
@@ -309,6 +310,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 .SingleOrDefault(r => r.TaskReminderId == id && (RbacService.HasFullOversight || r.AssignedToUserId == currentUserId) && !r.IsDeleted);
 
             if (item is null) return;
+            if (string.Equals(item.Status, "Completed", StringComparison.OrdinalIgnoreCase)) return;
 
             item.Snooze(interval);
             _db.SaveChanges();
@@ -331,6 +333,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 .SingleOrDefault(r => r.TaskReminderId == id && (RbacService.HasFullOversight || r.AssignedToUserId == currentUserId) && !r.IsDeleted);
 
             if (item is null) return;
+            if (string.Equals(item.Status, "Completed", StringComparison.OrdinalIgnoreCase)) return;
 
             item.Reschedule(newDueDate);
             _db.SaveChanges();

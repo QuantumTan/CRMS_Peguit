@@ -122,15 +122,9 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             };
             UiRadiusHelper.StylePrimaryButton(btnRecordNew, 8);
             btnRecordNew.Click += BtnRecordNew_Click;
-            pnlHeaderCard.SizeChanged += (_, _) =>
-            {
-                btnRecordNew.Location = new Point(pnlHeaderCard.Width - 180, 25);
-                pnlStatusWrap.Location = new Point(pnlHeaderCard.Width - 370, 16);
-                _lblPaidThrough.Location = new Point(pnlHeaderCard.Width - 370, 44);
-                lblTitle.MaximumSize = new Size(Math.Max(180, pnlHeaderCard.Width - 400), 26);
-                lblPlan.MaximumSize = new Size(Math.Max(180, pnlHeaderCard.Width - 400), 22);
-            };
             pnlHeaderCard.Controls.Add(btnRecordNew);
+            lblTitle.MaximumSize = lblPlan.MaximumSize = Size.Empty;
+            ResponsiveLayout.BindHeader(pnlHeaderCard, lblTitle, lblPlan, pnlStatusWrap, _lblPaidThrough, btnRecordNew);
 
             // 2. Bottom Summary Bar
             var pnlBottomBar = new Panel

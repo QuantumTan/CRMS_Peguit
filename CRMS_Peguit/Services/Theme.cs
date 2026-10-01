@@ -10,6 +10,10 @@ namespace CRMS_Peguit.winforms.Models.Services
     public static class Theme
     {
         // Core Palette (Modern Light SaaS: Slate & Sky)
+        private static readonly Color DefaultPrimary = Color.FromArgb(2, 132, 199);
+        private static readonly Color DefaultPrimaryDark = Color.FromArgb(3, 105, 161);
+        private static readonly Color DefaultSidebarAccent = Color.FromArgb(56, 189, 248);
+
         public static Color Primary = Color.FromArgb(2, 132, 199);          // Sky 600 (#0284C7)
         public static Color PrimaryDark = Color.FromArgb(3, 105, 161);      // Sky 700 (#0369A1)
         public static Color PrimaryLight = Color.FromArgb(224, 242, 254);   // Sky 100 (#E0F2FE)
@@ -31,6 +35,14 @@ namespace CRMS_Peguit.winforms.Models.Services
         public static Color SidebarTextMuted = Color.FromArgb(100, 116, 139); // Slate 500 (#64748B)
         public static Color SidebarProfileCard = Color.FromArgb(30, 41, 59);  // Slate 800 (#1E293B)
         public static Color SidebarAccent = Color.FromArgb(56, 189, 248);     // Sky 400 (#38BDF8)
+
+        public static void ApplyTenantAccent(Color? customAccent)
+        {
+            // UI theme colors remain platform default across all tenants
+            Primary = DefaultPrimary;
+            PrimaryDark = DefaultPrimaryDark;
+            SidebarAccent = DefaultSidebarAccent;
+        }
 
         // Top Header (Crisp Light Surface)
         public static Color HeaderBackground = Color.FromArgb(255, 255, 255); // Pure White

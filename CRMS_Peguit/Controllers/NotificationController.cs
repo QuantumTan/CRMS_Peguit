@@ -352,7 +352,8 @@ namespace CRMS_Peguit.winforms.Controllers
 
             try
             {
-                var cutoff = DateTime.UtcNow.AddDays(-daysOld);
+                int clampedDays = Math.Clamp(daysOld, 1, 3650);
+                var cutoff = DateTime.UtcNow.AddDays(-clampedDays);
                 var oldNotifications = _db.Notifications
                     .Where(n => n.RecipientUserId == userId && n.IsRead && n.CreatedAt < cutoff)
                     .ToList();

@@ -168,11 +168,17 @@ namespace CRMS_Peguit.api.Controllers
         {
             if (!ValidateSuperAdmin()) return Forbid();
 
+            if (req.BillingAmount < 0)
+                return BadRequest(new { message = "Billing amount cannot be negative." });
+
+            if (string.IsNullOrWhiteSpace(req.PlanName))
+                return BadRequest(new { message = "Plan name is required." });
+
             var sub = await _masterDb.Subscriptions.FirstOrDefaultAsync(s => s.SubscriptionId == subscriptionId);
             if (sub == null) return NotFound();
 
-            sub.PlanName = req.PlanName;
-            sub.Status = req.Status;
+            sub.PlanName = req.PlanName.Trim();
+            sub.Status = string.IsNullOrWhiteSpace(req.Status) ? sub.Status : req.Status.Trim();
             sub.BillingAmount = req.BillingAmount;
             sub.EndDate = req.EndDate;
             await _masterDb.SaveChangesAsync();
@@ -185,6 +191,12 @@ namespace CRMS_Peguit.api.Controllers
         {
             if (!ValidateSuperAdmin()) return Forbid();
 
+            if (string.IsNullOrWhiteSpace(req.PlanName))
+                return BadRequest(new { message = "Plan name is required." });
+
+            if (!await _masterDb.Companies.AnyAsync(c => c.CompanyId == companyId))
+                return NotFound(new { message = $"Company #{companyId} not found." });
+
             var sub = await _masterDb.Subscriptions
                 .Where(s => s.CompanyId == companyId)
                 .OrderByDescending(s => s.StartDate)
@@ -192,7 +204,7 @@ namespace CRMS_Peguit.api.Controllers
 
             if (sub != null)
             {
-                sub.PlanName = req.PlanName;
+                sub.PlanName = req.PlanName.Trim();
                 await _masterDb.SaveChangesAsync();
             }
             else
@@ -200,7 +212,7 @@ namespace CRMS_Peguit.api.Controllers
                 var newSub = new Subscription
                 {
                     CompanyId = companyId,
-                    PlanName = req.PlanName,
+                    PlanName = req.PlanName.Trim(),
                     StartDate = DateTime.UtcNow,
                     EndDate = DateTime.UtcNow.AddYears(1),
                     BillingAmount = req.PlanName.Contains("Tenant C") ? 9500m : (req.PlanName.Contains("Tenant B") ? 5500m : 2500m),

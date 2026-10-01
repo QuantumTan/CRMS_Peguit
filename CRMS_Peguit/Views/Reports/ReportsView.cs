@@ -95,15 +95,28 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
             btnRunReport.BackColor = BiDisplayConstants.PrimaryAccent;
             btnRunReport.ForeColor = Theme.Surface;
-            btnExportCsv.BackColor = Theme.Surface;
-            btnExportCsv.ForeColor = Theme.TextPrimary;
-            btnExportCsv.Enabled = false;
+            btnExportPdf.BackColor = Theme.Surface;
+            btnExportPdf.ForeColor = Theme.TextPrimary;
+            btnExportPdf.Enabled = false;
 
             // Remove docking and anchor constraints so absolute sizing in LayoutReportControls works unhindered
             pnlCharts.Dock = DockStyle.None;
             pnlGrid.Dock = DockStyle.None;
 
             UpdateViewModeButtons();
+            ResponsiveLayout.BindHeader(pnlTop, lblTitle, lblSubtitle, btnGoToAnalytics);
+            var groups = new[]
+            {
+                ResponsiveLayout.FieldGroup(lblReportType, cboReportType, 260),
+                ResponsiveLayout.FieldGroup(lblDateRange, cboDateRange),
+                ResponsiveLayout.FieldGroup(lblAgentFilter, cboAgentFilter),
+                ResponsiveLayout.FieldGroup(lblSecondaryFilter, cboSecondaryFilter)
+            };
+            foreach (var group in groups) pnlFilters.Controls.Add(group);
+            dtpStart.Width = dtpEnd.Width = 140;
+            ResponsiveLayout.BindToolbar(pnlFilters, 16, groups.Cast<Control>().Concat(new Control[]
+                { dtpStart, lblTo, dtpEnd, btnRunReport, btnExportPdf, btnViewBoth, btnViewCharts, btnViewTable }).ToArray());
+            pnlKpiContainer.SizeChanged += (_, _) => ResponsiveLayout.KpiGrid(pnlKpiContainer, pnlKpiContainer.ClientSize.Width);
         }
 
         private void LoadDropdowns()
@@ -208,7 +221,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
             cboReportType.SelectedIndexChanged += (s, e) =>
             {
                 UpdateSecondaryFilter();
-                btnExportCsv.Text = "📄 Export CSV";
+                btnExportPdf.Text = "📄 Export PDF";
             };
             cboDateRange.SelectedIndexChanged += (s, e) =>
             {
@@ -219,7 +232,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
             };
 
             btnRunReport.Click += BtnRunReport_Click;
-            btnExportCsv.Click += BtnExportCsv_Click;
+            btnExportPdf.Click += BtnExportPdf_Click;
 
             btnViewBoth.Click += (_, _) => SetViewMode(ViewDisplayMode.Both);
             btnViewCharts.Click += (_, _) => SetViewMode(ViewDisplayMode.ChartsOnly);
@@ -288,7 +301,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
                     pnlCharts.Visible = true;
                     pnlGrid.Visible = true;
 
-                    int chartHeight = 420;
+                    int chartHeight = containerWidth < 760 ? 660 : 420;
                     pnlCharts.Location = new Point(0, 0);
                     pnlCharts.Size = new Size(containerWidth, chartHeight);
 
@@ -304,7 +317,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
                     pnlCharts.Visible = true;
                     pnlGrid.Visible = false;
 
-                    int chartHeight = Math.Max(520, containerHeight - 20);
+                    int chartHeight = Math.Max(containerWidth < 760 ? 660 : 520, containerHeight - 20);
                     pnlCharts.Location = new Point(0, 0);
                     pnlCharts.Size = new Size(containerWidth, chartHeight);
 
@@ -330,13 +343,14 @@ namespace CRMS_Peguit.winforms.Views.Reports
             {
                 int pad = 20;
                 int totalChartWidth = containerWidth - (pad * 2);
-                int cardWidth = Math.Max(300, (totalChartWidth - 16) / 2);
-                int cardHeight = Math.Max(260, pnlCharts.Height - 20);
+                bool stacked = containerWidth < 760;
+                int cardWidth = Math.Max(1, stacked ? totalChartWidth : (totalChartWidth - 16) / 2);
+                int cardHeight = Math.Max(260, stacked ? (pnlCharts.Height - 36) / 2 : pnlCharts.Height - 20);
 
                 chartReport1.Location = new Point(pad, 10);
                 chartReport1.Size = new Size(cardWidth, cardHeight);
 
-                chartReport2.Location = new Point(chartReport1.Right + 16, 10);
+                chartReport2.Location = stacked ? new Point(pad, chartReport1.Bottom + 16) : new Point(chartReport1.Right + 16, 10);
                 chartReport2.Size = new Size(cardWidth, cardHeight);
             }
 
@@ -386,7 +400,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
             lblLoading.Visible = false;
             btnRunReport.Enabled = false;
-            btnExportCsv.Enabled = false;
+            btnExportPdf.Enabled = false;
             lblReportHeader.Text = "Generating report and analytical charts...";
 
             // Show animated loading skeleton placeholders on KPIs, charts, and table
@@ -444,13 +458,13 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 bool isFinancialReport = rpt.Contains("Commission");
                 if (isFinancialReport && !RbacService.CanExportFinancialSettlements)
                 {
-                    btnExportCsv.Enabled = false;
-                    btnExportCsv.Text = "Export (Admin Only)";
+                    btnExportPdf.Enabled = false;
+                    btnExportPdf.Text = "Export (Admin Only)";
                 }
                 else
                 {
-                    btnExportCsv.Enabled = _currentData != null;
-                    btnExportCsv.Text = "📄 Export CSV";
+                    btnExportPdf.Enabled = _currentData != null;
+                    btnExportPdf.Text = "📄 Export PDF";
                 }
 
                 // Update dynamic KPI summary cards
@@ -1023,7 +1037,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
             };
         }
 
-        private void BtnExportCsv_Click(object? sender, EventArgs e)
+        private void BtnExportPdf_Click(object? sender, EventArgs e)
         {
             if (_currentData == null || _currentHeader == null) return;
             var rpt = cboReportType.SelectedItem?.ToString() ?? "";
@@ -1033,17 +1047,17 @@ namespace CRMS_Peguit.winforms.Views.Reports
                 return;
             }
 
-            using var sfd = new SaveFileDialog { Filter = "CSV Files (*.csv)|*.csv", FileName = $"{_currentHeader.ReportName.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd}.csv" };
+            using var sfd = new SaveFileDialog { Filter = "PDF Files (*.pdf)|*.pdf", FileName = $"{_currentHeader.ReportName.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd}.pdf" };
             if (sfd.ShowDialog() == DialogResult.OK)
             {
                 try
                 {
-                    ExportDynamic(sfd.FileName, "csv");
-                    MessageBox.Show("Exported to CSV successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    ExportDynamic(sfd.FileName, "pdf");
+                    MessageBox.Show("Exported to PDF successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Failed to export CSV: {ex.Message}", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show($"Failed to export PDF: {ex.Message}", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
@@ -1065,33 +1079,27 @@ namespace CRMS_Peguit.winforms.Views.Reports
 
             if (rpt.Contains("Sales"))
             {
-                if (format == "csv") _controller.ExportToCsv((List<SalesReportRow>)_currentData, filePath, _currentHeader, activeFilter);
-                else if (format == "excel") _controller.ExportToExcel((List<SalesReportRow>)_currentData, filePath, _currentHeader, activeFilter);
+                _controller.ExportToPdf((List<SalesReportRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Commission"))
             {
-                if (format == "csv") _controller.ExportToCsv((List<CommissionReportRow>)_currentData, filePath, _currentHeader, activeFilter);
-                else if (format == "excel") _controller.ExportToExcel((List<CommissionReportRow>)_currentData, filePath, _currentHeader, activeFilter);
+                _controller.ExportToPdf((List<CommissionReportRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Property"))
             {
-                if (format == "csv") _controller.ExportToCsv((List<PropertyInventoryReportRow>)_currentData, filePath, _currentHeader, activeFilter);
-                else if (format == "excel") _controller.ExportToExcel((List<PropertyInventoryReportRow>)_currentData, filePath, _currentHeader, activeFilter);
+                _controller.ExportToPdf((List<PropertyInventoryReportRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Lead"))
             {
-                if (format == "csv") _controller.ExportToCsv((List<LeadProgressRow>)_currentData, filePath, _currentHeader, activeFilter);
-                else if (format == "excel") _controller.ExportToExcel((List<LeadProgressRow>)_currentData, filePath, _currentHeader, activeFilter);
+                _controller.ExportToPdf((List<LeadProgressRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Ticket"))
             {
-                if (format == "csv") _controller.ExportToCsv((List<TicketResolutionRow>)_currentData, filePath, _currentHeader, activeFilter);
-                else if (format == "excel") _controller.ExportToExcel((List<TicketResolutionRow>)_currentData, filePath, _currentHeader, activeFilter);
+                _controller.ExportToPdf((List<TicketResolutionRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
             else if (rpt.Contains("Agent"))
             {
-                if (format == "csv") _controller.ExportToCsv((List<AgentActivityRow>)_currentData, filePath, _currentHeader, activeFilter);
-                else if (format == "excel") _controller.ExportToExcel((List<AgentActivityRow>)_currentData, filePath, _currentHeader, activeFilter);
+                _controller.ExportToPdf((List<AgentActivityRow>)_currentData, filePath, _currentHeader, activeFilter);
             }
         }
 

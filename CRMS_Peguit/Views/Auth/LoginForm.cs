@@ -43,10 +43,14 @@ namespace CRMS_Peguit.winforms
         private void ApplyBranding()
         {
             AppBrand.ApplyAppIcon(this);
+
             if (AppBrand.Logo != null)
             {
                 picBrandLogo.Image = AppBrand.Logo;
             }
+            Text = "NEXA CRM SYSTEM — Sign In";
+            lblBrandLogo.Text = "NEXA";
+            lblBrandSub.Text = "CRM SYSTEM";
         }
 
         private void BindEvents()
@@ -98,7 +102,8 @@ namespace CRMS_Peguit.winforms
                     return;
                 }
 
-                if (result.WasOffline)
+                // Only alert the user about offline mode if the machine is truly disconnected from the network
+                if (result.WasOffline && !System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
                 {
                     MessageBox.Show(
                         "You're offline. Signed in using your last saved credentials.",

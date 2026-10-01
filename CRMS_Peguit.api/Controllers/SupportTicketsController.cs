@@ -79,7 +79,7 @@ namespace CRMS_Peguit.api.Controllers
             if (page.HasValue || pageSize.HasValue)
             {
                 int pageNum = Math.Max(1, page.GetValueOrDefault(1));
-                int size = Math.Max(1, pageSize.GetValueOrDefault(25));
+                int size = Math.Clamp(pageSize.GetValueOrDefault(25), 1, 100);
 
                 int totalCount = await query.CountAsync();
                 var pagedList = await query.OrderByDescending(t => t.CreatedAt)
@@ -161,12 +161,26 @@ namespace CRMS_Peguit.api.Controllers
                 _ => ticket.CreatedAt.AddDays(3)
             };
 
-            ticket.TicketNumber = "TCK-TEMP";
-            _db.SupportTickets.Add(ticket);
-            await _db.SaveChangesAsync();
+            var strategy = _db.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
+            {
+                using var tx = await _db.Database.BeginTransactionAsync();
+                try
+                {
+                    ticket.TicketNumber = $"TCK-TMP-{Guid.NewGuid():N}";
+                    _db.SupportTickets.Add(ticket);
+                    await _db.SaveChangesAsync();
 
-            ticket.TicketNumber = $"TCK-{ticket.TicketId:D5}";
-            await _db.SaveChangesAsync();
+                    ticket.TicketNumber = $"TCK-{ticket.TicketId:D5}";
+                    await _db.SaveChangesAsync();
+                    await tx.CommitAsync();
+                }
+                catch
+                {
+                    await tx.RollbackAsync();
+                    throw;
+                }
+            });
 
             return CreatedAtAction(nameof(GetById), new { id = ticket.TicketId }, ticket);
         }
@@ -207,8 +221,19 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPut("{id:int}/status")]
         public async Task<IActionResult> UpdateStatus(int id, [FromBody] UpdateTicketStatusRequest req)
         {
+            var user = CurrentUser;
+            if (user.UserId <= 0) return Unauthorized();
+
             var item = await _db.SupportTickets.FindAsync(id);
             if (item is null) return NotFound();
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role))
+            {
+                bool allowed = (item.AssignedToUserId.HasValue && item.AssignedToUserId.Value > 0)
+                    ? item.AssignedToUserId.Value == user.UserId
+                    : item.RaisedByUserId == user.UserId;
+                if (!allowed) return Forbid();
+            }
 
             item.Status = req.NewStatus;
             if (string.Equals(req.NewStatus, "Resolved", StringComparison.OrdinalIgnoreCase))
@@ -222,12 +247,10 @@ namespace CRMS_Peguit.api.Controllers
 
             if (!string.IsNullOrWhiteSpace(req.Note))
             {
-                if (CurrentUser.UserId <= 0) return Unauthorized();
-
                 _db.TicketComments.Add(new TicketComment
                 {
                     TicketId = id,
-                    AuthorUserId = CurrentUser.UserId,
+                    AuthorUserId = user.UserId,
                     CommentText = $"[Status Changed to {req.NewStatus}] {req.Note}",
                     IsInternal = true,
                     CreatedAt = DateTime.UtcNow
@@ -241,10 +264,19 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPost("{id:int}/reopen")]
         public async Task<IActionResult> Reopen(int id, [FromBody] ReopenTicketRequest req)
         {
-            if (CurrentUser.UserId <= 0) return Unauthorized();
+            var user = CurrentUser;
+            if (user.UserId <= 0) return Unauthorized();
 
             var item = await _db.SupportTickets.FindAsync(id);
             if (item is null) return NotFound();
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role))
+            {
+                bool allowed = (item.AssignedToUserId.HasValue && item.AssignedToUserId.Value > 0)
+                    ? item.AssignedToUserId.Value == user.UserId
+                    : item.RaisedByUserId == user.UserId;
+                if (!allowed) return Forbid();
+            }
 
             item.Status = "Open";
             item.ResolvedAt = null;
@@ -252,7 +284,7 @@ namespace CRMS_Peguit.api.Controllers
             _db.TicketComments.Add(new TicketComment
             {
                 TicketId = id,
-                AuthorUserId = CurrentUser.UserId,
+                AuthorUserId = user.UserId,
                 CommentText = $"[Ticket Reopened] {req.Reason}",
                 IsInternal = true,
                 CreatedAt = DateTime.UtcNow
@@ -275,6 +307,10 @@ namespace CRMS_Peguit.api.Controllers
             if (item is null) return NotFound();
 
             var newAgentId = req.AgentId <= 0 ? null : req.AgentId;
+            if (newAgentId.HasValue && !await _db.Users.AnyAsync(u => u.UserId == newAgentId.Value))
+            {
+                return BadRequest(new { message = $"Agent with ID {newAgentId.Value} does not exist." });
+            }
             item.AssignedToUserId = newAgentId;
 
             if (!string.IsNullOrWhiteSpace(req.Notes))
@@ -296,6 +332,18 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("{id:int}/comments")]
         public async Task<IActionResult> GetComments(int id)
         {
+            var user = CurrentUser;
+            var ticket = await _db.SupportTickets.FindAsync(id);
+            if (ticket is null) return NotFound();
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)
+            {
+                bool allowed = (ticket.AssignedToUserId.HasValue && ticket.AssignedToUserId.Value > 0)
+                    ? ticket.AssignedToUserId.Value == user.UserId
+                    : ticket.RaisedByUserId == user.UserId;
+                if (!allowed) return Forbid();
+            }
+
             var comments = await _db.TicketComments
                 .Include(c => c.AuthorUser)
                 .Where(c => c.TicketId == id)
@@ -307,11 +355,24 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPost("{id:int}/comments")]
         public async Task<IActionResult> AddComment(int id, [FromBody] AddTicketCommentRequest req)
         {
+            if (req is null || string.IsNullOrWhiteSpace(req.CommentText))
+            {
+                return BadRequest(new { message = "CommentText is required." });
+            }
+
             var user = CurrentUser;
             if (user.UserId <= 0) return Unauthorized();
 
             var ticket = await _db.SupportTickets.FindAsync(id);
             if (ticket is null) return NotFound();
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role))
+            {
+                bool allowed = (ticket.AssignedToUserId.HasValue && ticket.AssignedToUserId.Value > 0)
+                    ? ticket.AssignedToUserId.Value == user.UserId
+                    : ticket.RaisedByUserId == user.UserId;
+                if (!allowed) return Forbid();
+            }
 
             if (ticket.FirstRespondedAt == null)
             {
@@ -415,13 +476,26 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("attention")]
         public async Task<IActionResult> GetTicketsNeedingAttention([FromQuery] int maxCount = 3)
         {
+            var user = CurrentUser;
             var now = DateTime.UtcNow;
-            var list = await _db.SupportTickets
+            int clampedCount = Math.Clamp(maxCount, 1, 50);
+
+            var query = _db.SupportTickets
                 .AsNoTracking()
                 .Include(t => t.Customer)
-                .Where(t => t.Status.ToLower() != "resolved")
+                .Where(t => t.Status.ToLower() != "resolved");
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)
+            {
+                query = query.Where(t =>
+                    (t.AssignedToUserId.HasValue && t.AssignedToUserId.Value > 0)
+                        ? t.AssignedToUserId.Value == user.UserId
+                        : t.RaisedByUserId == user.UserId);
+            }
+
+            var list = await query
                 .OrderBy(t => t.CreatedAt)
-                .Take(maxCount)
+                .Take(clampedCount)
                 .ToListAsync();
 
             var dtos = list.Select(t =>

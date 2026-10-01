@@ -36,9 +36,11 @@ namespace CRMS_Peguit.winforms
         private Button _btnBackups = null!;
         private Button _btnSystemSettings = null!;
         private Button _btnSubscriptions = null!;
-        private Button _btnTenants = null!;
+        private Button _btnReports = null!;
+        private Button _btnTerms = null!;
+        private Button _btnAudit = null!;
         private Button _btnSyncHealth = null!;
-        private Button _btnAuditLog = null!;
+        private Button _btnTenants = null!;
         private Button? _activeNavBtn;
 
         // ── Header Controls ──────────────────────────────────────────────────
@@ -50,11 +52,13 @@ namespace CRMS_Peguit.winforms
         private SuperAdminDashboardView? _dashboardView;
         private AdministratorsView? _administratorsView;
         private SubscriptionsView? _subscriptionsView;
+        private AdminPanelMasterView? _reportsView;
+        private AdminPanelMasterView? _termsView;
+        private PlatformAuditLogView? _auditView;
+        private SyncHealthView? _syncHealthView;
         private SystemSettingsView? _systemSettingsView;
         private BackupsView? _backupsView;
         private TenantsView? _tenantsView;
-        private SyncHealthView? _syncHealthView;
-        private PlatformAuditLogView? _auditLogView;
 
         // ── Logout Reference ─────────────────────────────────────────────────
         private readonly LoginForm? _loginForm;
@@ -201,7 +205,7 @@ namespace CRMS_Peguit.winforms
             {
                 Dock = DockStyle.Fill,
                 Text = "   ↪   Sign out",
-                Font = new Font("Segoe UI", 9.5f),
+                Font = new Font("Segoe UI", 9f),
                 ForeColor = Theme.SidebarText,
                 BackColor = Color.Transparent,
                 FlatStyle = FlatStyle.Flat,
@@ -212,7 +216,7 @@ namespace CRMS_Peguit.winforms
             btnLogout.FlatAppearance.BorderSize = 0;
             btnLogout.FlatAppearance.MouseOverBackColor = Color.FromArgb(30, 41, 59); // Slate 800
             btnLogout.FlatAppearance.MouseDownBackColor = Color.FromArgb(15, 23, 42);
-            UiRadiusHelper.StyleButton(btnLogout, 8);
+            UiRadiusHelper.StyleButton(btnLogout, 8, drawFocusRing: false);
 
             btnLogout.MouseEnter += (_, _) => btnLogout.ForeColor = Color.White;
             btnLogout.MouseLeave += (_, _) => btnLogout.ForeColor = Theme.SidebarText;
@@ -259,10 +263,10 @@ namespace CRMS_Peguit.winforms
             _pnlNav.Controls.Add(_btnSubscriptions);
             y += 48;
 
-            // 5. Sync Health
-            _btnSyncHealth = CreateNavButton(KpiIconType.Refresh, "Sync Health", y);
-            _btnSyncHealth.Click += (_, _) => NavigateTo(_btnSyncHealth);
-            _pnlNav.Controls.Add(_btnSyncHealth);
+            // 5. Platform Reports
+            _btnReports = CreateNavButton(KpiIconType.FileText, "Reports", y);
+            _btnReports.Click += (_, _) => NavigateTo(_btnReports);
+            _pnlNav.Controls.Add(_btnReports);
             y += 48;
 
             // Section: SYSTEM GOVERNANCE
@@ -270,22 +274,28 @@ namespace CRMS_Peguit.winforms
             _pnlNav.Controls.Add(CreateSectionHeader("SYSTEM GOVERNANCE", y));
             y += 24;
 
-            // 6. System Settings
+            // 5. System Settings
             _btnSystemSettings = CreateNavButton(KpiIconType.Settings, "System Settings", y);
             _btnSystemSettings.Click += (_, _) => NavigateTo(_btnSystemSettings);
             _pnlNav.Controls.Add(_btnSystemSettings);
             y += 48;
 
-            // 7. Backups
+            // 6. Backups
             _btnBackups = CreateNavButton(KpiIconType.Database, "Backups", y);
             _btnBackups.Click += (_, _) => NavigateTo(_btnBackups);
             _pnlNav.Controls.Add(_btnBackups);
             y += 48;
-
-            // 8. Platform Audit Log
-            _btnAuditLog = CreateNavButton(KpiIconType.FileText, "Platform Audit Log", y);
-            _btnAuditLog.Click += (_, _) => NavigateTo(_btnAuditLog);
-            _pnlNav.Controls.Add(_btnAuditLog);
+            _btnTerms = CreateNavButton(KpiIconType.FileText, "Terms & Conditions", y);
+            _btnTerms.Click += (_, _) => NavigateTo(_btnTerms);
+            _pnlNav.Controls.Add(_btnTerms);
+            y += 48;
+            _btnAudit = CreateNavButton(KpiIconType.FileText, "Audit Log", y);
+            _btnAudit.Click += (_, _) => NavigateTo(_btnAudit);
+            _pnlNav.Controls.Add(_btnAudit);
+            y += 48;
+            _btnSyncHealth = CreateNavButton(KpiIconType.Database, "Sync Health", y);
+            _btnSyncHealth.Click += (_, _) => NavigateTo(_btnSyncHealth);
+            _pnlNav.Controls.Add(_btnSyncHealth);
 
             // Correct docking order: Fill first, then Bottom, then Top panels
             _sidebar.Controls.Add(_pnlNav);
@@ -298,7 +308,7 @@ namespace CRMS_Peguit.winforms
             return new Label
             {
                 Text = title,
-                Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 7f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(100, 116, 139), // Slate 500
                 Location = new Point(18, y),
                 Size = new Size(204, 18)
@@ -310,11 +320,12 @@ namespace CRMS_Peguit.winforms
             var btn = new Button
             {
                 Text = string.Empty,
+                AccessibleName = label,
                 Tag = (icon, label),
                 Location = new Point(10, y),
                 Size = new Size(220, 42),
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
+                Font = new Font("Segoe UI", 9f, FontStyle.Regular),
                 ForeColor = Theme.SidebarText,
                 BackColor = Color.Transparent,
                 Cursor = Cursors.Hand
@@ -358,7 +369,7 @@ namespace CRMS_Peguit.winforms
 
                 // 3. Draw Typography
                 Color textColor = isActive ? Color.White : (isHovered ? Color.FromArgb(241, 245, 249) : Theme.SidebarText);
-                using var textFont = new Font("Segoe UI", 9.5f, isActive ? FontStyle.Bold : FontStyle.Regular);
+                using var textFont = new Font("Segoe UI", 9f, isActive ? FontStyle.Bold : FontStyle.Regular);
                 var textRect = new Rectangle(44, 0, b.Width - 48, b.Height);
                 TextRenderer.DrawText(e.Graphics, label, textFont, textRect, textColor,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
@@ -449,7 +460,7 @@ namespace CRMS_Peguit.winforms
 
             _txtHeaderSearch = new TextBox
             {
-                PlaceholderText = "Search tenants, administrators, policies...",
+                PlaceholderText = "Find a module (press Enter)...",
                 Font = new Font("Segoe UI", 9.5f),
                 Size = new Size(310, 22),
                 Location = new Point(38, 7),
@@ -458,6 +469,22 @@ namespace CRMS_Peguit.winforms
                 ForeColor = Color.FromArgb(15, 23, 42)
             };
             pnlSearchContainer.Controls.Add(_txtHeaderSearch);
+            _txtHeaderSearch.KeyDown += (_, e) =>
+            {
+                if (e.KeyCode != Keys.Enter) return;
+                e.SuppressKeyPress = true;
+                string query = _txtHeaderSearch.Text.Trim();
+                if (query.Length == 0) return;
+                var match = _pnlNav.Controls.OfType<Button>().FirstOrDefault(b =>
+                    b.AccessibleName?.Contains(query, StringComparison.OrdinalIgnoreCase) == true);
+                if (match != null)
+                {
+                    NavigateTo(match);
+                    _txtHeaderSearch.Clear();
+                }
+                else MessageBox.Show("No matching module. Try Reports, Terms, Tenants, or Audit.",
+                    "Find Module", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            };
             _header.Controls.Add(pnlSearchContainer);
 
             // Breadcrumb (Internal Tracking)
@@ -492,6 +519,8 @@ namespace CRMS_Peguit.winforms
                 Location = new Point(_header.Width - 246, 14)
             };
             btnBell.FlatAppearance.BorderSize = 0;
+            btnBell.AccessibleName = "Open platform audit events";
+            btnBell.Click += (_, _) => NavigateTo(_btnAudit);
             UiRadiusHelper.StyleButton(btnBell, 8);
             _header.Controls.Add(btnBell);
 
@@ -535,7 +564,6 @@ namespace CRMS_Peguit.winforms
                     _dashboardView.NavigateToTenants += () => NavigateTo(_btnTenants);
                     _dashboardView.NavigateToSubscriptions += () => NavigateTo(_btnSubscriptions);
                     _dashboardView.NavigateToBackups += () => NavigateTo(_btnBackups);
-                    _dashboardView.NavigateToAuditLog += () => NavigateTo(_btnAuditLog);
                 }
                 view = _dashboardView;
             }
@@ -548,6 +576,26 @@ namespace CRMS_Peguit.winforms
             {
                 _subscriptionsView ??= new SubscriptionsView();
                 view = _subscriptionsView;
+            }
+            else if (navBtn == _btnReports)
+            {
+                _reportsView ??= new AdminPanelMasterView(openReports: true);
+                view = _reportsView;
+            }
+            else if (navBtn == _btnTerms)
+            {
+                _termsView ??= new AdminPanelMasterView(openTerms: true);
+                view = _termsView;
+            }
+            else if (navBtn == _btnAudit)
+            {
+                _auditView ??= new PlatformAuditLogView();
+                view = _auditView;
+            }
+            else if (navBtn == _btnSyncHealth)
+            {
+                _syncHealthView ??= new SyncHealthView();
+                view = _syncHealthView;
             }
             else if (navBtn == _btnSystemSettings)
             {
@@ -563,23 +611,8 @@ namespace CRMS_Peguit.winforms
                     {
                         NavigateTo(_btnSubscriptions);
                     };
-                    _tenantsView.NavigateToSyncHealth += (companyId) =>
-                    {
-                        NavigateTo(_btnSyncHealth);
-                        _syncHealthView?.FilterByCompany(companyId);
-                    };
                 }
                 view = _tenantsView;
-            }
-            else if (navBtn == _btnSyncHealth)
-            {
-                _syncHealthView ??= new SyncHealthView();
-                view = _syncHealthView;
-            }
-            else if (navBtn == _btnAuditLog)
-            {
-                _auditLogView ??= new PlatformAuditLogView();
-                view = _auditLogView;
             }
             else
             {
@@ -594,6 +627,17 @@ namespace CRMS_Peguit.winforms
         // ──────────────────────────────────────────────────────────────────────
         // SIGN OUT
         // ──────────────────────────────────────────────────────────────────────
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                foreach (var view in new UserControl?[] { _dashboardView, _administratorsView, _subscriptionsView,
+                    _reportsView, _termsView, _auditView, _syncHealthView, _systemSettingsView, _backupsView, _tenantsView })
+                    view?.Dispose();
+            }
+            base.Dispose(disposing);
+        }
 
         private void LnkSignOut_Click(object? sender, EventArgs e)
         {

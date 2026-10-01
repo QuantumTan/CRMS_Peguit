@@ -65,7 +65,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             var pnlPageHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 96,
+                Height = 100,
                 BackColor = Theme.Surface,
                 Padding = new Padding(28, 16, 28, 16)
             };
@@ -82,7 +82,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 ForeColor = Theme.TextPrimary,
                 AutoSize = true,
                 UseMnemonic = false,
-                Location = new Point(28, 18)
+                Location = new Point(28, 14)
             };
             var lblSub = new Label
             {
@@ -90,6 +90,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = UiStyleConstants.SubtitleFont,
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
+                UseMnemonic = false,
                 Location = new Point(28, 56)
             };
             pnlPageHeader.Controls.Add(lblSub);
@@ -105,13 +106,14 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 Cursor = Cursors.Hand,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(pnlPageHeader.Width - 164, 29)
+                Location = new Point(pnlPageHeader.Width - 164, 31)
             };
             UiRadiusHelper.StyleButton(_btnInviteAdmin, 6);
             _btnInviteAdmin.Click += BtnInviteAdmin_Click;
             pnlPageHeader.SizeChanged += (_, _) =>
-                _btnInviteAdmin.Location = new Point(pnlPageHeader.Width - 164, 29);
+                _btnInviteAdmin.Location = new Point(pnlPageHeader.Width - 164, 31);
             pnlPageHeader.Controls.Add(_btnInviteAdmin);
+            ResponsiveLayout.BindHeader(pnlPageHeader, lblTitle, lblSub, _btnInviteAdmin);
 
             // ──────────────────────────────────────────────────────────────────
             // 2. 4 TOP KPI METRIC CARDS (Dock = Top)
@@ -167,6 +169,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _pnlKpis.Controls.Add(_kpiWithoutMfa, 3, 0);
 
             pnlKpiContainer.Controls.Add(_pnlKpis);
+            ResponsiveLayout.BindKpis(_pnlKpis, pnlKpiContainer);
 
             // ──────────────────────────────────────────────────────────────────
             // 3. TABLE CARD CONTAINER (Dock = Fill)
@@ -223,6 +226,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             pnlCardHeader.SizeChanged += (_, _) =>
                 _txtSearch.Location = new Point(pnlCardHeader.Width - 284, 16);
             pnlCardHeader.Controls.Add(_txtSearch);
+            ResponsiveLayout.BindHeader(pnlCardHeader, lblCardTitle, null, _txtSearch);
 
             // Pagination Control
             _pagination = new PaginationControl
@@ -321,7 +325,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _gridSkeleton = GridSkeletonOverlay.CreateForGrid(_grid);
             pnlTableCard.Controls.Add(_pagination);
             pnlTableCard.Controls.Add(pnlCardHeader);
-            _pagination.BringToFront();
+            _pagination.SendToBack();
 
             pnlGridWrapper.Controls.Add(pnlTableCard);
 

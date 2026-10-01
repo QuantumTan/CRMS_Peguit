@@ -1,4 +1,6 @@
 using System;
+using CRMS_Peguit.domain.Common;
+using CRMS_Peguit.winforms.Services;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -181,6 +183,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
 
             AddLabel(cardTerms, "Reservation Deposit (₱)", 230, 44);
             _txtReservationFee = AddTextBox(cardTerms, 230, 66, 180, "50,000");
+            _txtReservationFee.TextChanged += (_, _) => RecalculateFinancing();
 
             AddLabel(cardTerms, "Downpayment %", 430, 44);
             _numDownPercent = new NumericUpDown
@@ -230,6 +233,12 @@ namespace CRMS_Peguit.winforms.Views.Deals
             };
             pnlCalc.Controls.Add(_lblDownAmount);
             pnlCalc.Controls.Add(_lblBalanceAmount);
+            pnlCalc.Height = 68;
+            pnlCalc.SizeChanged += (_, _) =>
+            {
+                int bottom = ResponsiveLayout.LabelBlock(_lblDownAmount, 14, 10, Math.Max(1, pnlCalc.Width - 28));
+                ResponsiveLayout.LabelBlock(_lblBalanceAmount, 14, bottom + 4, Math.Max(1, pnlCalc.Width - 28));
+            };
             cardTerms.Controls.Add(pnlCalc);
 
             pnlContent.Controls.Add(cardTerms);
@@ -287,16 +296,34 @@ namespace CRMS_Peguit.winforms.Views.Deals
             pnlContent.Controls.Add(cardClauses);
 
             Controls.Add(pnlContent);
-            pnlContent.BringToFront();
+            pnlFooter.SendToBack();
 
-            Resize += (_, _) =>
+            var cards = new[] { cardCore, cardTerms, cardTaxes, cardClauses };
+            foreach (var card in cards) ResponsiveLayout.FormCard(card);
+            bool contentLayoutBusy = false;
+            void LayoutCards()
             {
-                int cardWidth = Math.Max(500, pnlContent.ClientSize.Width - 48);
-                cardCore.Width = cardWidth;
-                cardTerms.Width = cardWidth;
-                cardTaxes.Width = cardWidth;
-                cardClauses.Width = cardWidth;
-            };
+                if (contentLayoutBusy) return;
+                contentLayoutBusy = true;
+                try
+                {
+                    int margin = ResponsiveLayout.Scale(pnlContent, 24);
+                    int top = ResponsiveLayout.Scale(pnlContent, 16);
+                    int width = Math.Max(1, pnlContent.ClientSize.Width - margin * 2 - SystemInformation.VerticalScrollBarWidth);
+                    foreach (var card in cards)
+                    {
+                        card.Width = width;
+                        card.Location = new Point(margin, top);
+                        top += card.Height + ResponsiveLayout.Scale(pnlContent, 16);
+                    }
+                    pnlContent.AutoScrollMinSize = new Size(0, top);
+                }
+                finally { contentLayoutBusy = false; }
+            }
+            pnlContent.SizeChanged += (_, _) => LayoutCards();
+            Shown += (_, _) => LayoutCards();
+            LayoutCards();
+
         }
 
         private Panel CreateSectionCard(string title, ref int y, int height)
@@ -377,10 +404,14 @@ namespace CRMS_Peguit.winforms.Views.Deals
 
         private void RecalculateFinancing()
         {
+            if (_txtValue == null || _txtReservationFee == null || _numDownPercent == null ||
+                _cboPaymentScheme == null || _lblDownAmount == null || _lblBalanceAmount == null) return;
             if (!decimal.TryParse(_txtValue.Text.Replace(",", "").Trim(), out decimal val))
                 val = 0;
 
-            var financing = DealController.CalculateFinancing(val, _numDownPercent.Value, _cboPaymentScheme.SelectedItem?.ToString());
+            decimal.TryParse(_txtReservationFee.Text.Replace(",", "").Trim(), out decimal resFee);
+
+            var financing = DealController.CalculateFinancing(val, _numDownPercent.Value, _cboPaymentScheme.SelectedItem?.ToString(), resFee);
             _lblDownAmount.Text = financing.DownPaymentDisplay;
             _lblBalanceAmount.Text = financing.BalanceDisplay;
         }
@@ -394,7 +425,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
             _cboCustomer.DataSource = customers;
 
             // Populate Property Picker
-            var properties = _controller.GetPropertyPickerList();
+            var properties = _controller.GetPropertyPickerList(_existingDeal?.PropertyId);
             _cboProperty.DisplayMember = "Value";
             _cboProperty.ValueMember = "Key";
             _cboProperty.DataSource = properties;
@@ -417,9 +448,15 @@ namespace CRMS_Peguit.winforms.Views.Deals
                     _cboAgent.SelectedValue = _existingDeal.AgentId.Value;
 
                 _txtValue.Text = _existingDeal.Value.ToString("N2");
-                _numCommission.Value = Math.Min(20, Math.Max(0, _existingDeal.CommissionRate * 100));
+                _numCommission.Maximum = 100;
+                _numCommission.Value = Math.Min(100, Math.Max(0, _existingDeal.CommissionRate * 100));
 
-                int stgIdx = _cboStage.FindStringExact(_existingDeal.Stage);
+                var savedStage = _existingDeal.Stage;
+                if (savedStage.Equals("Contract Signed", StringComparison.OrdinalIgnoreCase) ||
+                    savedStage.Equals("ContractSigned", StringComparison.OrdinalIgnoreCase) ||
+                    savedStage.Equals("Under Contract", StringComparison.OrdinalIgnoreCase)) savedStage = "Contract";
+                int stgIdx = _cboStage.FindStringExact(savedStage);
+                if (stgIdx < 0) stgIdx = _cboStage.Items.Add(savedStage);
                 if (stgIdx >= 0) _cboStage.SelectedIndex = stgIdx;
 
                 if (_existingDeal.ExpectedCloseDate.HasValue)
@@ -443,19 +480,15 @@ namespace CRMS_Peguit.winforms.Views.Deals
                 if (!string.IsNullOrWhiteSpace(_existingDeal.DstPayer))
                     _cboDst.SelectedItem = _existingDeal.DstPayer;
 
-                if (!string.IsNullOrWhiteSpace(_existingDeal.SpecialStipulations))
-                    _txtSpecialStipulations.Text = _existingDeal.SpecialStipulations;
+                _txtSpecialStipulations.Text = _existingDeal.SpecialStipulations ?? string.Empty;
 
                 // Select active clauses
                 var activeIds = (_existingDeal.ApprovedClauseIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                if (activeIds.Length > 0)
+                for (int i = 0; i < _chkClauses.Items.Count; i++)
                 {
-                    for (int i = 0; i < _chkClauses.Items.Count; i++)
-                    {
-                        string itemText = _chkClauses.Items[i].ToString() ?? "";
-                        bool isChecked = activeIds.Any(id => itemText.StartsWith($"[{id}]"));
-                        _chkClauses.SetItemChecked(i, isChecked);
-                    }
+                    string itemText = _chkClauses.Items[i].ToString() ?? "";
+                    bool isChecked = activeIds.Any(id => itemText.StartsWith($"[{id}]"));
+                    _chkClauses.SetItemChecked(i, isChecked);
                 }
             }
             else
@@ -485,16 +518,39 @@ namespace CRMS_Peguit.winforms.Views.Deals
 
         private void BtnSaveClick(object? sender, EventArgs e)
         {
-            if (!DealController.ValidateDealInput(_cboCustomer.SelectedValue, _cboProperty.SelectedValue, _txtValue.Text, _dtpCloseDate.Value, out decimal dealVal, out string? error))
+            DateTime? dateToValidate = _existingDeal?.ExpectedCloseDate?.Date == _dtpCloseDate.Value.Date
+                ? null : _dtpCloseDate.Value;
+            if (!DealController.ValidateDealInput(_cboCustomer.SelectedValue, _cboProperty.SelectedValue, _txtValue.Text, dateToValidate, out decimal dealVal, out string? error))
             {
                 MessageBox.Show(error ?? "Validation error.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            decimal.TryParse(_txtReservationFee.Text.Replace(",", "").Trim(), out decimal resFee);
+            decimal resFee = 0;
+            if (!string.IsNullOrWhiteSpace(_txtReservationFee.Text))
+            {
+                if (!decimal.TryParse(_txtReservationFee.Text.Replace(",", "").Trim(), out resFee) || resFee < 0)
+                {
+                    MessageBox.Show("Please enter a valid non-negative Reservation Fee.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+            }
+
+            if (!int.TryParse(_cboCustomer.SelectedValue?.ToString(), out int customerId) || customerId <= 0)
+            {
+                MessageBox.Show("Please select a valid Buyer / Customer.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (!int.TryParse(_cboProperty.SelectedValue?.ToString(), out int propertyId) || propertyId <= 0)
+            {
+                MessageBox.Show("Please select a valid Subject Property.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             decimal downPercent = _numDownPercent.Value;
             string paymentScheme = _cboPaymentScheme.SelectedItem?.ToString() ?? "Bank Financing";
-            var financing = DealController.CalculateFinancing(dealVal, downPercent, paymentScheme);
+            var financing = DealController.CalculateFinancing(dealVal, downPercent, paymentScheme, resFee);
             decimal downAmt = financing.DownPaymentAmount;
             decimal balAmt = financing.BalanceAmount;
 
@@ -516,12 +572,25 @@ namespace CRMS_Peguit.winforms.Views.Deals
 
             string stage = _cboStage.SelectedItem?.ToString() ?? "Reservation";
 
+            int? assignedAgentId = null;
+            if (RbacService.CanAssignRecords)
+            {
+                if (_cboAgent.SelectedValue != null && int.TryParse(_cboAgent.SelectedValue.ToString(), out int parsedAid) && parsedAid > 0)
+                {
+                    assignedAgentId = parsedAid;
+                }
+            }
+            else
+            {
+                assignedAgentId = _existingDeal?.AgentId;
+            }
+
             Result = new Deal
             {
                 DealId = _existingDeal?.DealId ?? 0,
-                CustomerId = Convert.ToInt32(_cboCustomer.SelectedValue),
-                PropertyId = Convert.ToInt32(_cboProperty.SelectedValue),
-                AgentId = RbacService.CanAssignRecords ? (_cboAgent.SelectedValue as int?) : (_existingDeal?.AgentId ?? CurrentSession.UserId),
+                CustomerId = customerId,
+                PropertyId = propertyId,
+                AgentId = assignedAgentId,
                 Value = dealVal,
                 CommissionRate = _numCommission.Value / 100m,
                 Stage = stage,
@@ -533,12 +602,21 @@ namespace CRMS_Peguit.winforms.Views.Deals
                 BalanceAmount = balAmt,
                 CgtPayer = _cboCgt.SelectedItem?.ToString() ?? "Seller",
                 DstPayer = _cboDst.SelectedItem?.ToString() ?? "Buyer",
-                TransferTaxPayer = "Buyer",
-                RegistrationFeePayer = "Buyer",
+                TransferTaxPayer = _existingDeal?.TransferTaxPayer ?? "Buyer",
+                RegistrationFeePayer = _existingDeal?.RegistrationFeePayer ?? "Buyer",
+                ContractSignedDate = _existingDeal?.ContractSignedDate,
+                BranchId = _existingDeal?.BranchId ?? CurrentSession.ActiveBranchId,
                 ApprovedClauseIds = string.Join(",", selectedClauseIds),
                 SpecialStipulations = _txtSpecialStipulations.Text.Trim(),
                 ContingenciesJson = _existingDeal?.ContingenciesJson ?? DealContingency.SerializeList(DealClauseLibrary.GetDefaultContingencies(paymentScheme))
             };
+
+            if (DealCommercialRules.Validate(Result) is string commercialError)
+            {
+                MessageBox.Show(commercialError, "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Result = null;
+                return;
+            }
 
             DialogResult = DialogResult.OK;
             Close();

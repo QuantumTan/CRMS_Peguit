@@ -26,6 +26,22 @@ namespace CRMS_Peguit.api.Controllers
             return ApiSecurityHelper.HasFullOversight(User);
         }
 
+        private static bool IsValidDateRange(DateRangeFilter? range, out ActionResult? errorResult)
+        {
+            if (range is null)
+            {
+                errorResult = new BadRequestObjectResult(new { message = "Date range filter is required." });
+                return false;
+            }
+            if (range.Start > range.End)
+            {
+                errorResult = new BadRequestObjectResult(new { message = "Date range start cannot be after end date." });
+                return false;
+            }
+            errorResult = null;
+            return true;
+        }
+
         [HttpPost("sales")]
         public async Task<ActionResult<List<SalesReportRow>>> GetSalesReport(
             [FromBody] DateRangeFilter range,
@@ -33,6 +49,7 @@ namespace CRMS_Peguit.api.Controllers
             [FromQuery] string? propertyType = null)
         {
             if (!ValidateOversight()) return Forbid();
+            if (!IsValidDateRange(range, out var error)) return error!;
 
             var query = _db.Deals
                 .Include(d => d.Customer)
@@ -90,6 +107,7 @@ namespace CRMS_Peguit.api.Controllers
             [FromQuery] string? source = null)
         {
             if (!ValidateOversight()) return Forbid();
+            if (!IsValidDateRange(range, out var error)) return error!;
 
             var query = _db.Leads
                 .Include(l => l.AssignedAgent)
@@ -129,6 +147,7 @@ namespace CRMS_Peguit.api.Controllers
             [FromQuery] int? agentId = null)
         {
             if (!ValidateOversight()) return Forbid();
+            if (!IsValidDateRange(range, out var error)) return error!;
 
             var query = _db.Deals
                 .Include(d => d.Agent)
@@ -178,6 +197,7 @@ namespace CRMS_Peguit.api.Controllers
             [FromQuery] string? status = null)
         {
             if (!ValidateOversight()) return Forbid();
+            if (!IsValidDateRange(range, out var error)) return error!;
 
             var query = _db.Properties
                 .Include(p => p.ListedByAgent)
@@ -246,6 +266,7 @@ namespace CRMS_Peguit.api.Controllers
             [FromQuery] string? status = null)
         {
             if (!ValidateOversight()) return Forbid();
+            if (!IsValidDateRange(range, out var error)) return error!;
 
             var query = _db.SupportTickets
                 .Include(t => t.Customer).ThenInclude(c => c.AssignedAgent)
@@ -311,6 +332,7 @@ namespace CRMS_Peguit.api.Controllers
             [FromQuery] int? agentId = null)
         {
             if (!ValidateOversight()) return Forbid();
+            if (!IsValidDateRange(range, out var error)) return error!;
 
             var query = _db.Users.AsNoTracking()
                 .Include(u => u.Role)

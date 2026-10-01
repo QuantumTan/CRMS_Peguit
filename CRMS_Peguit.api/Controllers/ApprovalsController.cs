@@ -113,6 +113,29 @@ namespace CRMS_Peguit.api.Controllers
                     "PENDING REVIEW"));
             }
 
+            // 4. Retention Requests
+            var retentions = await _db.RetentionRequests
+                .AsNoTracking()
+                .Include(r => r.Customer)
+                .Include(r => r.SubmittedByUser)
+                .Include(r => r.AssignedAgent)
+                .Where(r => r.Status == "Pending")
+                .OrderByDescending(r => r.CreatedAt)
+                .ToListAsync();
+
+            foreach (var r in retentions)
+            {
+                items.Add(new PendingApprovalDto(
+                    r.RequestId,
+                    "Retention Request",
+                    $"Retention ({r.TargetSegment}) - {r.Customer?.FullName ?? $"Customer #{r.CustomerId}"}",
+                    r.SubmittedByUser?.FullName ?? $"User #{r.SubmittedByUserId}",
+                    r.CreatedAt,
+                    r.AssignedAgent?.FullName ?? "Unassigned",
+                    r.AssignedAgentId,
+                    "PENDING REVIEW"));
+            }
+
             return Ok(items.OrderByDescending(x => x.CreatedAt).ToList());
         }
 
@@ -127,7 +150,7 @@ namespace CRMS_Peguit.api.Controllers
 
             var agents = await _db.Users
                 .AsNoTracking()
-                .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status.ToLower() != "inactive")
+                .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status != null && u.Status.ToLower() != "inactive")
                 .OrderBy(u => u.LastName)
                 .ThenBy(u => u.FirstName)
                 .Select(u => new AgentPickerDto(u.UserId, u.FullName, u.Email))
@@ -143,15 +166,18 @@ namespace CRMS_Peguit.api.Controllers
             if (!ApiSecurityHelper.CanAssignRecords(user.Role))
                 return StatusCode(StatusCodes.Status403Forbidden, "Only Manager or Admin may assign records.");
 
+            if (string.IsNullOrWhiteSpace(req.Type))
+                return BadRequest(new { message = "Type is required." });
+
             var newAgentId = req.AgentId <= 0 ? null : req.AgentId;
             if (newAgentId.HasValue && !await _db.Users.AnyAsync(u => u.UserId == newAgentId.Value))
             {
-                newAgentId = null;
+                return BadRequest(new { message = $"Agent with ID {newAgentId.Value} does not exist." });
             }
 
             if (req.Type.Equals("Lead", StringComparison.OrdinalIgnoreCase))
             {
-                var item = await _db.Leads.FindAsync(req.Id);
+                var item = await _db.Leads.FirstOrDefaultAsync(l => l.LeadId == req.Id && !l.IsDeleted);
                 if (item == null) return NotFound();
                 item.AssignedAgentId = newAgentId;
                 item.AssignmentStatus = req.ApproveNow ? "approved" : "pending_review";
@@ -161,7 +187,7 @@ namespace CRMS_Peguit.api.Controllers
             }
             else if (req.Type.Equals("Customer", StringComparison.OrdinalIgnoreCase))
             {
-                var item = await _db.Customers.FindAsync(req.Id);
+                var item = await _db.Customers.FirstOrDefaultAsync(c => c.CustomerId == req.Id && !c.IsDeleted);
                 if (item == null) return NotFound();
                 item.AssignedAgentId = newAgentId;
                 item.AssignmentStatus = req.ApproveNow ? "approved" : "pending_review";
@@ -171,13 +197,34 @@ namespace CRMS_Peguit.api.Controllers
             }
             else if (req.Type.Equals("Property", StringComparison.OrdinalIgnoreCase))
             {
-                var item = await _db.Properties.FindAsync(req.Id);
+                var item = await _db.Properties.FirstOrDefaultAsync(p => p.PropertyId == req.Id);
                 if (item == null) return NotFound();
                 item.ListedByAgentId = newAgentId;
                 item.AssignmentStatus = req.ApproveNow ? "approved" : "pending_review";
                 item.AssignmentReviewedByUserId = user.UserId > 0 ? user.UserId : null;
                 item.AssignmentReviewedAt = DateTime.UtcNow;
                 item.AssignmentReviewNotes = req.Notes;
+            }
+            else if (req.Type.Equals("Retention Request", StringComparison.OrdinalIgnoreCase))
+            {
+                var item = await _db.RetentionRequests.FirstOrDefaultAsync(r => r.RequestId == req.Id);
+                if (item == null) return NotFound();
+                item.AssignedAgentId = newAgentId;
+                if (req.ApproveNow)
+                {
+                    if (item.SubmittedByUserId == user.UserId)
+                    {
+                        return BadRequest(new { message = "Self-approval prevention: submitter cannot approve their own retention request." });
+                    }
+                    item.Status = "Approved";
+                    item.ReviewedByUserId = user.UserId > 0 ? user.UserId : null;
+                    item.ReviewedAt = DateTime.UtcNow;
+                    item.ReviewerRemarks = req.Notes ?? "Approved via Approvals center.";
+                }
+            }
+            else
+            {
+                return BadRequest(new { message = $"Unsupported approval type: '{req.Type}'." });
             }
 
             await _db.SaveChangesAsync();
@@ -191,9 +238,12 @@ namespace CRMS_Peguit.api.Controllers
             if (!ApiSecurityHelper.CanAssignRecords(user.Role))
                 return StatusCode(StatusCodes.Status403Forbidden, "Only Manager or Admin may approve assignments.");
 
+            if (string.IsNullOrWhiteSpace(req.Type))
+                return BadRequest(new { message = "Type is required." });
+
             if (req.Type.Equals("Lead", StringComparison.OrdinalIgnoreCase))
             {
-                var item = await _db.Leads.FindAsync(req.Id);
+                var item = await _db.Leads.FirstOrDefaultAsync(l => l.LeadId == req.Id && !l.IsDeleted);
                 if (item == null) return NotFound();
                 item.AssignmentStatus = "approved";
                 item.AssignmentReviewedByUserId = user.UserId > 0 ? user.UserId : null;
@@ -202,7 +252,7 @@ namespace CRMS_Peguit.api.Controllers
             }
             else if (req.Type.Equals("Customer", StringComparison.OrdinalIgnoreCase))
             {
-                var item = await _db.Customers.FindAsync(req.Id);
+                var item = await _db.Customers.FirstOrDefaultAsync(c => c.CustomerId == req.Id && !c.IsDeleted);
                 if (item == null) return NotFound();
                 item.AssignmentStatus = "approved";
                 item.AssignmentReviewedByUserId = user.UserId > 0 ? user.UserId : null;
@@ -211,12 +261,92 @@ namespace CRMS_Peguit.api.Controllers
             }
             else if (req.Type.Equals("Property", StringComparison.OrdinalIgnoreCase))
             {
-                var item = await _db.Properties.FindAsync(req.Id);
+                var item = await _db.Properties.FirstOrDefaultAsync(p => p.PropertyId == req.Id);
                 if (item == null) return NotFound();
                 item.AssignmentStatus = "approved";
                 item.AssignmentReviewedByUserId = user.UserId > 0 ? user.UserId : null;
                 item.AssignmentReviewedAt = DateTime.UtcNow;
                 item.AssignmentReviewNotes = req.Notes;
+            }
+            else if (req.Type.Equals("Retention Request", StringComparison.OrdinalIgnoreCase))
+            {
+                var item = await _db.RetentionRequests.FirstOrDefaultAsync(r => r.RequestId == req.Id);
+                if (item == null) return NotFound();
+                if (item.SubmittedByUserId == user.UserId)
+                {
+                    return BadRequest(new { message = "Self-approval prevention: submitter cannot approve their own retention request." });
+                }
+                item.Status = "Approved";
+                item.ReviewedByUserId = user.UserId > 0 ? user.UserId : null;
+                item.ReviewedAt = DateTime.UtcNow;
+                item.ReviewerRemarks = string.IsNullOrWhiteSpace(req.Notes) ? "Approved via Approvals center." : req.Notes;
+            }
+            else
+            {
+                return BadRequest(new { message = $"Unsupported approval type: '{req.Type}'." });
+            }
+
+            await _db.SaveChangesAsync();
+            return Ok(new { success = true });
+        }
+
+        [HttpPost("reject")]
+        public async Task<IActionResult> RejectAssignment([FromBody] ApprovalActionRequest req)
+        {
+            var user = CurrentUser;
+            if (!ApiSecurityHelper.CanAssignRecords(user.Role))
+                return StatusCode(StatusCodes.Status403Forbidden, "Only Manager or Admin may reject assignments.");
+
+            if (string.IsNullOrWhiteSpace(req.Type))
+                return BadRequest(new { message = "Type is required." });
+
+            if (req.Type.Equals("Lead", StringComparison.OrdinalIgnoreCase))
+            {
+                var item = await _db.Leads.FirstOrDefaultAsync(l => l.LeadId == req.Id && !l.IsDeleted);
+                if (item == null) return NotFound();
+                item.AssignedAgentId = null;
+                item.AssignmentStatus = "pending_review";
+                item.AssignmentReviewedByUserId = user.UserId > 0 ? user.UserId : null;
+                item.AssignmentReviewedAt = DateTime.UtcNow;
+                item.AssignmentReviewNotes = req.Notes ?? "Assignment rejected.";
+            }
+            else if (req.Type.Equals("Customer", StringComparison.OrdinalIgnoreCase))
+            {
+                var item = await _db.Customers.FirstOrDefaultAsync(c => c.CustomerId == req.Id && !c.IsDeleted);
+                if (item == null) return NotFound();
+                item.AssignedAgentId = null;
+                item.AssignmentStatus = "pending_review";
+                item.AssignmentReviewedByUserId = user.UserId > 0 ? user.UserId : null;
+                item.AssignmentReviewedAt = DateTime.UtcNow;
+                item.AssignmentReviewNotes = req.Notes ?? "Assignment rejected.";
+            }
+            else if (req.Type.Equals("Property", StringComparison.OrdinalIgnoreCase))
+            {
+                var item = await _db.Properties.FirstOrDefaultAsync(p => p.PropertyId == req.Id);
+                if (item == null) return NotFound();
+                item.ListedByAgentId = null;
+                item.AssignmentStatus = "pending_review";
+                item.AssignmentReviewedByUserId = user.UserId > 0 ? user.UserId : null;
+                item.AssignmentReviewedAt = DateTime.UtcNow;
+                item.AssignmentReviewNotes = req.Notes ?? "Assignment rejected.";
+            }
+            else if (req.Type.Equals("Retention Request", StringComparison.OrdinalIgnoreCase))
+            {
+                var item = await _db.RetentionRequests.FirstOrDefaultAsync(r => r.RequestId == req.Id);
+                if (item == null) return NotFound();
+                if (item.SubmittedByUserId == user.UserId)
+                {
+                    return BadRequest(new { message = "Self-approval prevention: submitter cannot reject their own retention request." });
+                }
+                item.Status = "Rejected";
+                item.ReviewedByUserId = user.UserId > 0 ? user.UserId : null;
+                item.ReviewedAt = DateTime.UtcNow;
+                item.RejectionReason = req.Notes ?? "Rejected via Approvals center.";
+                item.ReviewerRemarks = req.Notes;
+            }
+            else
+            {
+                return BadRequest(new { message = $"Unsupported approval type: '{req.Type}'." });
             }
 
             await _db.SaveChangesAsync();

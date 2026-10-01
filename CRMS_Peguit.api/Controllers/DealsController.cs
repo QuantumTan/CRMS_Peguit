@@ -79,7 +79,7 @@ namespace CRMS_Peguit.api.Controllers
             if (page.HasValue || pageSize.HasValue)
             {
                 int pageNum = Math.Max(1, page.GetValueOrDefault(1));
-                int size = Math.Max(1, pageSize.GetValueOrDefault(25));
+                int size = Math.Clamp(pageSize.GetValueOrDefault(25), 1, 100);
 
                 int totalCount = await query.CountAsync();
                 var pagedList = await query.OrderByDescending(d => d.CreatedAt)
@@ -152,6 +152,17 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             if (user.UserId <= 0) return Unauthorized();
+
+            if (deal.CustomerId <= 0)
+                return BadRequest(new { message = "A valid CustomerId is required." });
+            if (deal.PropertyId <= 0)
+                return BadRequest(new { message = "A valid PropertyId is required." });
+            if (DealCommercialRules.Validate(deal) is string error)
+                return BadRequest(new { message = error });
+
+            if (string.IsNullOrWhiteSpace(deal.Stage))
+                deal.Stage = "Offer";
+
             deal.CreatedAt = DateTime.UtcNow;
             deal.CreatedByUserId = user.UserId;
 
@@ -170,7 +181,7 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> Update(int id, Deal updated)
         {
             var user = CurrentUser;
-            var item = await _db.Deals.Include(d => d.Contingencies).SingleOrDefaultAsync(x => x.DealId == id);
+            var item = await _db.Deals.Include(d => d.Contingencies).Include(d => d.DealClauses).SingleOrDefaultAsync(x => x.DealId == id);
             if (item is null) return NotFound();
 
             if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)
@@ -180,6 +191,9 @@ namespace CRMS_Peguit.api.Controllers
                     : item.CreatedByUserId == user.UserId;
                 if (!allowed) return Forbid();
             }
+
+            if (DealCommercialRules.Validate(updated) is string error)
+                return BadRequest(new { message = error });
 
             item.CustomerId = updated.CustomerId;
             item.PropertyId = updated.PropertyId;
@@ -196,6 +210,7 @@ namespace CRMS_Peguit.api.Controllers
             item.RegistrationFeePayer = updated.RegistrationFeePayer;
             item.SpecialStipulations = updated.SpecialStipulations;
             item.ContractSignedDate = updated.ContractSignedDate;
+            DealCommercialRules.ApplyClauseSelection(item, updated);
 
             if (ApiSecurityHelper.CanAssignRecords(user.Role))
             {
@@ -209,30 +224,47 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPut("{id:int}/contingency")]
         public async Task<IActionResult> UpdateContingencyStatus(int id, [FromBody] UpdateContingencyRequest req)
         {
+            var user = CurrentUser;
             var item = await _db.Deals.Include(d => d.Contingencies).SingleOrDefaultAsync(x => x.DealId == id);
             if (item is null) return NotFound();
 
-            var contingencies = item.Contingencies.OrderBy(c => c.DealContingencyId).ToList();
-            if (req.ContingencyIndex >= 0 && req.ContingencyIndex < contingencies.Count)
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)
             {
-                var c = contingencies[req.ContingencyIndex];
-                c.Status = req.NewStatus;
-                if (string.Equals(req.NewStatus, "Satisfied", StringComparison.OrdinalIgnoreCase))
-                {
-                    c.SatisfiedAt = DateTime.UtcNow;
-                    c.IsSatisfied = true;
-                }
-                else
-                {
-                    c.SatisfiedAt = null;
-                    c.IsSatisfied = false;
-                }
-                if (!string.IsNullOrWhiteSpace(req.Notes))
-                {
-                    c.Notes = req.Notes.Trim();
-                }
-                await _db.SaveChangesAsync();
+                bool allowed = (item.AgentId.HasValue && item.AgentId.Value > 0)
+                    ? item.AgentId.Value == user.UserId
+                    : item.CreatedByUserId == user.UserId;
+                if (!allowed) return Forbid();
             }
+
+            var allowedStatuses = new[] { "Pending", "Satisfied", "Waived", "Failed" };
+            if (string.IsNullOrWhiteSpace(req.NewStatus) || !allowedStatuses.Any(s => s.Equals(req.NewStatus, StringComparison.OrdinalIgnoreCase)))
+            {
+                return BadRequest(new { message = $"Invalid contingency status '{req.NewStatus}'. Allowed: {string.Join(", ", allowedStatuses)}" });
+            }
+
+            var contingencies = item.Contingencies.OrderBy(c => c.DealContingencyId).ToList();
+            if (req.ContingencyIndex < 0 || req.ContingencyIndex >= contingencies.Count)
+            {
+                return BadRequest(new { message = $"Contingency index {req.ContingencyIndex} is out of bounds (total contingencies: {contingencies.Count})." });
+            }
+
+            var c = contingencies[req.ContingencyIndex];
+            c.Status = req.NewStatus;
+            if (string.Equals(req.NewStatus, "Satisfied", StringComparison.OrdinalIgnoreCase))
+            {
+                c.SatisfiedAt = DateTime.UtcNow;
+                c.IsSatisfied = true;
+            }
+            else
+            {
+                c.SatisfiedAt = null;
+                c.IsSatisfied = false;
+            }
+            if (!string.IsNullOrWhiteSpace(req.Notes))
+            {
+                c.Notes = req.Notes.Trim();
+            }
+            await _db.SaveChangesAsync();
 
             return Ok(item);
         }
@@ -241,7 +273,10 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> Delete(int id)
         {
             var user = CurrentUser;
-            var item = await _db.Deals.FindAsync(id);
+            var item = await _db.Deals
+                .Include(d => d.Contingencies)
+                .Include(d => d.DealClauses)
+                .FirstOrDefaultAsync(d => d.DealId == id);
             if (item is null) return NotFound();
 
             if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)
@@ -331,7 +366,7 @@ namespace CRMS_Peguit.api.Controllers
 
             var list = await _db.Users
                 .AsNoTracking()
-                .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status.ToLower() != "inactive")
+                .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status != null && !u.Status.Equals("inactive", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(u => u.LastName)
                 .ThenBy(u => u.FirstName)
                 .Select(u => new KeyValuePair<int, string>(u.UserId, u.FullName))
@@ -348,6 +383,10 @@ namespace CRMS_Peguit.api.Controllers
 
             if (agentId.HasValue && agentId.Value > 0)
             {
+                if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && agentId.Value != user.UserId)
+                {
+                    return Forbid();
+                }
                 query = query.Where(d => d.AgentId == agentId.Value);
             }
             else if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)
@@ -365,45 +404,84 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("stats/closed-this-month")]
         public async Task<IActionResult> GetDealsClosedThisMonthCount()
         {
+            var user = CurrentUser;
             var now = DateTime.UtcNow;
-            int count = await _db.Deals.AsNoTracking().CountAsync(d =>
+            var query = _db.Deals.AsNoTracking().Where(d =>
                 d.Stage.ToLower() == "closed" &&
                 d.ExpectedCloseDate.HasValue &&
                 d.ExpectedCloseDate.Value.Year == now.Year &&
                 d.ExpectedCloseDate.Value.Month == now.Month);
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)
+            {
+                query = query.Where(d =>
+                    (d.AgentId.HasValue && d.AgentId.Value > 0)
+                        ? d.AgentId.Value == user.UserId
+                        : d.CreatedByUserId == user.UserId);
+            }
+
+            int count = await query.CountAsync();
             return Ok(new { count });
         }
 
         [HttpGet("stats/commission-this-month")]
         public async Task<IActionResult> GetCommissionEarnedThisMonth()
         {
+            var user = CurrentUser;
             var now = DateTime.UtcNow;
-            var closed = await _db.Deals.AsNoTracking()
+            var query = _db.Deals.AsNoTracking()
                 .Where(d => d.Stage.ToLower() == "closed" &&
                             d.ExpectedCloseDate.HasValue &&
                             d.ExpectedCloseDate.Value.Year == now.Year &&
-                            d.ExpectedCloseDate.Value.Month == now.Month)
-                .ToListAsync();
+                            d.ExpectedCloseDate.Value.Month == now.Month);
 
-            decimal totalCommission = closed.Sum(d => d.Value * (d.CommissionRate / 100m));
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)
+            {
+                query = query.Where(d =>
+                    (d.AgentId.HasValue && d.AgentId.Value > 0)
+                        ? d.AgentId.Value == user.UserId
+                        : d.CreatedByUserId == user.UserId);
+            }
+
+            var closed = await query.ToListAsync();
+            decimal totalCommission = closed.Sum(d =>
+            {
+                decimal rate = d.CommissionRate > 1m ? d.CommissionRate / 100m : d.CommissionRate;
+                return d.Value * rate;
+            });
             return Ok(new { commission = totalCommission });
         }
 
         [HttpGet("stats/commission-trend")]
         public async Task<IActionResult> GetCommissionTrendLast6Months([FromQuery] int months = 6)
         {
+            var user = CurrentUser;
             var now = DateTime.UtcNow;
-            var closedDeals = await _db.Deals.AsNoTracking()
-                .Where(d => d.Stage.ToLower() == "closed" && d.ExpectedCloseDate.HasValue)
-                .ToListAsync();
+            int clampedMonths = Math.Clamp(months, 1, 24);
+            var query = _db.Deals.AsNoTracking()
+                .Where(d => d.Stage.ToLower() == "closed" && d.ExpectedCloseDate.HasValue);
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)
+            {
+                query = query.Where(d =>
+                    (d.AgentId.HasValue && d.AgentId.Value > 0)
+                        ? d.AgentId.Value == user.UserId
+                        : d.CreatedByUserId == user.UserId);
+            }
+
+            var closedDeals = await query.ToListAsync();
 
             var points = new List<TrendPointDto>();
-            for (int i = months - 1; i >= 0; i--)
+            for (int i = clampedMonths - 1; i >= 0; i--)
             {
                 var dt = now.AddMonths(-i);
                 decimal monthComm = closedDeals
                     .Where(d => d.ExpectedCloseDate!.Value.Year == dt.Year && d.ExpectedCloseDate.Value.Month == dt.Month)
-                    .Sum(d => d.Value * (d.CommissionRate / 100m));
+                    .Sum(d =>
+                    {
+                        decimal rate = d.CommissionRate > 1m ? d.CommissionRate / 100m : d.CommissionRate;
+                        return d.Value * rate;
+                    });
 
                 points.Add(new TrendPointDto(dt.ToString("MMM yyyy"), (double)monthComm));
             }

@@ -17,14 +17,12 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         private DataGridView _grid = null!;
         private GridSkeletonOverlay? _gridSkeleton;
         private Panel _topPanel = null!;
-        private Button _createBtn = null!;
         private TextBox _txtSearch = null!;
         private PaginationControl _pagination = null!;
         private readonly SuperAdminTenantController _controller;
         private List<TenantGridDto> _allTenants = new();
 
         public event Action<int>? NavigateToSubscription;
-        public event Action<int>? NavigateToSyncHealth;
 
         public TenantsView()
         {
@@ -54,11 +52,12 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
             var titleLabel = new Label
             {
-                Text = "Tenant & Company Management",
+                Text = "Tenant Company Management",
                 Font = UiStyleConstants.PageTitleFont,
                 ForeColor = Theme.TextPrimary,
+                UseMnemonic = false,
                 AutoSize = true,
-                Location = new Point(28, 18)
+                Location = new Point(28, 14)
             };
 
             var subLabel = new Label
@@ -66,31 +65,16 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Text = "Manage tenant organizations, administrator accounts, subscriptions, and operational statuses.",
                 Font = UiStyleConstants.SubtitleFont,
                 ForeColor = Theme.TextSecondary,
+                UseMnemonic = false,
                 AutoSize = true,
                 Location = new Point(28, 56)
             };
 
-            _createBtn = new Button
-            {
-                Text = "＋ Create Tenant",
-                BackColor = Theme.Primary,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                Width = 144,
-                Height = 38,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                Cursor = Cursors.Hand
-            };
-            _createBtn.FlatAppearance.BorderSize = 0;
-            UiRadiusHelper.StyleButton(_createBtn, 6);
-            _createBtn.Click += CreateBtn_Click;
-            _createBtn.Location = new Point(_topPanel.Width - 172, 29);
-            _topPanel.SizeChanged += (_, _) => _createBtn.Location = new Point(_topPanel.Width - 172, 29);
+
 
             _topPanel.Controls.Add(titleLabel);
             _topPanel.Controls.Add(subLabel);
-            _topPanel.Controls.Add(_createBtn);
+            ResponsiveLayout.BindHeader(_topPanel, titleLabel, subLabel);
 
             // 2. Table Card Wrapper (Dock = Fill)
             var pnlGridWrapper = new Panel
@@ -144,6 +128,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             pnlCardHeader.SizeChanged += (_, _) =>
                 _txtSearch.Location = new Point(pnlCardHeader.Width - 304, 14);
             pnlCardHeader.Controls.Add(_txtSearch);
+            ResponsiveLayout.BindHeader(pnlCardHeader, lblCardTitle, null, _txtSearch);
 
             // Pagination
             _pagination = new PaginationControl
@@ -178,40 +163,48 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Name = "CompanyName",
                 HeaderText = "Company Name",
                 DataPropertyName = "CompanyName",
-                FillWeight = 26,
-                MinimumWidth = 180
+                FillWeight = 22,
+                MinimumWidth = 170
+            });
+            _grid.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "DisplayName",
+                HeaderText = "Brand Name",
+                DataPropertyName = "DisplayName",
+                FillWeight = 18,
+                MinimumWidth = 140
             });
             _grid.Columns.Add(new DataGridViewTextBoxColumn
             {
                 Name = "PrimaryAdmin",
                 HeaderText = "Primary Admin",
                 DataPropertyName = "PrimaryAdminName",
-                FillWeight = 22,
-                MinimumWidth = 150
+                FillWeight = 16,
+                MinimumWidth = 130
             });
             _grid.Columns.Add(new DataGridViewTextBoxColumn
             {
                 Name = "TierLevel",
                 HeaderText = "Plan Tier",
                 DataPropertyName = "TierLevel",
-                FillWeight = 16,
-                MinimumWidth = 120
+                FillWeight = 12,
+                MinimumWidth = 100
             });
             _grid.Columns.Add(new DataGridViewTextBoxColumn
             {
                 Name = "Status",
                 HeaderText = "Status",
                 DataPropertyName = "Status",
-                FillWeight = 12,
-                MinimumWidth = 90
+                FillWeight = 10,
+                MinimumWidth = 80
             });
             _grid.Columns.Add(new DataGridViewTextBoxColumn
             {
                 Name = "CreatedDate",
                 HeaderText = "Created Date",
                 DataPropertyName = "CreatedDateFormatted",
-                FillWeight = 14,
-                MinimumWidth = 110
+                FillWeight = 12,
+                MinimumWidth = 100
             });
             _grid.Columns.Add(new DataGridViewTextBoxColumn
             {
@@ -219,7 +212,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 HeaderText = "Users",
                 DataPropertyName = "UserCount",
                 FillWeight = 8,
-                MinimumWidth = 70
+                MinimumWidth = 60
             });
             _grid.Columns.Add(new ActionsColumn
             {
@@ -234,7 +227,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _gridSkeleton = GridSkeletonOverlay.CreateForGrid(_grid);
             pnlTableCard.Controls.Add(_pagination);
             pnlTableCard.Controls.Add(pnlCardHeader);
-            _pagination.BringToFront();
+            _pagination.SendToBack();
 
             pnlGridWrapper.Controls.Add(pnlTableCard);
 
@@ -244,10 +237,13 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
         public async Task LoadDataAsync()
         {
+            if (IsDisposed || Disposing) return;
             _gridSkeleton?.ShowSkeleton();
             try
             {
-                _allTenants = await _controller.GetTenantsAsync();
+                var tenants = await Task.Run(() => _controller.GetTenantsAsync());
+                if (IsDisposed || Disposing) return;
+                _allTenants = tenants;
                 ApplyFilter(resetPage: true);
             }
             catch (Exception ex)
@@ -263,7 +259,10 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             }
             finally
             {
-                _gridSkeleton?.HideSkeleton();
+                if (!IsDisposed && !Disposing)
+                {
+                    _gridSkeleton?.HideSkeleton();
+                }
             }
         }
 
@@ -280,6 +279,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             {
                 query = query.Where(t =>
                     t.CompanyName.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrEmpty(t.DisplayName) && t.DisplayName.Contains(s, StringComparison.OrdinalIgnoreCase)) ||
                     t.CompanyCode.Contains(s, StringComparison.OrdinalIgnoreCase) ||
                     t.PrimaryAdminName.Contains(s, StringComparison.OrdinalIgnoreCase) ||
                     t.TierLevel.Contains(s, StringComparison.OrdinalIgnoreCase));
@@ -295,6 +295,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 {
                     t.CompanyId,
                     t.CompanyName,
+                    DisplayName = string.IsNullOrWhiteSpace(t.DisplayName) ? t.CompanyName : t.DisplayName,
                     t.PrimaryAdminName,
                     t.TierLevel,
                     t.Status,
@@ -309,6 +310,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 int rowIndex = _grid.Rows.Add(
                     item.CompanyId,
                     item.CompanyName,
+                    item.DisplayName,
                     item.PrimaryAdminName,
                     item.TierLevel,
                     item.Status,
@@ -326,11 +328,29 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             if (e.RowIndex < 0 || e.Graphics == null) return;
 
             var colCompany = _grid.Columns["CompanyName"];
+            var colDisplayName = _grid.Columns["DisplayName"];
             var colAdmin = _grid.Columns["PrimaryAdmin"];
             var colStatus = _grid.Columns["Status"];
             var colTier = _grid.Columns["TierLevel"];
 
-            if ((colCompany != null && e.ColumnIndex == colCompany.Index) ||
+            if (colDisplayName != null && e.ColumnIndex == colDisplayName.Index)
+            {
+                e.PaintBackground(e.CellBounds, true);
+                var text = e.Value?.ToString() ?? "";
+                if (!string.IsNullOrEmpty(text))
+                {
+                    var textRect = new Rectangle(e.CellBounds.X + 12, e.CellBounds.Y, e.CellBounds.Width - 16, e.CellBounds.Height);
+                    using var font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+                    TextRenderer.DrawText(e.Graphics, text, font, textRect, Theme.TextPrimary,
+                        TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                }
+                using (var linePen = new Pen(UiGridHelper.GridBorder, 1f))
+                {
+                    e.Graphics.DrawLine(linePen, e.CellBounds.Left, e.CellBounds.Bottom - 1, e.CellBounds.Right, e.CellBounds.Bottom - 1);
+                }
+                e.Handled = true;
+            }
+            else if ((colCompany != null && e.ColumnIndex == colCompany.Index) ||
                 (colAdmin != null && e.ColumnIndex == colAdmin.Index))
             {
                 e.PaintBackground(e.CellBounds, true);
@@ -457,34 +477,19 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 subItem.Click += (_, _) => NavigateToSubscription?.Invoke(tenantId);
                 menu.Items.Add(subItem);
 
-                var syncItem = new ToolStripMenuItem("🔄  View Sync Health");
-                syncItem.Click += (_, _) => NavigateToSyncHealth?.Invoke(tenantId);
-                menu.Items.Add(syncItem);
+                var brandItem = new ToolStripMenuItem("🎨  Tenant Branding (View / Edit / Reset)");
+                brandItem.Click += async (_, _) =>
+                {
+                    using var dlg = new SuperAdminTenantBrandingDialog(tenantId, tenant.CompanyName, _controller);
+                    if (dlg.ShowDialog(this) == DialogResult.OK)
+                    {
+                        await LoadDataAsync();
+                    }
+                };
+                menu.Items.Add(brandItem);
 
                 var cellRect = _grid.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, false);
                 menu.Show(_grid, new Point(cellRect.Left, cellRect.Bottom));
-            }
-        }
-
-        private async void CreateBtn_Click(object? sender, EventArgs e)
-        {
-            using var dlg = new CreateTenantDialog();
-            if (dlg.ShowDialog(this) == DialogResult.OK)
-            {
-                var (success, error) = await _controller.CreateTenantAsync(dlg.Request);
-                if (success)
-                {
-                    MessageBox.Show(
-                        $"Tenant organization '{dlg.Request.CompanyName}' was successfully created with plan '{dlg.Request.TierLevel}'.",
-                        "Tenant Created",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
-                    _ = LoadDataAsync();
-                }
-                else
-                {
-                    MessageBox.Show($"Failed to create tenant: {error}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
             }
         }
     }

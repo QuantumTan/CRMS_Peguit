@@ -44,8 +44,13 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> GetAllBranches([FromQuery] int? tenantId = null)
         {
             var user = CurrentUser;
-            int tid = tenantId ?? user.TenantId;
-            if (tid <= 0) tid = 1;
+            int tid = user.TenantId;
+            if (ApiSecurityHelper.IsSuperAdmin(user.Role) && tenantId.HasValue && tenantId.Value > 0)
+            {
+                tid = tenantId.Value;
+            }
+
+            if (tid <= 0) return Unauthorized();
 
             var branches = await _db.Branches
                 .Where(b => b.TenantId == tid)
@@ -54,24 +59,43 @@ namespace CRMS_Peguit.api.Controllers
 
             if (branches.Count == 0)
             {
-                branches = new List<Branch>
-                {
-                    new Branch { TenantId = tid, BranchCode = "HQ-MNL", BranchName = "Metro Manila Head Office", Address = "Ayala Ave, Makati City", Phone = "(02) 8888-0100", IsActive = true, CreatedAt = DateTime.UtcNow.AddMonths(-12) },
-                    new Branch { TenantId = tid, BranchCode = "BR-CEB", BranchName = "Cebu Regional Branch", Address = "Cebu Business Park, Cebu City", Phone = "(032) 234-5678", IsActive = true, CreatedAt = DateTime.UtcNow.AddMonths(-8) },
-                    new Branch { TenantId = tid, BranchCode = "BR-DVO", BranchName = "Davao Commercial Branch", Address = "J.P. Laurel Ave, Davao City", Phone = "(082) 299-8877", IsActive = true, CreatedAt = DateTime.UtcNow.AddMonths(-5) }
-                };
-                _db.Branches.AddRange(branches);
-                await _db.SaveChangesAsync();
+                return Ok(new List<BranchDto>());
             }
+
+            var branchIds = branches.Select(b => b.BranchId).ToList();
+
+            var agentCounts = await _db.Users
+                .Where(u => u.BranchId.HasValue && branchIds.Contains(u.BranchId.Value))
+                .GroupBy(u => u.BranchId!.Value)
+                .Select(g => new { BranchId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.BranchId, x => x.Count);
+
+            var propCounts = await _db.Properties
+                .Where(p => p.BranchId.HasValue && branchIds.Contains(p.BranchId.Value))
+                .GroupBy(p => p.BranchId!.Value)
+                .Select(g => new { BranchId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.BranchId, x => x.Count);
+
+            var leadCounts = await _db.Leads
+                .Where(l => l.BranchId.HasValue && branchIds.Contains(l.BranchId.Value))
+                .GroupBy(l => l.BranchId!.Value)
+                .Select(g => new { BranchId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.BranchId, x => x.Count);
+
+            var dealStats = await _db.Deals
+                .Where(d => d.BranchId.HasValue && branchIds.Contains(d.BranchId.Value))
+                .GroupBy(d => d.BranchId!.Value)
+                .Select(g => new { BranchId = g.Key, Count = g.Count(), Volume = g.Sum(d => d.Value) })
+                .ToDictionaryAsync(x => x.BranchId, x => new { x.Count, x.Volume });
 
             var list = new List<BranchDto>();
             foreach (var b in branches)
             {
-                int agents = await _db.Users.CountAsync(u => u.BranchId == b.BranchId);
-                int props = await _db.Properties.CountAsync(p => p.BranchId == b.BranchId);
-                int leads = await _db.Leads.CountAsync(l => l.BranchId == b.BranchId);
-                int deals = await _db.Deals.CountAsync(d => d.BranchId == b.BranchId);
-                decimal vol = await _db.Deals.Where(d => d.BranchId == b.BranchId).SumAsync(d => (decimal?)d.Value) ?? 0m;
+                int agents = agentCounts.TryGetValue(b.BranchId, out var ac) ? ac : 0;
+                int props = propCounts.TryGetValue(b.BranchId, out var pc) ? pc : 0;
+                int leads = leadCounts.TryGetValue(b.BranchId, out var lc) ? lc : 0;
+                int deals = dealStats.TryGetValue(b.BranchId, out var ds) ? ds.Count : 0;
+                decimal vol = dealStats.TryGetValue(b.BranchId, out var dsVol) ? dsVol.Volume : 0m;
 
                 list.Add(new BranchDto
                 {
@@ -99,21 +123,37 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             if (user.TenantId <= 0) return Unauthorized();
-            if (!ApiSecurityHelper.HasFullOversight(user.Role))
-                return StatusCode(StatusCodes.Status403Forbidden, "Only Manager or Admin can manage branches.");
+            if (!ApiSecurityHelper.IsAdmin(user.Role))
+                return StatusCode(StatusCodes.Status403Forbidden, "Only Admin can manage branches.");
+
+            if (branch is null || string.IsNullOrWhiteSpace(branch.BranchCode) || string.IsNullOrWhiteSpace(branch.BranchName))
+                return BadRequest(new { message = "Branch code and Branch name are required." });
+
+            string normalizedCode = branch.BranchCode.Trim();
+            bool duplicateCode = await _db.Branches.AnyAsync(b =>
+                b.BranchId != branch.BranchId && b.BranchCode == normalizedCode);
+            if (duplicateCode)
+                return BadRequest(new { message = "Branch code must be unique within the tenant." });
 
             if (branch.BranchId <= 0)
             {
                 branch.TenantId = user.TenantId;
+                branch.BranchCode = normalizedCode;
                 branch.CreatedAt = DateTime.UtcNow;
                 _db.Branches.Add(branch);
             }
             else
             {
-                var existing = await _db.Branches.FirstOrDefaultAsync(b => b.BranchId == branch.BranchId);
+                var existing = await _db.Branches.FirstOrDefaultAsync(b => b.BranchId == branch.BranchId && b.TenantId == user.TenantId);
                 if (existing == null) return NotFound();
 
-                existing.BranchCode = branch.BranchCode;
+                if (existing.IsActive && !branch.IsActive &&
+                    await _db.Users.AnyAsync(u => u.BranchId == existing.BranchId && u.Status == "active"))
+                {
+                    return BadRequest(new { message = "Reassign or deactivate the branch's active user accounts before deactivating this branch." });
+                }
+
+                existing.BranchCode = normalizedCode;
                 existing.BranchName = branch.BranchName;
                 existing.Address = branch.Address;
                 existing.Phone = branch.Phone;
@@ -128,11 +168,17 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> ToggleBranchStatus(int id)
         {
             var user = CurrentUser;
-            if (!ApiSecurityHelper.HasFullOversight(user.Role))
-                return StatusCode(StatusCodes.Status403Forbidden, "Only Manager or Admin can manage branches.");
+            if (!ApiSecurityHelper.IsAdmin(user.Role))
+                return StatusCode(StatusCodes.Status403Forbidden, "Only Admin can manage branches.");
 
             var branch = await _db.Branches.FirstOrDefaultAsync(b => b.BranchId == id);
             if (branch == null) return NotFound();
+
+            if (branch.IsActive &&
+                await _db.Users.AnyAsync(u => u.BranchId == branch.BranchId && u.Status == "active"))
+            {
+                return BadRequest(new { message = "Reassign or deactivate the branch's active user accounts before deactivating this branch." });
+            }
 
             branch.IsActive = !branch.IsActive;
             await _db.SaveChangesAsync();

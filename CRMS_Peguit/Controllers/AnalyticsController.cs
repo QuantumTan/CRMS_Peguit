@@ -512,7 +512,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 {
                     string ticketTitle = !string.IsNullOrWhiteSpace(t.Category)
                         ? (t.Customer != null ? $"{t.Category} ({t.Customer.FullName})" : t.Category)
-                        : (t.Description.Length > 40 ? t.Description[..40] + "..." : t.Description);
+                        : (string.IsNullOrEmpty(t.Description) ? "No description" : (t.Description.Length > 40 ? t.Description[..40] + "..." : t.Description));
 
                     list.Add(new AnalyticsDetailRow
                     {

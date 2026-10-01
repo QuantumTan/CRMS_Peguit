@@ -435,7 +435,8 @@ namespace CRMS_Peguit.winforms.Controls
             {
                 var testFont = new Font("Segoe UI", sz, FontStyle.Bold);
                 var measured = TextRenderer.MeasureText(_lblValue.Text, testFont);
-                if (measured.Width <= maxValWidth || sz == fontSizes[^1])
+                int availableValueHeight = Math.Max(16, Height - _lblTitle.Bottom - _lblSubtitle.Font.Height - 12);
+                if ((measured.Width <= maxValWidth && measured.Height <= availableValueHeight) || sz == fontSizes[^1])
                 {
                     chosenFont = testFont;
                     break;
@@ -449,6 +450,7 @@ namespace CRMS_Peguit.winforms.Controls
                 _lblValue.Font = chosenFont;
                 oldFont?.Dispose();
             }
+            else chosenFont?.Dispose();
 
             // Primary value beneath title
             int valueY = _lblTitle.Bottom + 2;

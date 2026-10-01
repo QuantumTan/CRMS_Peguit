@@ -66,7 +66,7 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             _pagination.PageChanged += async (_, _) => await RefreshGridAsync(resetPage: false);
             _pagination.PageSizeChanged += async (_, _) => await RefreshGridAsync(resetPage: true);
             pnlCard.Controls.Add(_pagination);
-            _pagination.BringToFront();
+            _pagination.SendToBack();
         }
 
         private void InitEmptyState()
@@ -117,7 +117,7 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             {
                 _btnExport = new Button
                 {
-                    Text = "Export CSV",
+                    Text = "📄 Export PDF",
                     BackColor = Color.White,
                     ForeColor = Theme.Primary,
                     Cursor = Cursors.Hand,
@@ -126,7 +126,7 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
                     Size = new Size(130, 36)
                 };
                 _btnExport.FlatAppearance.BorderColor = Theme.Primary;
-                _btnExport.Click += (_, _) => ExportToCsv();
+                _btnExport.Click += (_, _) => ExportToPdf();
                 UiRadiusHelper.StyleButton(_btnExport, 8);
                 Controls.Add(_btnExport);
                 _btnExport.BringToFront();
@@ -625,113 +625,53 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             await RefreshGridAsync(resetPage: false);
         }
 
-        private void ExportToCsv()
+        private void ExportToPdf()
         {
             using var sfd = new SaveFileDialog
             {
-                Filter = "CSV File (*.csv)|*.csv",
-                FileName = $"SupportTickets_Export_{DateTime.Now:yyyyMMdd_HHmm}.csv"
+                Filter = "PDF Document (*.pdf)|*.pdf",
+                FileName = $"SupportTickets_Export_{DateTime.Now:yyyyMMdd_HHmm}.pdf"
             };
             if (sfd.ShowDialog() == DialogResult.OK)
             {
                 var tickets = _controller.GetAll();
-                var sb = new System.Text.StringBuilder();
-                sb.AppendLine("TicketId,TicketNumber,Category,Customer,Priority,Status,DueDate,AssignedTo,CreatedAt");
-                foreach (var t in tickets)
+
+                string[] headers = new[] { "Ticket #", "Category", "Customer", "Priority", "Status", "Due Date", "Assigned Agent", "Created At" };
+                var rows = tickets.Select(t => new string[]
                 {
-                    sb.AppendLine($"\"{t.TicketId}\",\"{t.TicketNumber}\",\"{t.Category}\",\"{t.Customer?.FullName}\",\"{t.Priority}\",\"{t.Status}\",\"{t.DueDate:yyyy-MM-dd}\",\"{_controller.GetAssignedAgentName(t.AssignedToUserId)}\",\"{t.CreatedAt:yyyy-MM-dd}\"");
+                    t.TicketNumber,
+                    t.Category,
+                    t.Customer?.FullName ?? "Unknown",
+                    t.Priority,
+                    t.Status,
+                    t.DueDate?.ToString("yyyy-MM-dd") ?? "N/A",
+                    _controller.GetAssignedAgentName(t.AssignedToUserId),
+                    t.CreatedAt.ToString("yyyy-MM-dd")
+                }).ToList();
+
+                var kpis = new List<(string Title, string Value, string ColorHex)>
+                {
+                    ("Total Tickets", tickets.Count.ToString(), "#25679C"),
+                    ("Open / Active", tickets.Count(x => !string.Equals(x.Status, "Resolved", StringComparison.OrdinalIgnoreCase) && !string.Equals(x.Status, "Closed", StringComparison.OrdinalIgnoreCase)).ToString(), "#D97706"),
+                    ("Resolved", tickets.Count(x => string.Equals(x.Status, "Resolved", StringComparison.OrdinalIgnoreCase) || string.Equals(x.Status, "Closed", StringComparison.OrdinalIgnoreCase)).ToString(), "#059669"),
+                    ("High / Urgent", tickets.Count(x => string.Equals(x.Priority, "High", StringComparison.OrdinalIgnoreCase) || string.Equals(x.Priority, "Urgent", StringComparison.OrdinalIgnoreCase)).ToString(), "#DC2626")
+                };
+
+                if (CRMS_Peguit.winforms.Services.PdfExportHelper.TryExportTable("Customer Support & Tickets Register", headers, rows, sfd.FileName, out string? error, activeFilter: _filterStatus, kpis: kpis))
+                {
+                    MessageBox.Show("Support tickets exported to PDF successfully.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
-                System.IO.File.WriteAllText(sfd.FileName, sb.ToString());
-                MessageBox.Show("Support tickets exported successfully.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                else
+                {
+                    MessageBox.Show(error ?? "Export failed.", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
         }
 
-        private void LayoutToolbar()
+private void LayoutToolbar()
         {
-            if (this.IsDisposed) return;
-
-            int rightPadding = UiStyleConstants.PageMarginRight;
-            int leftMargin = UiStyleConstants.PageMarginLeft;
-            int totalWidth = ClientSize.Width;
-
-            // 1. Position and size KPI container explicitly with generous clearance from subtitle
-            pnlKpiContainer.Left = leftMargin;
-            pnlKpiContainer.Top = Math.Max(90, lblSubtitle.Bottom + 10);
-            pnlKpiContainer.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
-            pnlKpiContainer.Height = UiStyleConstants.KpiRowHeight;
-
-            // 2. Position toolbar row (Search box on left, filter pills in center, action buttons rightmost at identical y)
-            int y = pnlKpiContainer.Bottom + 16;
-            int rightEdge = totalWidth - rightPadding;
-
-            if (btnAdd.Visible)
-            {
-                btnAdd.Top = y;
-                btnAdd.Height = UiStyleConstants.ToolbarRowHeight;
-                btnAdd.Left = rightEdge - btnAdd.Width;
-                rightEdge = btnAdd.Left - 10;
-            }
-            if (_btnExport != null && _btnExport.Visible)
-            {
-                _btnExport.Top = y;
-                _btnExport.Height = UiStyleConstants.ToolbarRowHeight;
-                _btnExport.Left = rightEdge - _btnExport.Width;
-                rightEdge = _btnExport.Left - 10;
-            }
-
-            var pills = new[] { btnFilterOverdue, btnFilterResolved, btnFilterInProgress, btnFilterOpen, btnFilterAll };
-            int filterRight = rightEdge;
-            int totalFilterWidth = 0;
-            foreach (var p in pills) totalFilterWidth += p.Width + 6;
-
-            int availableForSearch = filterRight - leftMargin - totalFilterWidth - 16;
-
-            if (availableForSearch >= 180)
-            {
-                // Single row
-                foreach (var p in pills)
-                {
-                    p.Top = y;
-                    p.Height = UiStyleConstants.ToolbarRowHeight;
-                    p.Left = filterRight - p.Width;
-                    filterRight = p.Left - 6;
-                }
-
-                txtSearch.Top = y;
-                txtSearch.Left = leftMargin;
-                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
-                txtSearch.Width = Math.Min(UiStyleConstants.SearchBoxWidth, availableForSearch);
-
-                int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
-                pnlCard.Top = cardTop;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - UiStyleConstants.PageMarginBottom);
-            }
-            else
-            {
-                // Two rows: search on row 1, filter pills wrapped to row 2
-                txtSearch.Top = y;
-                txtSearch.Left = leftMargin;
-                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
-                txtSearch.Width = Math.Max(180, rightEdge - leftMargin);
-
-                int pillY = y + UiStyleConstants.ToolbarRowHeight + 10;
-                int filterX = leftMargin;
-                var forwardPills = new[] { btnFilterAll, btnFilterOpen, btnFilterInProgress, btnFilterResolved, btnFilterOverdue };
-                foreach (var p in forwardPills)
-                {
-                    p.Top = pillY;
-                    p.Height = UiStyleConstants.ToolbarRowHeight;
-                    p.Left = filterX;
-                    filterX += p.Width + 6;
-                }
-
-                int cardTop = pillY + UiStyleConstants.ToolbarRowHeight + 14;
-                pnlCard.Top = cardTop;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 20);
-            }
-
-            pnlCard.Left = leftMargin;
-            pnlCard.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
+            ResponsiveLayout.ListPage(this, lblTitle, lblSubtitle, pnlKpiContainer, txtSearch,
+                new Control[] { btnFilterAll, btnFilterOpen, btnFilterInProgress, btnFilterResolved, btnFilterOverdue }, new Control?[] { _btnExport, btnAdd }, pnlCard);
         }
     }
 }

@@ -46,7 +46,6 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         public event Action? NavigateToTenants;
         public event Action? NavigateToSubscriptions;
         public event Action? NavigateToBackups;
-        public event Action? NavigateToAuditLog;
 
         public SuperAdminDashboardView()
         {
@@ -86,14 +85,16 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Text = "Platform Overview",
                 Font = UiStyleConstants.PageTitleFont,
                 ForeColor = Theme.TextPrimary,
+                UseMnemonic = false,
                 AutoSize = true,
-                Location = new Point(28, 18)
+                Location = new Point(28, 14)
             };
             var lblSub = new Label
             {
                 Text = "High-level platform metrics, subscription distribution, and recent platform activity stream.",
                 Font = UiStyleConstants.SubtitleFont,
                 ForeColor = Theme.TextSecondary,
+                UseMnemonic = false,
                 AutoSize = true,
                 Location = new Point(28, 56)
             };
@@ -116,6 +117,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             pnlPageHeader.Controls.Add(lblSub);
             pnlPageHeader.Controls.Add(lblTitle);
             pnlPageHeader.Controls.Add(btnRefresh);
+            ResponsiveLayout.BindHeader(pnlPageHeader, lblTitle, lblSub, btnRefresh);
 
             // 2. KPI row (Height = 124)
             // Exactly 4 KPIs: Total Tenants, Active Subscriptions, Expiring This Month, Last Backup Status
@@ -262,22 +264,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Location = new Point(0, 24),
                 AutoSize = true
             };
-            var lnkViewAllAudit = new Label
-            {
-                Text = "View full log →",
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                ForeColor = Theme.Primary,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                AutoSize = true,
-                Cursor = Cursors.Hand
-            };
-            lnkViewAllAudit.Click += (_, _) => NavigateToAuditLog?.Invoke();
-            lnkViewAllAudit.Location = new Point(_pnlActivity.Width - 140, 6);
-            _pnlActivity.SizeChanged += (_, _) => lnkViewAllAudit.Location = new Point(_pnlActivity.Width - 140, 6);
-
             pnlActivityHeader.Controls.Add(lblActivityTitle);
             pnlActivityHeader.Controls.Add(lblActivitySub);
-            pnlActivityHeader.Controls.Add(lnkViewAllAudit);
             _pnlActivity.Controls.Add(pnlActivityHeader);
 
             _activitySkeleton = ListSkeletonOverlay.CreateForContainer(_pnlActivity);
@@ -289,6 +277,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             scrollHost.Controls.Add(pnlContent);
             scrollHost.Controls.Add(pnlKpis);
             scrollHost.Controls.Add(pnlPageHeader);
+            scrollHost.SizeChanged += (_, _) => ResponsiveLayout.KpiGrid(pnlKpis, scrollHost.ClientSize.Width - scrollHost.Padding.Horizontal);
         }
 
         public async Task LoadDataAsync()
@@ -370,7 +359,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 ("Tenant A (Starter)", snap.TenantACount, Color.FromArgb(100, 116, 139), "Base CRM & Data Collection")
             };
 
-            int y = 64;
+            int y = 84;
             int availableWidth = Math.Max(200, _pnlTierDist.ClientSize.Width - 44);
 
             foreach (var (name, count, color, subtitle) in tiers)
@@ -497,7 +486,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                     return;
                 }
 
-                int y = 56;
+                int y = 78;
                 foreach (var log in logs)
                 {
                     var rowPanel = new Panel
@@ -531,9 +520,11 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                     rowPanel.Controls.Add(avatarPanel);
 
                     // Action description line 1: Name and Action Type
+                    string cleanAction = System.Text.RegularExpressions.Regex.Replace(log.ActionType, "(\\B[A-Z])", " $1");
+                    string cleanName = string.Equals(log.PerformedByName, "Admin user", StringComparison.OrdinalIgnoreCase) ? "Admin User" : log.PerformedByName;
                     var lblUserAction = new Label
                     {
-                        Text = $"{log.PerformedByName} · {log.ActionType}",
+                        Text = $"{cleanName} · {cleanAction}",
                         Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                         ForeColor = Theme.TextPrimary,
                         Location = new Point(50, 7),

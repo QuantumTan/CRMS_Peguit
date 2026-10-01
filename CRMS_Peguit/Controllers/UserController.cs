@@ -64,7 +64,11 @@ namespace CRMS_Peguit.winforms.Controllers
         public async Task<User?> GetByIdAsync(int id)
         {
             EnsureAdmin();
-            return await _db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.UserId == id);
+            return await _db.Users
+                .Include(u => u.Role)
+                .Include(u => u.Branch)
+                .AsNoTracking()
+                .SingleOrDefaultAsync(u => u.UserId == id);
         }
 
         public async Task<List<Role>> GetManagedRolesAsync()
@@ -94,6 +98,8 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 throw new InvalidOperationException("Invalid role selected. You can only create Managers and Agents.");
             }
+
+            await ValidateBranchAssignmentAsync(user.BranchId);
 
             if (!ValidationHelper.IsValidPersonName(user.FirstName, "First name", out string? fnError))
             {
@@ -161,6 +167,8 @@ namespace CRMS_Peguit.winforms.Controllers
                 throw new InvalidOperationException("Invalid role selected. You can only assign Manager or Agent roles.");
             }
 
+            await ValidateBranchAssignmentAsync(user.BranchId);
+
             var existing = await _db.Users.SingleOrDefaultAsync(u => u.UserId == user.UserId);
             if (existing == null) throw new InvalidOperationException("User not found.");
 
@@ -174,6 +182,27 @@ namespace CRMS_Peguit.winforms.Controllers
 
             await _db.SaveChangesAsync();
             TriggerBackgroundSync();
+        }
+
+        private async Task ValidateBranchAssignmentAsync(int? branchId)
+        {
+            if (!CurrentSession.CanAccessBranching)
+            {
+                return;
+            }
+
+            if (!branchId.HasValue || branchId.Value <= 0)
+            {
+                throw new InvalidOperationException("A branch assignment is required for every Manager and Agent account.");
+            }
+
+            bool isValidActiveBranch = await _db.Branches
+                .AsNoTracking()
+                .AnyAsync(b => b.BranchId == branchId.Value && b.IsActive);
+            if (!isValidActiveBranch)
+            {
+                throw new InvalidOperationException("The selected branch does not exist or is inactive. Select an active branch.");
+            }
         }
 
         public async Task DeactivateAsync(int id)

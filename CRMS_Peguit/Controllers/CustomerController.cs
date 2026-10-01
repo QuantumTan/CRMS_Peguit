@@ -90,9 +90,10 @@ namespace CRMS_Peguit.winforms.Controllers
                 {
                     int currentUserId = CurrentSession.UserId;
                     query = query.Where(c =>
-                        (c.AssignedAgentId.HasValue && c.AssignedAgentId.Value > 0)
+                        ((c.AssignedAgentId.HasValue && c.AssignedAgentId.Value > 0)
                             ? c.AssignedAgentId.Value == currentUserId
-                            : c.CreatedByUserId == currentUserId);
+                            : c.CreatedByUserId == currentUserId)
+                        || db.Deals.Any(d => d.CustomerId == c.CustomerId && (d.AgentId == currentUserId || d.CreatedByUserId == currentUserId)));
                 }
 
                 if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
@@ -183,7 +184,11 @@ namespace CRMS_Peguit.winforms.Controllers
                 if (item is null) return null;
 
                 if (!RbacService.CanAgentViewRecord(item.AssignedAgentId, item.CreatedByUserId))
-                    return null;
+                {
+                    bool hasDeal = _db.Deals.Any(d => d.CustomerId == item.CustomerId && (d.AgentId == CurrentSession.UserId || d.CreatedByUserId == CurrentSession.UserId));
+                    if (!hasDeal)
+                        return null;
+                }
 
                 return item;
             }

@@ -282,6 +282,11 @@ namespace CRMS_Peguit.winforms.Controllers
                 .SingleOrDefault(x => x.PropertyId == property.PropertyId);
             if (item is null) return;
 
+            if (_db.Deals.Any(d => d.PropertyId == item.PropertyId))
+            {
+                throw new InvalidOperationException("Cannot delete property because it is associated with one or more deals. Please reassign or delete the associated deals first.");
+            }
+
             _db.Properties.Remove(item);
             _db.SaveChanges();
             LogActivity("Property Removed", null, null, $"Property listing '{item.Address}' was removed.");

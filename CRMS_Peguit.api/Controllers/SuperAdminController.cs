@@ -170,6 +170,18 @@ namespace CRMS_Peguit.api.Controllers
         {
             if (!ValidateSuperAdmin()) return Forbid();
 
+            if (req == null)
+                return BadRequest(new { message = "Request body is required." });
+
+            if (req.TenantId <= 0)
+                return BadRequest(new { message = "A valid TenantId is required." });
+
+            if (string.IsNullOrWhiteSpace(req.Email))
+                return BadRequest(new { message = "Email is required." });
+
+            if (string.IsNullOrWhiteSpace(req.Password) || req.Password.Length < 6)
+                return BadRequest(new { message = "Password must be at least 6 characters." });
+
             try
             {
                 await using var db = await _tenantFactory.CreateAsync(req.TenantId);
@@ -178,7 +190,11 @@ namespace CRMS_Peguit.api.Controllers
                 if (existingUser)
                     return BadRequest(new { message = "An account with this email already exists in this tenant." });
 
-                var role = await db.Roles.AsNoTracking().FirstOrDefaultAsync(r => r.RoleName == req.RoleName || r.RoleName == "Admin");
+                var role = await db.Roles.AsNoTracking().FirstOrDefaultAsync(r => r.RoleName == req.RoleName);
+                if (role == null && string.IsNullOrWhiteSpace(req.RoleName))
+                {
+                    role = await db.Roles.AsNoTracking().FirstOrDefaultAsync(r => r.RoleName == "Admin");
+                }
                 if (role == null)
                     return BadRequest(new { message = $"Role '{req.RoleName}' not found in tenant {req.TenantId}." });
 
@@ -461,6 +477,323 @@ namespace CRMS_Peguit.api.Controllers
             };
             _mgmtDb.BackupLogs.Add(restoreLog);
             await _mgmtDb.SaveChangesAsync();
+            return Ok(new { success = true });
+        }
+
+        [HttpGet("tenants/{companyId}/branding")]
+        public async Task<ActionResult<TenantBrandingDto>> GetTenantBranding(int companyId)
+        {
+            if (!ValidateSuperAdmin()) return Forbid();
+
+            var company = await _masterDb.Companies
+                .Include(c => c.Branding)
+                .Include(c => c.Subscriptions)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.CompanyId == companyId);
+
+            if (company == null) return NotFound();
+
+            var sub = company.Subscriptions.OrderByDescending(s => s.EndDate).FirstOrDefault();
+            var tier = sub?.Tier ?? TenantTier.TenantA;
+            var branding = company.Branding;
+
+            string currentDisplayName = branding?.DisplayName ?? company.CompanyName;
+            bool isDuplicate = await _masterDb.TenantBrandings
+                .AnyAsync(b => b.CompanyId != companyId && b.DisplayName.ToLower() == currentDisplayName.ToLower());
+
+            return Ok(new TenantBrandingDto
+            {
+                CompanyId = company.CompanyId,
+                CompanyName = company.CompanyName,
+                DisplayName = currentDisplayName,
+                HasCustomLogo = branding?.LogoImage != null && branding.LogoImage.Length > 0,
+                LogoVersion = branding?.LogoVersion ?? 1,
+                AccentColor = branding?.AccentColor,
+                ContactEmail = branding?.ContactEmail,
+                ContactPhone = branding?.ContactPhone,
+                Address = branding?.Address,
+                HidePoweredBy = branding?.HidePoweredBy ?? false,
+                CanCustomizeAccent = FeatureGate.CanUseAccentColor(tier),
+                CanHidePoweredBy = FeatureGate.CanHidePoweredBy(tier),
+                IsDuplicateName = isDuplicate,
+                UpdatedAt = branding?.UpdatedAt ?? company.CreatedAt
+            });
+        }
+
+        [HttpPut("tenants/{companyId}/branding")]
+        public async Task<ActionResult> UpdateTenantBranding(int companyId, [FromBody] SuperAdminUpdateBrandingRequest req)
+        {
+            if (!ValidateSuperAdmin()) return Forbid();
+
+            var validator = new UpdateBrandingRequestValidator(allowReservedOverride: req.OverrideReservedName);
+            var validation = await validator.ValidateAsync(req);
+            if (!validation.IsValid)
+            {
+                return BadRequest(new { message = validation.Errors.FirstOrDefault()?.ErrorMessage ?? "Validation failed." });
+            }
+
+            var company = await _masterDb.Companies
+                .Include(c => c.Branding)
+                .Include(c => c.Subscriptions)
+                .FirstOrDefaultAsync(c => c.CompanyId == companyId);
+
+            if (company == null) return NotFound();
+
+            var sub = company.Subscriptions.OrderByDescending(s => s.EndDate).FirstOrDefault();
+            var tier = sub?.Tier ?? TenantTier.TenantA;
+
+            if (!string.IsNullOrWhiteSpace(req.AccentColor) && !FeatureGate.CanUseAccentColor(tier))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Accent color customization is restricted to Enterprise tier." });
+            }
+
+            if (req.HidePoweredBy && !FeatureGate.CanHidePoweredBy(tier))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "White-label footer removal is restricted to Enterprise tier." });
+            }
+
+            int superAdminId = ApiSecurityHelper.GetUserId(User);
+            if (superAdminId <= 0) superAdminId = 1;
+
+            var branding = company.Branding;
+            if (branding == null)
+            {
+                branding = new TenantBranding
+                {
+                    CompanyId = companyId,
+                    DisplayName = req.DisplayName.Trim(),
+                    LogoVersion = 1,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _masterDb.TenantBrandings.Add(branding);
+            }
+
+            branding.DisplayName = req.DisplayName.Trim();
+            branding.AccentColor = FeatureGate.CanUseAccentColor(tier) ? req.AccentColor?.Trim() : null;
+            branding.HidePoweredBy = FeatureGate.CanHidePoweredBy(tier) && req.HidePoweredBy;
+            branding.ContactEmail = string.IsNullOrWhiteSpace(req.ContactEmail) ? null : req.ContactEmail.Trim();
+            branding.ContactPhone = string.IsNullOrWhiteSpace(req.ContactPhone) ? null : req.ContactPhone.Trim();
+            branding.Address = string.IsNullOrWhiteSpace(req.Address) ? null : req.Address.Trim();
+            branding.UpdatedAt = DateTime.UtcNow;
+            branding.UpdatedByUserId = superAdminId;
+
+            _masterDb.PlatformAuditLogs.Add(new PlatformAuditLog
+            {
+                PerformedBySuperAdminId = superAdminId,
+                PerformedByName = "Platform Super Admin",
+                ActionType = "TenantBrandingUpdated",
+                Detail = $"Super Admin updated branding for {company.CompanyName}: DisplayName='{branding.DisplayName}'",
+                TargetCompanyId = companyId,
+                TargetCompanyName = company.CompanyName,
+                CreatedAt = DateTime.UtcNow
+            });
+
+            await _masterDb.SaveChangesAsync();
+            return Ok(new { success = true });
+        }
+
+        [HttpPost("tenants/{companyId}/branding/reset")]
+        public async Task<ActionResult> ResetTenantBranding(int companyId)
+        {
+            if (!ValidateSuperAdmin()) return Forbid();
+
+            var company = await _masterDb.Companies
+                .Include(c => c.Branding)
+                .FirstOrDefaultAsync(c => c.CompanyId == companyId);
+
+            if (company == null) return NotFound();
+
+            int superAdminId = ApiSecurityHelper.GetUserId(User);
+            if (superAdminId <= 0) superAdminId = 1;
+
+            var branding = company.Branding;
+            if (branding != null)
+            {
+                branding.DisplayName = company.CompanyName;
+                branding.LogoImage = null;
+                branding.LogoVersion++;
+                branding.AccentColor = null;
+                branding.HidePoweredBy = false;
+                branding.ContactEmail = null;
+                branding.ContactPhone = null;
+                branding.Address = null;
+                branding.UpdatedAt = DateTime.UtcNow;
+                branding.UpdatedByUserId = superAdminId;
+            }
+            else
+            {
+                branding = new TenantBranding
+                {
+                    CompanyId = companyId,
+                    DisplayName = company.CompanyName,
+                    LogoVersion = 1,
+                    UpdatedAt = DateTime.UtcNow,
+                    UpdatedByUserId = superAdminId
+                };
+                _masterDb.TenantBrandings.Add(branding);
+            }
+
+            _masterDb.PlatformAuditLogs.Add(new PlatformAuditLog
+            {
+                PerformedBySuperAdminId = superAdminId,
+                PerformedByName = "Platform Super Admin",
+                ActionType = "TenantBrandingReset",
+                Detail = $"Super Admin reset branding for {company.CompanyName} to platform defaults",
+                TargetCompanyId = companyId,
+                TargetCompanyName = company.CompanyName,
+                CreatedAt = DateTime.UtcNow
+            });
+
+            await _masterDb.SaveChangesAsync();
+            return Ok(new { success = true });
+        }
+
+        [HttpGet("tenants/{companyId}/branding/logo")]
+        public async Task<IActionResult> GetTenantLogo(int companyId)
+        {
+            if (!ValidateSuperAdmin()) return Forbid();
+
+            var branding = await _masterDb.TenantBrandings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(b => b.CompanyId == companyId);
+
+            if (branding?.LogoImage == null || branding.LogoImage.Length == 0)
+            {
+                return NotFound();
+            }
+
+            return File(branding.LogoImage, "image/png");
+        }
+
+        [HttpPost("tenants/{companyId}/branding/logo")]
+        public async Task<IActionResult> UploadTenantLogo(int companyId)
+        {
+            if (!ValidateSuperAdmin()) return Forbid();
+
+            var company = await _masterDb.Companies
+                .Include(c => c.Branding)
+                .FirstOrDefaultAsync(c => c.CompanyId == companyId);
+
+            if (company == null) return NotFound();
+
+            byte[]? rawBytes = null;
+            if (Request.HasFormContentType && Request.Form.Files.Count > 0)
+            {
+                var file = Request.Form.Files[0];
+                if (file.Length > 5 * 1024 * 1024)
+                {
+                    return BadRequest(new { message = "Logo file exceeds the maximum allowed size of 5MB." });
+                }
+
+                using var ms = new MemoryStream();
+                await file.CopyToAsync(ms);
+                rawBytes = ms.ToArray();
+            }
+            else
+            {
+                try
+                {
+                    using var reader = new StreamReader(Request.Body);
+                    var json = await reader.ReadToEndAsync();
+                    if (!string.IsNullOrWhiteSpace(json))
+                    {
+                        var bodyReq = System.Text.Json.JsonSerializer.Deserialize<UploadLogoRequest>(json, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                        rawBytes = bodyReq?.LogoBytes;
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            if (rawBytes == null || rawBytes.Length == 0)
+            {
+                return BadRequest(new { message = "No image file provided." });
+            }
+
+            if (rawBytes.Length > 5 * 1024 * 1024)
+            {
+                return BadRequest(new { message = "Logo file exceeds the maximum allowed size of 5MB." });
+            }
+
+            var (success, normalizedBytes, error) = LogoProcessor.ProcessAndNormalize(rawBytes);
+            if (!success || normalizedBytes == null)
+            {
+                return BadRequest(new { message = error ?? "Failed to process logo image." });
+            }
+
+            int superAdminId = ApiSecurityHelper.GetUserId(User);
+            if (superAdminId <= 0) superAdminId = 1;
+
+            var branding = company.Branding;
+            if (branding == null)
+            {
+                branding = new TenantBranding
+                {
+                    CompanyId = companyId,
+                    DisplayName = company.CompanyName,
+                    LogoVersion = 1,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _masterDb.TenantBrandings.Add(branding);
+            }
+
+            branding.LogoImage = normalizedBytes;
+            branding.LogoVersion++;
+            branding.UpdatedAt = DateTime.UtcNow;
+            branding.UpdatedByUserId = superAdminId;
+
+            _masterDb.PlatformAuditLogs.Add(new PlatformAuditLog
+            {
+                PerformedBySuperAdminId = superAdminId,
+                PerformedByName = "Platform Super Admin",
+                ActionType = "TenantBrandingLogoUploaded",
+                Detail = $"Super Admin updated brand logo for {company.CompanyName} to version {branding.LogoVersion}",
+                TargetCompanyId = companyId,
+                TargetCompanyName = company.CompanyName,
+                CreatedAt = DateTime.UtcNow
+            });
+
+            await _masterDb.SaveChangesAsync();
+            return Ok(new { success = true, logoVersion = branding.LogoVersion });
+        }
+
+        [HttpDelete("tenants/{companyId}/branding/logo")]
+        public async Task<IActionResult> RemoveTenantLogo(int companyId)
+        {
+            if (!ValidateSuperAdmin()) return Forbid();
+
+            var company = await _masterDb.Companies
+                .Include(c => c.Branding)
+                .FirstOrDefaultAsync(c => c.CompanyId == companyId);
+
+            if (company == null) return NotFound();
+
+            int superAdminId = ApiSecurityHelper.GetUserId(User);
+            if (superAdminId <= 0) superAdminId = 1;
+
+            var branding = company.Branding;
+            if (branding != null && branding.LogoImage != null)
+            {
+                branding.LogoImage = null;
+                branding.LogoVersion++;
+                branding.UpdatedAt = DateTime.UtcNow;
+                branding.UpdatedByUserId = superAdminId;
+
+                _masterDb.PlatformAuditLogs.Add(new PlatformAuditLog
+                {
+                    PerformedBySuperAdminId = superAdminId,
+                    PerformedByName = "Platform Super Admin",
+                    ActionType = "TenantBrandingLogoRemoved",
+                    Detail = $"Super Admin removed custom brand logo for {company.CompanyName}",
+                    TargetCompanyId = companyId,
+                    TargetCompanyName = company.CompanyName,
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                await _masterDb.SaveChangesAsync();
+            }
+
             return Ok(new { success = true });
         }
     }

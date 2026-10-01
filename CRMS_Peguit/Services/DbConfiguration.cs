@@ -36,13 +36,13 @@ namespace CRMS_Peguit.winforms.Models.Services
                 }
             }
 
-            // Optimize LocalDB timeout: prevent 30s UI freeze on connection hiccups
+            // Optimize LocalDB timeout: allow 15s for LocalDB instance wake-up without indefinite UI hangs
             try
             {
                 var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(conn);
-                if (builder.ConnectTimeout > 5)
+                if (builder.ConnectTimeout > 15 || builder.ConnectTimeout <= 0)
                 {
-                    builder.ConnectTimeout = 5;
+                    builder.ConnectTimeout = 15;
                 }
                 return builder.ConnectionString;
             }

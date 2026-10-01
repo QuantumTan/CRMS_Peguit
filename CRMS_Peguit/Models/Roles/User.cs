@@ -50,22 +50,13 @@ namespace CRMS_Peguit.winforms.Models.Roles
         // Password is never exposed directly - hashed on the way in
         public void SetPassword(string plainTextPassword)
         {
-            _passwordHash = HashPassword(plainTextPassword);
+            _passwordHash = CRMS_Peguit.infrastructure.Security.PasswordHasher.Hash(plainTextPassword);
             UpdateTimestamp();
         }
 
         public bool VerifyPassword(string plainTextPassword)
         {
-            return _passwordHash == HashPassword(plainTextPassword);
-        }
-
-        private string HashPassword(string plainText)
-        {
-            using (SHA256 sha256 = SHA256.Create())
-            {
-                byte[] bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(plainText));
-                return Convert.ToBase64String(bytes);
-            }
+            return CRMS_Peguit.infrastructure.Security.PasswordHasher.Verify(plainTextPassword, _passwordHash);
         }
 
         // ABSTRACT - each role defines its own accessible modules/dashboard

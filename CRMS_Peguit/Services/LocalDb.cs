@@ -25,21 +25,28 @@ namespace CRMS_Peguit.winforms.Models.Services
         public static string ConnectionString =>
             DbConfiguration.GetLocalConnectionString();
 
-        public static MasterCrmsDbContext CreateMasterContext()
+        public static MasterCrmsDbContext CreateMasterContext(bool initializeDatabase = true)
         {
             var masterConn = MasterConnectionString;
             LocalDbHelper.EnsureLocalDbRunning(masterConn);
 
-            var options = new DbContextOptionsBuilder<MasterCrmsDbContext>()
-                .UseSqlServer(masterConn, sql => sql.EnableRetryOnFailure(
-                    maxRetryCount: 3,
-                    maxRetryDelay: TimeSpan.FromSeconds(5),
-                    errorNumbersToAdd: null))
-                .Options;
+            var optionsBuilder = new DbContextOptionsBuilder<MasterCrmsDbContext>();
+            optionsBuilder.UseSqlServer(masterConn, sql =>
+            {
+                if (initializeDatabase)
+                {
+                    sql.EnableRetryOnFailure(3, TimeSpan.FromSeconds(5), null);
+                }
+                else
+                {
+                    sql.CommandTimeout(3);
+                }
+            });
+            var options = optionsBuilder.Options;
 
             var context = new MasterCrmsDbContext(options);
 
-            if (!_masterDbInitialized)
+            if (initializeDatabase && !_masterDbInitialized)
             {
                 lock (_masterLock)
                 {
@@ -72,22 +79,29 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
         }
 
-        public static RealEstateDbContext CreateContext(int tenantId = 1)
+        public static RealEstateDbContext CreateContext(int tenantId = 1, bool initializeDatabase = true)
         {
             if (tenantId <= 0) tenantId = 1;
             var tenantConn = GetTenantConnectionString(tenantId);
             LocalDbHelper.EnsureLocalDbRunning(tenantConn);
 
-            var options = new DbContextOptionsBuilder<RealEstateDbContext>()
-                .UseSqlServer(tenantConn, sql => sql.EnableRetryOnFailure(
-                    maxRetryCount: 3,
-                    maxRetryDelay: TimeSpan.FromSeconds(5),
-                    errorNumbersToAdd: null))
-                .Options;
+            var optionsBuilder = new DbContextOptionsBuilder<RealEstateDbContext>();
+            optionsBuilder.UseSqlServer(tenantConn, sql =>
+            {
+                if (initializeDatabase)
+                {
+                    sql.EnableRetryOnFailure(3, TimeSpan.FromSeconds(5), null);
+                }
+                else
+                {
+                    sql.CommandTimeout(3);
+                }
+            });
+            var options = optionsBuilder.Options;
 
             var context = new RealEstateDbContext(options, tenantId: tenantId);
 
-            if (!_initializedTenants.ContainsKey(tenantId))
+            if (initializeDatabase && !_initializedTenants.ContainsKey(tenantId))
             {
                 lock (_lockObj)
                 {
@@ -100,6 +114,34 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
 
             return context;
+        }
+
+        /// <summary>
+        /// Performs schema maintenance outside latency-sensitive UI operations.
+        /// Authentication should use contexts with initializeDatabase: false.
+        /// </summary>
+        public static void WarmAuthenticationDatabases()
+        {
+            try
+            {
+                using var masterDb = CreateMasterContext();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LocalDb.WarmAuthenticationDatabases] Master DB: {ex.Message}");
+            }
+
+            foreach (int tenantId in new[] { 1, 2, 3 })
+            {
+                try
+                {
+                    using var tenantDb = CreateContext(tenantId);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[LocalDb.WarmAuthenticationDatabases] Tenant {tenantId}: {ex.Message}");
+                }
+            }
         }
 
         public static async Task SeedAllTenantsAsync(IProgress<string>? progress = null)
@@ -379,6 +421,80 @@ namespace CRMS_Peguit.winforms.Models.Services
                 {
                     System.Diagnostics.Debug.WriteLine($"[EnsureMasterDatabaseInitialized] PaymentRecords error: {ex.Message}");
                 }
+
+                // 7. Ensure TenantBrandings Table & Backfill Existing Tenants
+                try
+                {
+                    context.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'TenantBrandings')
+                        BEGIN
+                            CREATE TABLE TenantBrandings (
+                                CompanyId INT PRIMARY KEY,
+                                DisplayName NVARCHAR(100) NOT NULL,
+                                LogoImage VARBINARY(MAX) NULL,
+                                LogoVersion INT NOT NULL DEFAULT 1,
+                                AccentColor NVARCHAR(20) NULL,
+                                ContactEmail NVARCHAR(255) NULL,
+                                ContactPhone NVARCHAR(50) NULL,
+                                Address NVARCHAR(500) NULL,
+                                HidePoweredBy BIT NOT NULL DEFAULT 0,
+                                UpdatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                                UpdatedByUserId INT NULL,
+                                CONSTRAINT FK_TenantBrandings_Companies_CompanyId FOREIGN KEY (CompanyId) REFERENCES Companies(CompanyId) ON DELETE CASCADE
+                            );
+                        END");
+
+                    var existingCompanies = context.Companies.ToList();
+                    var existingBrandings = context.TenantBrandings.ToDictionary(b => b.CompanyId);
+
+                    bool changed = false;
+                    foreach (var comp in existingCompanies)
+                    {
+                        if (!existingBrandings.ContainsKey(comp.CompanyId))
+                        {
+                            var branding = new TenantBranding
+                            {
+                                CompanyId = comp.CompanyId,
+                                DisplayName = comp.CompanyName,
+                                LogoVersion = 1,
+                                HidePoweredBy = comp.CompanyId == 3,
+                                AccentColor = comp.CompanyId == 3 ? "#0284C7" : null,
+                                ContactEmail = comp.CompanyId switch
+                                {
+                                    1 => "contact@apexrealty.com",
+                                    2 => "info@bluehorizon.com",
+                                    3 => "concierge@crestview.ph",
+                                    _ => null
+                                },
+                                ContactPhone = comp.CompanyId switch
+                                {
+                                    1 => "+63 2 8123 4567",
+                                    2 => "+63 2 8987 6543",
+                                    3 => "+63 2 8555 1234",
+                                    _ => null
+                                },
+                                Address = comp.CompanyId switch
+                                {
+                                    1 => "Ayala Triangle, Makati City, Metro Manila",
+                                    2 => "High Street, BGC, Taguig City",
+                                    3 => "Emerald Avenue, Ortigas Center, Pasig City",
+                                    _ => null
+                                },
+                                UpdatedAt = DateTime.UtcNow
+                            };
+                            context.TenantBrandings.Add(branding);
+                            changed = true;
+                        }
+                    }
+                    if (changed)
+                    {
+                        context.SaveChanges();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[EnsureMasterDatabaseInitialized] TenantBrandings error: {ex.Message}");
+                }
             }
             catch
             {
@@ -406,16 +522,47 @@ namespace CRMS_Peguit.winforms.Models.Services
                 context.Database.EnsureCreated();
 
                 EnsureAllSchemas(context);
+                EnsureAuthenticationIndexes(context);
 
-                bool needsSeeding = !context.Users.Any() || !context.Customers.Any() || !context.Properties.Any();
-                if (needsSeeding)
+                // Only seed base users if no users exist in this tenant's database
+                try
                 {
-                    DbSeeder.SeedTestUsersAsync(context, tenantId).GetAwaiter().GetResult();
+                    if (!context.Users.Any())
+                    {
+                        Task.Run(async () =>
+                        {
+                            await DbSeeder.SeedTestUsersAsync(context, tenantId).ConfigureAwait(false);
+                        }).GetAwaiter().GetResult();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[EnsureTenantDatabaseInitialized] Seeding users error: {ex.Message}");
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[LocalDb] EnsureTenantDatabaseInitialized notice: {ex.Message}");
+            }
+        }
+
+        private static void EnsureAuthenticationIndexes(RealEstateDbContext context)
+        {
+            try
+            {
+                context.Database.ExecuteSqlRaw(@"
+                    IF OBJECT_ID('[dbo].[Users]', 'U') IS NOT NULL
+                       AND NOT EXISTS (
+                           SELECT 1 FROM sys.indexes
+                           WHERE name = 'IX_Users_Email' AND object_id = OBJECT_ID('[dbo].[Users]')
+                       )
+                    BEGIN
+                        CREATE NONCLUSTERED INDEX [IX_Users_Email] ON [dbo].[Users] ([Email]);
+                    END");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[EnsureAuthenticationIndexes] {ex.Message}");
             }
         }
 

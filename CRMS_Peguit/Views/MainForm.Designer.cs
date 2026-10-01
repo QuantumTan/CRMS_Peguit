@@ -115,7 +115,7 @@ namespace CRMS_Peguit.winforms
             this.sidebarPanel.Location = new System.Drawing.Point(0, 0);
             this.sidebarPanel.Name = "sidebarPanel";
             this.sidebarPanel.Padding = new System.Windows.Forms.Padding(0, 8, 0, 8);
-            this.sidebarPanel.Size = new System.Drawing.Size(240, 720);
+            this.sidebarPanel.Size = new System.Drawing.Size(256, 720);
             this.sidebarPanel.TabIndex = 0;
             // 
             // pnlLogoHeader
@@ -126,7 +126,7 @@ namespace CRMS_Peguit.winforms
             this.pnlLogoHeader.Dock = System.Windows.Forms.DockStyle.Top;
             this.pnlLogoHeader.Location = new System.Drawing.Point(0, 8);
             this.pnlLogoHeader.Name = "pnlLogoHeader";
-            this.pnlLogoHeader.Size = new System.Drawing.Size(240, 48);
+            this.pnlLogoHeader.Size = new System.Drawing.Size(256, 48);
             this.pnlLogoHeader.TabIndex = 0;
             // 
             // picLogo
@@ -142,11 +142,11 @@ namespace CRMS_Peguit.winforms
             // lblLogo
             // 
             this.lblLogo.AutoSize = true;
-            this.lblLogo.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold);
+            this.lblLogo.Font = new System.Drawing.Font("Segoe UI", 11.5F, System.Drawing.FontStyle.Bold);
             this.lblLogo.ForeColor = System.Drawing.Color.White;
-            this.lblLogo.Location = new System.Drawing.Point(50, 14);
+            this.lblLogo.Location = new System.Drawing.Point(48, 14);
             this.lblLogo.Name = "lblLogo";
-            this.lblLogo.Size = new System.Drawing.Size(164, 21);
+            this.lblLogo.Size = new System.Drawing.Size(180, 21);
             this.lblLogo.TabIndex = 1;
             this.lblLogo.Text = "NEXA CRM SYSTEM";
             this.lblLogo.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -179,8 +179,8 @@ namespace CRMS_Peguit.winforms
             this.pnlNav.Dock = System.Windows.Forms.DockStyle.Fill;
             this.pnlNav.Location = new System.Drawing.Point(0, 118);
             this.pnlNav.Name = "pnlNav";
-            this.pnlNav.Padding = new System.Windows.Forms.Padding(0, 4, 0, 4);
-            this.pnlNav.Size = new System.Drawing.Size(240, 550);
+            this.pnlNav.Padding = new System.Windows.Forms.Padding(0, 2, 0, 2);
+            this.pnlNav.Size = new System.Drawing.Size(256, 550);
             this.pnlNav.TabIndex = 2;
             // 
             // btnDashboard
@@ -189,12 +189,12 @@ namespace CRMS_Peguit.winforms
             this.btnDashboard.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnDashboard.FlatAppearance.BorderSize = 0;
             this.btnDashboard.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnDashboard.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnDashboard.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnDashboard.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
             this.btnDashboard.Location = new System.Drawing.Point(0, 0);
             this.btnDashboard.Name = "btnDashboard";
-            this.btnDashboard.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnDashboard.Size = new System.Drawing.Size(240, 38);
+            this.btnDashboard.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnDashboard.Size = new System.Drawing.Size(256, 34);
             this.btnDashboard.TabIndex = 0;
             this.btnDashboard.Text = "  ⊞  Dashboard";
             this.btnDashboard.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -203,12 +203,12 @@ namespace CRMS_Peguit.winforms
             // lblSalesSection
             // 
             this.lblSalesSection.Dock = System.Windows.Forms.DockStyle.Top;
-            this.lblSalesSection.Font = new System.Drawing.Font("Segoe UI", 7.5F, System.Drawing.FontStyle.Bold);
-            this.lblSalesSection.ForeColor = System.Drawing.Color.FromArgb(88, 118, 147);
-            this.lblSalesSection.Location = new System.Drawing.Point(0, 38);
+            this.lblSalesSection.Font = new System.Drawing.Font("Segoe UI", 7F, System.Drawing.FontStyle.Bold);
+            this.lblSalesSection.ForeColor = System.Drawing.Color.FromArgb(100, 116, 139);
+            this.lblSalesSection.Location = new System.Drawing.Point(0, 34);
             this.lblSalesSection.Name = "lblSalesSection";
-            this.lblSalesSection.Padding = new System.Windows.Forms.Padding(18, 10, 0, 0);
-            this.lblSalesSection.Size = new System.Drawing.Size(240, 28);
+            this.lblSalesSection.Padding = new System.Windows.Forms.Padding(16, 6, 0, 0);
+            this.lblSalesSection.Size = new System.Drawing.Size(256, 22);
             this.lblSalesSection.TabIndex = 1;
             this.lblSalesSection.Text = "SALES";
             // 
@@ -218,12 +218,12 @@ namespace CRMS_Peguit.winforms
             this.btnLeads.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnLeads.FlatAppearance.BorderSize = 0;
             this.btnLeads.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnLeads.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnLeads.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnLeads.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnLeads.Location = new System.Drawing.Point(0, 66);
+            this.btnLeads.Location = new System.Drawing.Point(0, 56);
             this.btnLeads.Name = "btnLeads";
-            this.btnLeads.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnLeads.Size = new System.Drawing.Size(240, 38);
+            this.btnLeads.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnLeads.Size = new System.Drawing.Size(256, 34);
             this.btnLeads.TabIndex = 2;
             this.btnLeads.Text = "  ◎  Leads";
             this.btnLeads.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -235,12 +235,12 @@ namespace CRMS_Peguit.winforms
             this.btnCustomers.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnCustomers.FlatAppearance.BorderSize = 0;
             this.btnCustomers.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnCustomers.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnCustomers.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnCustomers.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnCustomers.Location = new System.Drawing.Point(0, 104);
+            this.btnCustomers.Location = new System.Drawing.Point(0, 90);
             this.btnCustomers.Name = "btnCustomers";
-            this.btnCustomers.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnCustomers.Size = new System.Drawing.Size(240, 38);
+            this.btnCustomers.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnCustomers.Size = new System.Drawing.Size(256, 34);
             this.btnCustomers.TabIndex = 3;
             this.btnCustomers.Text = "  👥  Customers";
             this.btnCustomers.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -252,12 +252,12 @@ namespace CRMS_Peguit.winforms
             this.btnProperties.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnProperties.FlatAppearance.BorderSize = 0;
             this.btnProperties.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnProperties.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnProperties.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnProperties.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnProperties.Location = new System.Drawing.Point(0, 142);
+            this.btnProperties.Location = new System.Drawing.Point(0, 124);
             this.btnProperties.Name = "btnProperties";
-            this.btnProperties.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnProperties.Size = new System.Drawing.Size(240, 38);
+            this.btnProperties.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnProperties.Size = new System.Drawing.Size(256, 34);
             this.btnProperties.TabIndex = 4;
             this.btnProperties.Text = "  🏢  Properties";
             this.btnProperties.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -269,12 +269,12 @@ namespace CRMS_Peguit.winforms
             this.btnDeals.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnDeals.FlatAppearance.BorderSize = 0;
             this.btnDeals.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnDeals.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnDeals.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnDeals.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnDeals.Location = new System.Drawing.Point(0, 180);
+            this.btnDeals.Location = new System.Drawing.Point(0, 158);
             this.btnDeals.Name = "btnDeals";
-            this.btnDeals.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnDeals.Size = new System.Drawing.Size(240, 38);
+            this.btnDeals.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnDeals.Size = new System.Drawing.Size(256, 34);
             this.btnDeals.TabIndex = 5;
             this.btnDeals.Text = "  💼  Deals";
             this.btnDeals.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -286,12 +286,12 @@ namespace CRMS_Peguit.winforms
             this.btnCampaigns.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnCampaigns.FlatAppearance.BorderSize = 0;
             this.btnCampaigns.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnCampaigns.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnCampaigns.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnCampaigns.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnCampaigns.Location = new System.Drawing.Point(0, 218);
+            this.btnCampaigns.Location = new System.Drawing.Point(0, 192);
             this.btnCampaigns.Name = "btnCampaigns";
-            this.btnCampaigns.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnCampaigns.Size = new System.Drawing.Size(240, 38);
+            this.btnCampaigns.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnCampaigns.Size = new System.Drawing.Size(256, 34);
             this.btnCampaigns.TabIndex = 6;
             this.btnCampaigns.Text = "  📣  Campaigns";
             this.btnCampaigns.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -303,12 +303,12 @@ namespace CRMS_Peguit.winforms
             this.btnClientRetention.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnClientRetention.FlatAppearance.BorderSize = 0;
             this.btnClientRetention.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnClientRetention.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnClientRetention.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnClientRetention.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnClientRetention.Location = new System.Drawing.Point(0, 218);
+            this.btnClientRetention.Location = new System.Drawing.Point(0, 226);
             this.btnClientRetention.Name = "btnClientRetention";
-            this.btnClientRetention.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnClientRetention.Size = new System.Drawing.Size(240, 38);
+            this.btnClientRetention.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnClientRetention.Size = new System.Drawing.Size(256, 34);
             this.btnClientRetention.TabIndex = 6;
             this.btnClientRetention.Text = "  💌  Client Retention";
             this.btnClientRetention.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -320,12 +320,12 @@ namespace CRMS_Peguit.winforms
             this.btnActivities.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnActivities.FlatAppearance.BorderSize = 0;
             this.btnActivities.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnActivities.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnActivities.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnActivities.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnActivities.Location = new System.Drawing.Point(0, 218);
+            this.btnActivities.Location = new System.Drawing.Point(0, 260);
             this.btnActivities.Name = "btnActivities";
-            this.btnActivities.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnActivities.Size = new System.Drawing.Size(240, 38);
+            this.btnActivities.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnActivities.Size = new System.Drawing.Size(256, 34);
             this.btnActivities.TabIndex = 6;
             this.btnActivities.Text = "  📈  Activities";
             this.btnActivities.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -337,12 +337,12 @@ namespace CRMS_Peguit.winforms
             this.btnFollowUps.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnFollowUps.FlatAppearance.BorderSize = 0;
             this.btnFollowUps.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnFollowUps.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnFollowUps.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnFollowUps.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnFollowUps.Location = new System.Drawing.Point(0, 256);
+            this.btnFollowUps.Location = new System.Drawing.Point(0, 294);
             this.btnFollowUps.Name = "btnFollowUps";
-            this.btnFollowUps.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnFollowUps.Size = new System.Drawing.Size(240, 38);
+            this.btnFollowUps.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnFollowUps.Size = new System.Drawing.Size(256, 34);
             this.btnFollowUps.TabIndex = 7;
             this.btnFollowUps.Text = "  ⏱  Follow-Ups";
             this.btnFollowUps.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -351,12 +351,12 @@ namespace CRMS_Peguit.winforms
             // lblSupportSection
             // 
             this.lblSupportSection.Dock = System.Windows.Forms.DockStyle.Top;
-            this.lblSupportSection.Font = new System.Drawing.Font("Segoe UI", 7.5F, System.Drawing.FontStyle.Bold);
-            this.lblSupportSection.ForeColor = System.Drawing.Color.FromArgb(88, 118, 147);
-            this.lblSupportSection.Location = new System.Drawing.Point(0, 294);
+            this.lblSupportSection.Font = new System.Drawing.Font("Segoe UI", 7F, System.Drawing.FontStyle.Bold);
+            this.lblSupportSection.ForeColor = System.Drawing.Color.FromArgb(100, 116, 139);
+            this.lblSupportSection.Location = new System.Drawing.Point(0, 328);
             this.lblSupportSection.Name = "lblSupportSection";
-            this.lblSupportSection.Padding = new System.Windows.Forms.Padding(18, 10, 0, 0);
-            this.lblSupportSection.Size = new System.Drawing.Size(240, 28);
+            this.lblSupportSection.Padding = new System.Windows.Forms.Padding(16, 6, 0, 0);
+            this.lblSupportSection.Size = new System.Drawing.Size(256, 22);
             this.lblSupportSection.TabIndex = 8;
             this.lblSupportSection.Text = "SUPPORT";
             // 
@@ -366,12 +366,12 @@ namespace CRMS_Peguit.winforms
             this.btnSupportTickets.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnSupportTickets.FlatAppearance.BorderSize = 0;
             this.btnSupportTickets.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnSupportTickets.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnSupportTickets.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnSupportTickets.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnSupportTickets.Location = new System.Drawing.Point(0, 322);
+            this.btnSupportTickets.Location = new System.Drawing.Point(0, 350);
             this.btnSupportTickets.Name = "btnSupportTickets";
-            this.btnSupportTickets.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnSupportTickets.Size = new System.Drawing.Size(240, 38);
+            this.btnSupportTickets.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnSupportTickets.Size = new System.Drawing.Size(256, 34);
             this.btnSupportTickets.TabIndex = 9;
             this.btnSupportTickets.Text = "  🎟  Support Tickets";
             this.btnSupportTickets.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -380,12 +380,12 @@ namespace CRMS_Peguit.winforms
             // lblInsightsSection
             // 
             this.lblInsightsSection.Dock = System.Windows.Forms.DockStyle.Top;
-            this.lblInsightsSection.Font = new System.Drawing.Font("Segoe UI", 7.5F, System.Drawing.FontStyle.Bold);
-            this.lblInsightsSection.ForeColor = System.Drawing.Color.FromArgb(88, 118, 147);
-            this.lblInsightsSection.Location = new System.Drawing.Point(0, 360);
+            this.lblInsightsSection.Font = new System.Drawing.Font("Segoe UI", 7F, System.Drawing.FontStyle.Bold);
+            this.lblInsightsSection.ForeColor = System.Drawing.Color.FromArgb(100, 116, 139);
+            this.lblInsightsSection.Location = new System.Drawing.Point(0, 384);
             this.lblInsightsSection.Name = "lblInsightsSection";
-            this.lblInsightsSection.Padding = new System.Windows.Forms.Padding(18, 10, 0, 0);
-            this.lblInsightsSection.Size = new System.Drawing.Size(240, 28);
+            this.lblInsightsSection.Padding = new System.Windows.Forms.Padding(16, 6, 0, 0);
+            this.lblInsightsSection.Size = new System.Drawing.Size(256, 22);
             this.lblInsightsSection.TabIndex = 10;
             this.lblInsightsSection.Text = "INSIGHTS";
             // 
@@ -395,12 +395,12 @@ namespace CRMS_Peguit.winforms
             this.btnAnalytics.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnAnalytics.FlatAppearance.BorderSize = 0;
             this.btnAnalytics.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnAnalytics.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnAnalytics.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnAnalytics.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnAnalytics.Location = new System.Drawing.Point(0, 388);
+            this.btnAnalytics.Location = new System.Drawing.Point(0, 406);
             this.btnAnalytics.Name = "btnAnalytics";
-            this.btnAnalytics.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnAnalytics.Size = new System.Drawing.Size(240, 38);
+            this.btnAnalytics.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnAnalytics.Size = new System.Drawing.Size(256, 34);
             this.btnAnalytics.TabIndex = 11;
             this.btnAnalytics.Text = "  📊  Analytics";
             this.btnAnalytics.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -412,12 +412,12 @@ namespace CRMS_Peguit.winforms
             this.btnReports.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnReports.FlatAppearance.BorderSize = 0;
             this.btnReports.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnReports.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnReports.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnReports.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnReports.Location = new System.Drawing.Point(0, 426);
+            this.btnReports.Location = new System.Drawing.Point(0, 440);
             this.btnReports.Name = "btnReports";
-            this.btnReports.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnReports.Size = new System.Drawing.Size(240, 38);
+            this.btnReports.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnReports.Size = new System.Drawing.Size(256, 34);
             this.btnReports.TabIndex = 12;
             this.btnReports.Text = "  📋  Reports & Exports";
             this.btnReports.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -426,12 +426,12 @@ namespace CRMS_Peguit.winforms
             // lblAdminSection
             // 
             this.lblAdminSection.Dock = System.Windows.Forms.DockStyle.Top;
-            this.lblAdminSection.Font = new System.Drawing.Font("Segoe UI", 7.5F, System.Drawing.FontStyle.Bold);
-            this.lblAdminSection.ForeColor = System.Drawing.Color.FromArgb(88, 118, 147);
-            this.lblAdminSection.Location = new System.Drawing.Point(0, 426);
+            this.lblAdminSection.Font = new System.Drawing.Font("Segoe UI", 7F, System.Drawing.FontStyle.Bold);
+            this.lblAdminSection.ForeColor = System.Drawing.Color.FromArgb(100, 116, 139);
+            this.lblAdminSection.Location = new System.Drawing.Point(0, 474);
             this.lblAdminSection.Name = "lblAdminSection";
-            this.lblAdminSection.Padding = new System.Windows.Forms.Padding(18, 10, 0, 0);
-            this.lblAdminSection.Size = new System.Drawing.Size(240, 28);
+            this.lblAdminSection.Padding = new System.Windows.Forms.Padding(16, 6, 0, 0);
+            this.lblAdminSection.Size = new System.Drawing.Size(256, 22);
             this.lblAdminSection.TabIndex = 12;
             this.lblAdminSection.Text = "ADMINISTRATION";
             // 
@@ -441,12 +441,12 @@ namespace CRMS_Peguit.winforms
             this.btnApprovals.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnApprovals.FlatAppearance.BorderSize = 0;
             this.btnApprovals.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnApprovals.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnApprovals.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnApprovals.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnApprovals.Location = new System.Drawing.Point(0, 454);
+            this.btnApprovals.Location = new System.Drawing.Point(0, 496);
             this.btnApprovals.Name = "btnApprovals";
-            this.btnApprovals.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnApprovals.Size = new System.Drawing.Size(240, 38);
+            this.btnApprovals.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnApprovals.Size = new System.Drawing.Size(256, 34);
             this.btnApprovals.TabIndex = 13;
             this.btnApprovals.Text = "  ✓  Approvals && Review";
             this.btnApprovals.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -458,12 +458,12 @@ namespace CRMS_Peguit.winforms
             this.btnManageManagers.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnManageManagers.FlatAppearance.BorderSize = 0;
             this.btnManageManagers.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnManageManagers.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnManageManagers.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnManageManagers.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnManageManagers.Location = new System.Drawing.Point(0, 454);
+            this.btnManageManagers.Location = new System.Drawing.Point(0, 530);
             this.btnManageManagers.Name = "btnManageManagers";
-            this.btnManageManagers.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnManageManagers.Size = new System.Drawing.Size(240, 38);
+            this.btnManageManagers.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnManageManagers.Size = new System.Drawing.Size(256, 34);
             this.btnManageManagers.TabIndex = 13;
             this.btnManageManagers.Text = "  🛡  Manage Managers";
             this.btnManageManagers.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -475,12 +475,12 @@ namespace CRMS_Peguit.winforms
             this.btnManageAgents.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnManageAgents.FlatAppearance.BorderSize = 0;
             this.btnManageAgents.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnManageAgents.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnManageAgents.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnManageAgents.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnManageAgents.Location = new System.Drawing.Point(0, 492);
+            this.btnManageAgents.Location = new System.Drawing.Point(0, 564);
             this.btnManageAgents.Name = "btnManageAgents";
-            this.btnManageAgents.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnManageAgents.Size = new System.Drawing.Size(240, 38);
+            this.btnManageAgents.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnManageAgents.Size = new System.Drawing.Size(256, 34);
             this.btnManageAgents.TabIndex = 14;
             this.btnManageAgents.Text = "  👥  Manage Agents";
             this.btnManageAgents.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -492,12 +492,12 @@ namespace CRMS_Peguit.winforms
             this.btnArchives.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnArchives.FlatAppearance.BorderSize = 0;
             this.btnArchives.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnArchives.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnArchives.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnArchives.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnArchives.Location = new System.Drawing.Point(0, 530);
+            this.btnArchives.Location = new System.Drawing.Point(0, 598);
             this.btnArchives.Name = "btnArchives";
-            this.btnArchives.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnArchives.Size = new System.Drawing.Size(240, 38);
+            this.btnArchives.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnArchives.Size = new System.Drawing.Size(256, 34);
             this.btnArchives.TabIndex = 15;
             this.btnArchives.Text = "  🗑  Recycle Bin";
             this.btnArchives.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -509,12 +509,12 @@ namespace CRMS_Peguit.winforms
             this.btnAdminPanel.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnAdminPanel.FlatAppearance.BorderSize = 0;
             this.btnAdminPanel.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnAdminPanel.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnAdminPanel.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnAdminPanel.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnAdminPanel.Location = new System.Drawing.Point(0, 38);
+            this.btnAdminPanel.Location = new System.Drawing.Point(0, 34);
             this.btnAdminPanel.Name = "btnAdminPanel";
-            this.btnAdminPanel.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnAdminPanel.Size = new System.Drawing.Size(240, 38);
+            this.btnAdminPanel.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnAdminPanel.Size = new System.Drawing.Size(256, 34);
             this.btnAdminPanel.TabIndex = 20;
             this.btnAdminPanel.Text = "  👑  Admin Panel";
             this.btnAdminPanel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -526,12 +526,12 @@ namespace CRMS_Peguit.winforms
             this.btnBranching.Dock = System.Windows.Forms.DockStyle.Top;
             this.btnBranching.FlatAppearance.BorderSize = 0;
             this.btnBranching.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnBranching.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnBranching.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnBranching.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
             this.btnBranching.Location = new System.Drawing.Point(0, 160);
             this.btnBranching.Name = "btnBranching";
-            this.btnBranching.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnBranching.Size = new System.Drawing.Size(240, 38);
+            this.btnBranching.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnBranching.Size = new System.Drawing.Size(256, 34);
             this.btnBranching.TabIndex = 21;
             this.btnBranching.Text = "  🏢  Branches";
             this.btnBranching.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -556,12 +556,12 @@ namespace CRMS_Peguit.winforms
             this.btnLogout.Dock = System.Windows.Forms.DockStyle.Bottom;
             this.btnLogout.FlatAppearance.BorderSize = 0;
             this.btnLogout.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnLogout.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.btnLogout.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.btnLogout.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnLogout.Location = new System.Drawing.Point(0, 668);
+            this.btnLogout.Location = new System.Drawing.Point(0, 674);
             this.btnLogout.Name = "btnLogout";
-            this.btnLogout.Padding = new System.Windows.Forms.Padding(16, 0, 0, 0);
-            this.btnLogout.Size = new System.Drawing.Size(240, 44);
+            this.btnLogout.Padding = new System.Windows.Forms.Padding(14, 0, 0, 0);
+            this.btnLogout.Size = new System.Drawing.Size(256, 38);
             this.btnLogout.TabIndex = 3;
             this.btnLogout.Text = "  ↪  Sign out";
             this.btnLogout.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -572,9 +572,9 @@ namespace CRMS_Peguit.winforms
             this.contentWrapperPanel.Controls.Add(this.mainPanel);
             this.contentWrapperPanel.Controls.Add(this.topHeaderPanel);
             this.contentWrapperPanel.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.contentWrapperPanel.Location = new System.Drawing.Point(240, 0);
+            this.contentWrapperPanel.Location = new System.Drawing.Point(256, 0);
             this.contentWrapperPanel.Name = "contentWrapperPanel";
-            this.contentWrapperPanel.Size = new System.Drawing.Size(1040, 720);
+            this.contentWrapperPanel.Size = new System.Drawing.Size(1024, 720);
             this.contentWrapperPanel.TabIndex = 1;
             // 
             // topHeaderPanel

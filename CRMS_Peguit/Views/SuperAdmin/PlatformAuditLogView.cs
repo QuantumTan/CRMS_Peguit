@@ -163,6 +163,27 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _topPanel.Controls.Add(toLabel);
             _topPanel.Controls.Add(_toDate);
             _topPanel.Controls.Add(_filterBtn);
+            var filters = new Panel { Dock = DockStyle.Bottom };
+            foreach (var control in new Control[] { lblAction, _actionTypeFilter, fromLabel, _fromDate, toLabel, _toDate, _filterBtn })
+                filters.Controls.Add(control);
+            _topPanel.Controls.Add(filters);
+            ResponsiveLayout.BindToolbar(filters, 8, lblAction, _actionTypeFilter, fromLabel, _fromDate, toLabel, _toDate, _filterBtn);
+            bool headerLayoutBusy = false;
+            void LayoutHeader()
+            {
+                if (headerLayoutBusy) return;
+                headerLayoutBusy = true;
+                try
+                {
+                    int width = Math.Max(1, _topPanel.Width - 48);
+                    int bottom = ResponsiveLayout.LabelBlock(titleLabel, 24, 16, width);
+                    bottom = ResponsiveLayout.LabelBlock(subLabel, 24, bottom + 4, width);
+                    _topPanel.Height = bottom + filters.Height + 12;
+                }
+                finally { headerLayoutBusy = false; }
+            }
+            _topPanel.SizeChanged += (_, _) => LayoutHeader();
+            filters.SizeChanged += (_, _) => LayoutHeader();
 
             // 2. Table Card Wrapper (Dock = Fill)
             var pnlGridWrapper = new Panel
@@ -216,6 +237,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             pnlCardHeader.SizeChanged += (_, _) =>
                 _txtSearch.Location = new Point(pnlCardHeader.Width - 324, 14);
             pnlCardHeader.Controls.Add(_txtSearch);
+            ResponsiveLayout.BindHeader(pnlCardHeader, lblCardTitle, null, _txtSearch);
 
             // Pagination
             _pagination = new PaginationControl
@@ -290,7 +312,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _gridSkeleton = GridSkeletonOverlay.CreateForGrid(_grid);
             pnlTableCard.Controls.Add(_pagination);
             pnlTableCard.Controls.Add(pnlCardHeader);
-            _pagination.BringToFront();
+            _pagination.SendToBack();
 
             pnlGridWrapper.Controls.Add(pnlTableCard);
 

@@ -164,9 +164,9 @@ namespace CRMS_Peguit.winforms.Services
             }
 
             if (settings.TargetAudience.Equals("Buyers", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(d => d.Customer!.Type.ToLower() == "buyer");
+                query = query.Where(d => d.Customer != null && d.Customer.Type != null && d.Customer.Type.ToLower() == "buyer");
             else if (settings.TargetAudience.Equals("Sellers", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(d => d.Customer!.Type.ToLower() == "seller");
+                query = query.Where(d => d.Customer != null && d.Customer.Type != null && d.Customer.Type.ToLower() == "seller");
 
             var deals = query
                 .OrderByDescending(d => d.ContractSignedDate ?? d.CreatedAt)

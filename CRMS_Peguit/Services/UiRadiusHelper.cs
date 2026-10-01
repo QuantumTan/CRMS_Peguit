@@ -76,7 +76,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             control.SizeChanged += (_, _) => UpdateRegion();
         }
 
-        public static void StyleButton(Button button, int radius = 8)
+        public static void StyleButton(Button button, int radius = 8, bool drawFocusRing = true)
         {
             if (button is null) return;
             button.FlatStyle = FlatStyle.Flat;
@@ -84,19 +84,22 @@ namespace CRMS_Peguit.winforms.Models.Services
             button.Cursor = Cursors.Hand;
             ApplyRoundedCorners(button, radius);
 
-            // Accessible focus indicator (WCAG 2.4.7 Focus Visible)
-            button.Paint += (s, e) =>
+            if (drawFocusRing)
             {
-                if (button.Focused && button.Enabled)
+                // Accessible focus indicator (WCAG 2.4.7 Focus Visible)
+                button.Paint += (s, e) =>
                 {
-                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                    using var pen = new Pen(Theme.FocusBorder, 2.5f);
-                    using var path = CreateRoundedPath(new Rectangle(1, 1, button.Width - 3, button.Height - 3), Math.Max(2, radius - 1));
-                    e.Graphics.DrawPath(pen, path);
-                }
-            };
-            button.GotFocus += (_, _) => button.Invalidate();
-            button.LostFocus += (_, _) => button.Invalidate();
+                    if (button.Focused && button.Enabled)
+                    {
+                        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                        using var pen = new Pen(Theme.FocusBorder, 2.5f);
+                        using var path = CreateRoundedPath(new Rectangle(1, 1, button.Width - 3, button.Height - 3), Math.Max(2, radius - 1));
+                        e.Graphics.DrawPath(pen, path);
+                    }
+                };
+                button.GotFocus += (_, _) => button.Invalidate();
+                button.LostFocus += (_, _) => button.Invalidate();
+            }
         }
 
         public static void AttachHoverFeedback(Button button, Color baseColor, Color hoverColor)

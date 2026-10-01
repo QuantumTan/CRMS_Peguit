@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Mail;
 using System.Text.Json;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Models.Services
 {
@@ -50,7 +51,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             {
                 using var mail = new MailMessage
                 {
-                    From = new MailAddress(config.Username!, "NEXA CRMS"),
+                    From = new MailAddress(config.Username!, BrandingService.GetDisplayName()),
                     Subject = subject.Trim(),
                     Body = body.Trim(),
                     IsBodyHtml = isBodyHtml
@@ -85,13 +86,14 @@ namespace CRMS_Peguit.winforms.Models.Services
             string recipientEmail,
             string? companyId = null)
         {
-            string subject = "NEXA password reset request";
+            string brand = BrandingService.GetDisplayName();
+            string subject = $"{brand} password reset request";
             string companyLine = string.IsNullOrWhiteSpace(companyId)
                 ? string.Empty
                 : $"Company ID: {companyId}" + Environment.NewLine + Environment.NewLine;
 
             string body =
-                "We received a password reset request for your NEXA CRMS account." +
+                $"We received a password reset request for your {brand} account." +
                 Environment.NewLine +
                 Environment.NewLine +
                 companyLine +
@@ -116,6 +118,11 @@ namespace CRMS_Peguit.winforms.Models.Services
             if (string.IsNullOrWhiteSpace(subject))
             {
                 return EmailSendResult.Failed("Subject is required.");
+            }
+
+            if (subject.Contains('\r') || subject.Contains('\n'))
+            {
+                return EmailSendResult.Failed("Email subject must not contain newline characters.");
             }
 
             if (string.IsNullOrWhiteSpace(body))

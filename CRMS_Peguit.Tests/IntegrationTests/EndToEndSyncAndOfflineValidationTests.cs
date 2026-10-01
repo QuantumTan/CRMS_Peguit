@@ -570,7 +570,7 @@ namespace CRMS_Peguit.Tests.IntegrationTests
             Property localProp;
             using (var db = LocalDb.CreateContext(tenantId))
             {
-                localProp = await db.Properties.FirstAsync();
+                localProp = await db.Properties.OrderBy(p => p.PropertyId).FirstAsync();
             }
 
             // 3. Create Deal referencing Customer and Property
@@ -835,62 +835,71 @@ namespace CRMS_Peguit.Tests.IntegrationTests
             var cache = LocalDataCache.Instance;
             cache.ClearAllQueue(tenantId);
 
-            // Item 1: Poison pill (corrupted JSON payload that throws on deserialize)
-            int poisonId = cache.EnqueueItem(new PendingSyncQueue
-            {
-                TenantId = tenantId,
-                UserId = 1,
-                EntityType = "Lead",
-                EntityLocalId = "-1",
-                Operation = "Insert",
-                PayloadJson = "CORRUPTED_NON_JSON_DATA{{{",
-                CreatedAt = DateTime.UtcNow,
-                Status = "Pending"
-            });
-
-            // Item 2: Good lead
             string marker = $"GoodAfterPoison_{Guid.NewGuid():N}";
-            int goodId = cache.EnqueueItem(new PendingSyncQueue
+            try
             {
-                TenantId = tenantId,
-                UserId = 1,
-                EntityType = "Lead",
-                EntityLocalId = "-2",
-                Operation = "Insert",
-                PayloadJson = JsonSerializer.Serialize(new Lead
+                // Item 1: Poison pill (corrupted JSON payload that throws on deserialize)
+                int poisonId = cache.EnqueueItem(new PendingSyncQueue
                 {
-                    FirstName = "GoodAfterPoison",
-                    LastName = marker,
-                    Email = $"{marker}@test.com",
-                    Source = "Web",
-                    Stage = "new",
-                    CreatedByUserId = 1
-                }),
-                CreatedAt = DateTime.UtcNow,
-                Status = "Pending"
-            });
+                    TenantId = tenantId,
+                    UserId = 1,
+                    EntityType = "Lead",
+                    EntityLocalId = "-1",
+                    Operation = "Insert",
+                    PayloadJson = "CORRUPTED_NON_JSON_DATA{{{",
+                    CreatedAt = DateTime.UtcNow,
+                    Status = "Pending"
+                });
 
-            // Drain
-            await SyncService.Instance.DrainQueueAsync();
+                // Item 2: Good lead
+                int goodId = cache.EnqueueItem(new PendingSyncQueue
+                {
+                    TenantId = tenantId,
+                    UserId = 1,
+                    EntityType = "Lead",
+                    EntityLocalId = "-2",
+                    Operation = "Insert",
+                    PayloadJson = JsonSerializer.Serialize(new Lead
+                    {
+                        FirstName = "GoodAfterPoison",
+                        LastName = marker,
+                        Email = $"{marker}@test.com",
+                        Source = "Web",
+                        Stage = "new",
+                        CreatedByUserId = 1
+                    }),
+                    CreatedAt = DateTime.UtcNow,
+                    Status = "Pending"
+                });
 
-            var poisonLoaded = cache.GetQueueItem(poisonId);
-            var goodLoaded = cache.GetQueueItem(goodId);
+                // Drain
+                await SyncService.Instance.DrainQueueAsync();
 
-            _output.WriteLine($"Poison item status: {poisonLoaded?.Status}, Failure: {poisonLoaded?.FailureReason}");
-            _output.WriteLine($"Good item status: {goodLoaded?.Status}, ServerId: {goodLoaded?.ServerEntityId}");
+                var poisonLoaded = cache.GetQueueItem(poisonId);
+                var goodLoaded = cache.GetQueueItem(goodId);
 
-            Assert.Equal("Failed", poisonLoaded?.Status);
-            Assert.Equal("Synced", goodLoaded?.Status);
+                _output.WriteLine($"Poison item status: {poisonLoaded?.Status}, Failure: {poisonLoaded?.FailureReason}");
+                _output.WriteLine($"Good item status: {goodLoaded?.Status}, ServerId: {goodLoaded?.ServerEntityId}");
 
-            // Cleanup cloud
-            using var cloudConnObj = new SqlConnection(_cloudConn);
-            await cloudConnObj.OpenAsync();
-            using var cmd = cloudConnObj.CreateCommand();
-            cmd.CommandText = "DELETE FROM Leads WHERE LastName = @marker";
-            cmd.Parameters.AddWithValue("@marker", marker);
-            await cmd.ExecuteNonQueryAsync();
+                Assert.Equal("Failed", poisonLoaded?.Status);
+                Assert.Equal("Synced", goodLoaded?.Status);
+            }
+            finally
+            {
+                try
+                {
+                    // Cleanup cloud
+                    using var cloudConnObj = new SqlConnection(_cloudConn);
+                    await cloudConnObj.OpenAsync();
+                    using var cmd = cloudConnObj.CreateCommand();
+                    cmd.CommandText = "DELETE FROM Leads WHERE LastName = @marker";
+                    cmd.Parameters.AddWithValue("@marker", marker);
+                    await cmd.ExecuteNonQueryAsync();
+                }
+                catch { }
 
-            cache.ClearAllQueue(tenantId);
+                cache.ClearAllQueue(tenantId);
+            }
         }
         #endregion
 
@@ -978,7 +987,7 @@ namespace CRMS_Peguit.Tests.IntegrationTests
                 await cloudConnObj.OpenAsync();
                 using var cmd = cloudConnObj.CreateCommand();
                 cmd.CommandText = $"SELECT Phone FROM Leads WHERE LeadId = {cloudLeadId}";
-                finalCloudPhone = (string)await cmd.ExecuteScalarAsync();
+                finalCloudPhone = (string)(await cmd.ExecuteScalarAsync() ?? "");
             }
 
             var counts = cache.GetQueueCounts(tenantId);
@@ -1358,7 +1367,7 @@ namespace CRMS_Peguit.Tests.IntegrationTests
         [Fact]
         public void Step11_LargeQueue_Enqueue_1000_Items_Performance_MeasuresLatency()
         {
-            int tenantId = 1;
+            int tenantId = 88888;
             var cache = LocalDataCache.Instance;
             cache.ClearAllQueue(tenantId);
 

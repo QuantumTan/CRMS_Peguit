@@ -13,7 +13,8 @@ namespace CRMS_Peguit.api.Controllers
 {
     public record LoginRequest(
         string Email,
-        string Password
+        string Password,
+        int? TenantId = null
     );
 
     public record LoginResponse(
@@ -78,36 +79,55 @@ namespace CRMS_Peguit.api.Controllers
                 });
             }
 
-            // ----------------------------------------------
-            // FIND USER ACROSS ALL TENANTS
-            // ----------------------------------------------
-
-            var user =
-                await _db.Users
-                    .IgnoreQueryFilters()
-                    .Include(u => u.Role)
-                    .FirstOrDefaultAsync(
-                        u =>
-                            u.Email == request.Email.Trim()
-                            &&
-                            (u.Status == "Active" || u.Status == "active")
-                    );
-
-            // ----------------------------------------------
-            // VERIFY PASSWORD
-            // ----------------------------------------------
-
-            bool isPasswordValid = false;
-            try
+            int? requestedTenantId = request.TenantId;
+            if ((!requestedTenantId.HasValue || requestedTenantId.Value <= 0) &&
+                Request?.Headers != null &&
+                Request.Headers.TryGetValue("X-Tenant-ID", out var headerVal) &&
+                int.TryParse(headerVal, out int hTid) && hTid > 0)
             {
-                isPasswordValid = user != null && PasswordHasher.Verify(request.Password, user.PasswordHash);
-            }
-            catch
-            {
-                isPasswordValid = false;
+                requestedTenantId = hTid;
             }
 
-            if (user is null || !isPasswordValid)
+            // ----------------------------------------------
+            // FIND CANDIDATE USERS (CASE-INSENSITIVE STATUS)
+            // ----------------------------------------------
+
+            var emailLower = request.Email.Trim().ToLower();
+            var candidatesQuery = _db.Users
+                .IgnoreQueryFilters()
+                .Include(u => u.Role)
+                .Where(u => u.Email.ToLower() == emailLower &&
+                            (u.Status.ToLower() == "active"));
+
+            if (requestedTenantId.HasValue && requestedTenantId.Value > 0)
+            {
+                candidatesQuery = candidatesQuery.Where(u => u.Role != null && u.Role.TenantId == requestedTenantId.Value);
+            }
+
+            var candidates = await candidatesQuery.ToListAsync();
+
+            // ----------------------------------------------
+            // VERIFY PASSWORD AGAINST CANDIDATES
+            // ----------------------------------------------
+
+            User? user = null;
+            foreach (var candidate in candidates)
+            {
+                try
+                {
+                    if (PasswordHasher.Verify(request.Password, candidate.PasswordHash))
+                    {
+                        user = candidate;
+                        break;
+                    }
+                }
+                catch
+                {
+                    // Continue checking other candidates
+                }
+            }
+
+            if (user is null)
             {
                 // Deliberately vague.
                 // Do not reveal whether the email exists.
@@ -202,11 +222,11 @@ namespace CRMS_Peguit.api.Controllers
                 _config["Jwt:Issuer"]
                 ?? "CRMS_Peguit";
 
-            var expiryMinutes =
-                int.Parse(
-                    _config["Jwt:ExpiryMinutes"]
-                    ?? "480"
-                );
+            var expiryMinutes = 480;
+            if (int.TryParse(_config["Jwt:ExpiryMinutes"], out var parsedExpiry) && parsedExpiry > 0)
+            {
+                expiryMinutes = parsedExpiry;
+            }
 
             var claims =
                 new[]
