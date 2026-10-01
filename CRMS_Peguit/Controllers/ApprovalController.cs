@@ -151,6 +151,64 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 _propertyController.ApproveAssignment(prop, notes);
             }
+            else if (item.Type == "Retention Request" && item.OriginalEntity is RetentionRequestRow retReq)
+            {
+                using var retentionCtrl = new RetentionController();
+                retentionCtrl.ApproveRetentionRequestAsync(retReq.RequestId, notes ?? "Approved via Approvals center.").GetAwaiter().GetResult();
+            }
+        }
+
+        public void RejectAssignment(PendingApprovalItem item, string? notes = null)
+        {
+            if (item.Type == "Retention Request" && item.OriginalEntity is RetentionRequestRow retReq)
+            {
+                using var retentionCtrl = new RetentionController();
+                retentionCtrl.RejectRetentionRequestAsync(retReq.RequestId, notes ?? "Rejected via Approvals center.", notes ?? "Rejected via Approvals center.").GetAwaiter().GetResult();
+            }
+            else if (item.Type == "Lead" && item.OriginalEntity is Lead lead)
+            {
+                _leadController.AssignAgent(lead, null, approve: false, notes ?? "Assignment rejected.");
+            }
+            else if (item.Type == "Customer" && item.OriginalEntity is Customer cust)
+            {
+                _customerController.AssignAgent(cust, null, approve: false, notes ?? "Assignment rejected.");
+            }
+            else if (item.Type == "Property" && item.OriginalEntity is Property prop)
+            {
+                _propertyController.AssignAgent(prop, null, approve: false, notes ?? "Assignment rejected.");
+            }
+        }
+
+        public void ApproveImmediately(PendingApprovalItem item, string? notes = null)
+        {
+            string reviewNotes = notes ?? "Approved immediately and assigned to submitter.";
+
+            if (item.Type == "Lead" && item.OriginalEntity is Lead lead)
+            {
+                int? targetAgent = lead.CreatedByUserId > 0
+                    ? lead.CreatedByUserId
+                    : lead.AssignedAgentId;
+                _leadController.AssignAgent(lead, targetAgent, approve: true, reviewNotes);
+            }
+            else if (item.Type == "Customer" && item.OriginalEntity is Customer cust)
+            {
+                int? targetAgent = cust.CreatedByUserId > 0
+                    ? cust.CreatedByUserId
+                    : cust.AssignedAgentId;
+                _customerController.AssignAgent(cust, targetAgent, approve: true, reviewNotes);
+            }
+            else if (item.Type == "Property" && item.OriginalEntity is Property prop)
+            {
+                int? targetAgent = prop.CreatedByUserId > 0
+                    ? prop.CreatedByUserId
+                    : prop.ListedByAgentId;
+                _propertyController.AssignAgent(prop, targetAgent, approve: true, reviewNotes);
+            }
+            else if (item.Type == "Retention Request" && item.OriginalEntity is RetentionRequestRow retReq)
+            {
+                using var retentionCtrl = new RetentionController();
+                retentionCtrl.ApproveRetentionRequestAsync(retReq.RequestId, reviewNotes).GetAwaiter().GetResult();
+            }
         }
 
         private string GetUserName(int? userId)

@@ -245,6 +245,8 @@ namespace CRMS_Peguit.winforms.Views.SupportTickets
             this.AutoScroll = false;
             this.BackColor = System.Drawing.Color.FromArgb(244, 247, 251);
             this.ClientSize = new System.Drawing.Size(540, 480);
+            this.AcceptButton = this.btnSave;
+            this.CancelButton = this.btnCancel;
             this.Controls.Add(this.pnlContent);
             this.Controls.Add(this.pnlFooter);
             this.Controls.Add(this.pnlHeader);

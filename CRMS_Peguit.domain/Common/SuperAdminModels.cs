@@ -139,6 +139,7 @@ namespace CRMS_Peguit.domain.Common
     {
         public int CompanyId { get; set; }
         public string CompanyName { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
         public string CompanyCode { get; set; } = string.Empty;
         public string PrimaryAdminName { get; set; } = string.Empty;
         public string TierLevel { get; set; } = string.Empty;
@@ -162,6 +163,7 @@ namespace CRMS_Peguit.domain.Common
     public class CreateTenantRequest
     {
         public string CompanyName { get; set; } = string.Empty;
+        public string? DisplayName { get; set; }
         public string CompanyCode { get; set; } = string.Empty;
         public string AdminFirstName { get; set; } = string.Empty;
         public string AdminLastName { get; set; } = string.Empty;

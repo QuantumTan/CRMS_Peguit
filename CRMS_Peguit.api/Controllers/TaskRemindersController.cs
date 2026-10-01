@@ -47,6 +47,10 @@ namespace CRMS_Peguit.api.Controllers
 
             if (assignedToUserId.HasValue && assignedToUserId.Value > 0)
             {
+                if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && assignedToUserId.Value != user.UserId)
+                {
+                    return Forbid();
+                }
                 query = query.Where(r => r.AssignedToUserId == assignedToUserId.Value);
             }
             else if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && user.UserId > 0)
@@ -85,7 +89,7 @@ namespace CRMS_Peguit.api.Controllers
             if (page.HasValue || pageSize.HasValue)
             {
                 int pageNum = Math.Max(1, page.GetValueOrDefault(1));
-                int size = Math.Max(1, pageSize.GetValueOrDefault(25));
+                int size = Math.Clamp(pageSize.GetValueOrDefault(25), 1, 100);
 
                 int totalCount = await query.CountAsync();
                 var pagedList = await query.OrderBy(r => r.DueDate)
@@ -104,6 +108,11 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> GetKpis([FromQuery] int? userId = null)
         {
             var user = CurrentUser;
+            if (userId.HasValue && !ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && userId.Value != user.UserId)
+            {
+                return Forbid();
+            }
+
             int effectiveUserId = userId ?? user.UserId;
 
             var query = _db.TaskReminders.AsNoTracking().Where(r => !r.IsDeleted);
@@ -128,12 +137,20 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetById(int id)
         {
+            var user = CurrentUser;
             var item = await _db.TaskReminders
                 .Include(r => r.RelatedCustomer)
                 .Include(r => r.RelatedLead)
                 .SingleOrDefaultAsync(r => r.TaskReminderId == id && !r.IsDeleted);
 
-            return item is null ? NotFound() : Ok(item);
+            if (item is null) return NotFound();
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && item.AssignedToUserId != user.UserId)
+            {
+                return Forbid();
+            }
+
+            return Ok(item);
         }
 
         [HttpPost]
@@ -142,7 +159,13 @@ namespace CRMS_Peguit.api.Controllers
             var user = CurrentUser;
             if (user.UserId <= 0) return Unauthorized();
 
-            if (reminder.AssignedToUserId <= 0)
+            if (string.IsNullOrWhiteSpace(reminder.Title))
+                return BadRequest("Task title is required.");
+
+            if (reminder.RelatedCustomerId <= 0) reminder.RelatedCustomerId = null;
+            if (reminder.RelatedLeadId <= 0) reminder.RelatedLeadId = null;
+
+            if (!ApiSecurityHelper.CanAssignRecords(user.Role) || reminder.AssignedToUserId <= 0)
             {
                 reminder.AssignedToUserId = user.UserId;
             }
@@ -166,10 +189,22 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPut("{id:int}")]
         public async Task<IActionResult> Update(int id, TaskReminder updated)
         {
+            var user = CurrentUser;
             var item = await _db.TaskReminders.SingleOrDefaultAsync(r => r.TaskReminderId == id && !r.IsDeleted);
             if (item is null) return NotFound();
 
-            item.Title = updated.Title;
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && item.AssignedToUserId != user.UserId)
+            {
+                return Forbid();
+            }
+
+            if (string.IsNullOrWhiteSpace(updated.Title))
+                return BadRequest("Task title is required.");
+
+            if (updated.RelatedCustomerId <= 0) updated.RelatedCustomerId = null;
+            if (updated.RelatedLeadId <= 0) updated.RelatedLeadId = null;
+
+            item.Title = updated.Title.Trim();
             item.DueDate = updated.DueDate;
             item.Status = updated.Status;
             item.Type = updated.Type;
@@ -177,7 +212,12 @@ namespace CRMS_Peguit.api.Controllers
             item.Priority = updated.Priority;
             item.RelatedCustomerId = updated.RelatedCustomerId;
             item.RelatedLeadId = updated.RelatedLeadId;
-            item.AssignedToUserId = updated.AssignedToUserId;
+            if (ApiSecurityHelper.CanAssignRecords(user.Role) && updated.AssignedToUserId > 0)
+            {
+                if (!await _db.Users.AnyAsync(u => u.UserId == updated.AssignedToUserId))
+                    return BadRequest("Assigned user does not exist.");
+                item.AssignedToUserId = updated.AssignedToUserId;
+            }
             item.CompletedAt = updated.CompletedAt;
             item.UpdatedAt = DateTime.UtcNow;
 
@@ -191,8 +231,18 @@ namespace CRMS_Peguit.api.Controllers
             var user = CurrentUser;
             if (user.UserId <= 0) return Unauthorized();
 
-            var item = await _db.TaskReminders.SingleOrDefaultAsync(r => r.TaskReminderId == id);
+            var item = await _db.TaskReminders.SingleOrDefaultAsync(r => r.TaskReminderId == id && !r.IsDeleted);
             if (item is null) return NotFound();
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && item.AssignedToUserId != user.UserId)
+            {
+                return Forbid();
+            }
+
+            if (item.Status == "Completed")
+            {
+                return Ok(item);
+            }
 
             item.Status = "Completed";
             item.CompletedAt = DateTime.UtcNow;
@@ -218,8 +268,24 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPost("{id:int}/snooze")]
         public async Task<IActionResult> Snooze(int id, [FromBody] SnoozeTaskRequest req)
         {
-            var item = await _db.TaskReminders.SingleOrDefaultAsync(r => r.TaskReminderId == id);
+            if (req is null || req.Days < 1 || req.Days > 365)
+            {
+                return BadRequest(new { message = "Snooze days must be between 1 and 365." });
+            }
+
+            var user = CurrentUser;
+            var item = await _db.TaskReminders.SingleOrDefaultAsync(r => r.TaskReminderId == id && !r.IsDeleted);
             if (item is null) return NotFound();
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && item.AssignedToUserId != user.UserId)
+            {
+                return Forbid();
+            }
+
+            if (item.Status == "Completed")
+            {
+                return BadRequest(new { message = "Cannot snooze a completed task." });
+            }
 
             item.DueDate = item.DueDate.AddDays(req.Days);
             item.Status = "Pending";
@@ -232,8 +298,24 @@ namespace CRMS_Peguit.api.Controllers
         [HttpPost("{id:int}/reschedule")]
         public async Task<IActionResult> Reschedule(int id, [FromBody] RescheduleTaskRequest req)
         {
-            var item = await _db.TaskReminders.SingleOrDefaultAsync(r => r.TaskReminderId == id);
+            if (req is null || req.NewDueDate < DateTime.UtcNow.AddYears(-1) || req.NewDueDate > DateTime.UtcNow.AddYears(10))
+            {
+                return BadRequest(new { message = "Invalid reschedule due date." });
+            }
+
+            var user = CurrentUser;
+            var item = await _db.TaskReminders.SingleOrDefaultAsync(r => r.TaskReminderId == id && !r.IsDeleted);
             if (item is null) return NotFound();
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && item.AssignedToUserId != user.UserId)
+            {
+                return Forbid();
+            }
+
+            if (item.Status == "Completed")
+            {
+                return BadRequest(new { message = "Cannot reschedule a completed task." });
+            }
 
             item.DueDate = req.NewDueDate;
             item.Status = req.NewDueDate < DateTime.UtcNow ? "Overdue" : "Pending";
@@ -246,8 +328,14 @@ namespace CRMS_Peguit.api.Controllers
         [HttpDelete("{id:int}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var item = await _db.TaskReminders.SingleOrDefaultAsync(r => r.TaskReminderId == id);
+            var user = CurrentUser;
+            var item = await _db.TaskReminders.SingleOrDefaultAsync(r => r.TaskReminderId == id && !r.IsDeleted);
             if (item is null) return NotFound();
+
+            if (!ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && item.AssignedToUserId != user.UserId)
+            {
+                return Forbid();
+            }
 
             item.IsDeleted = true;
             item.DeletedAt = DateTime.UtcNow;
@@ -261,6 +349,11 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> GetAssignedCustomers([FromQuery] int? userId = null)
         {
             var user = CurrentUser;
+            if (userId.HasValue && !ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && userId.Value != user.UserId)
+            {
+                return Forbid();
+            }
+
             int effectiveUserId = userId ?? user.UserId;
 
             var query = _db.Customers.AsNoTracking().Where(c => !c.IsDeleted);
@@ -281,6 +374,11 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> GetAssignedLeads([FromQuery] int? userId = null)
         {
             var user = CurrentUser;
+            if (userId.HasValue && !ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && userId.Value != user.UserId)
+            {
+                return Forbid();
+            }
+
             int effectiveUserId = userId ?? user.UserId;
 
             var query = _db.Leads.AsNoTracking().Where(l => !l.IsDeleted && l.Stage.ToLower() != "converted" && l.Stage.ToLower() != "lost");
@@ -301,7 +399,13 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<IActionResult> GetFollowUpsDueToday([FromQuery] int? userId = null, [FromQuery] int maxCount = 5)
         {
             var user = CurrentUser;
+            if (userId.HasValue && !ApiSecurityHelper.HasFullOversight(user.Role) && ApiSecurityHelper.IsAgent(user.Role) && userId.Value != user.UserId)
+            {
+                return Forbid();
+            }
+
             int effectiveUserId = userId ?? user.UserId;
+            maxCount = Math.Clamp(maxCount, 1, 100);
 
             var now = DateTime.UtcNow;
             var todayEnd = now.Date.AddDays(1);

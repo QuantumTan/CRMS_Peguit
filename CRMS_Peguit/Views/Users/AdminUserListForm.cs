@@ -41,7 +41,7 @@ namespace CRMS_Peguit.winforms.Views.Users
             _pagination.PageChanged += async (_, _) => await RefreshGridAsync(resetPage: false);
             _pagination.PageSizeChanged += async (_, _) => await RefreshGridAsync(resetPage: true);
             pnlCard.Controls.Add(_pagination);
-            _pagination.BringToFront();
+            _pagination.SendToBack();
         }
 
         private void InitEmptyState()
@@ -83,70 +83,10 @@ namespace CRMS_Peguit.winforms.Views.Users
             grid.CellContentClick += GridCellContentClick;
         }
 
-        private void LayoutControls()
+private void LayoutControls()
         {
-            if (this.IsDisposed) return;
-
-            int rightPadding = UiStyleConstants.PageMarginRight;
-            int leftMargin = UiStyleConstants.PageMarginLeft;
-            int totalWidth = ClientSize.Width;
-            int y = 88;
-
-            // Position toolbar action button
-            int rightEdge = totalWidth - rightPadding;
-            btnAdd.Top = y;
-            btnAdd.Height = UiStyleConstants.ToolbarRowHeight;
-            btnAdd.Left = rightEdge - btnAdd.Width;
-            rightEdge = btnAdd.Left - 16;
-
-            // Check if search + role + checkbox fit in single row
-            int filtersWidth = 150 + 12 + chkIncludeInactive.Width;
-            int availableForSearch = rightEdge - leftMargin - filtersWidth - 20;
-
-            if (availableForSearch >= 180)
-            {
-                // Single row
-                txtSearch.Top = y;
-                txtSearch.Left = leftMargin;
-                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
-                txtSearch.Width = Math.Min(UiStyleConstants.SearchBoxWidth, availableForSearch);
-
-                cmbRoleFilter.Top = y;
-                cmbRoleFilter.Left = txtSearch.Right + 12;
-                cmbRoleFilter.Height = UiStyleConstants.ToolbarRowHeight;
-                cmbRoleFilter.Width = 140;
-
-                chkIncludeInactive.Top = y + (UiStyleConstants.ToolbarRowHeight - chkIncludeInactive.Height) / 2;
-                chkIncludeInactive.Left = cmbRoleFilter.Right + 16;
-
-                int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
-                pnlCard.Top = cardTop;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - UiStyleConstants.PageMarginBottom);
-            }
-            else
-            {
-                // Two rows: search & button on row 1, role & checkbox on row 2
-                txtSearch.Top = y;
-                txtSearch.Left = leftMargin;
-                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
-                txtSearch.Width = Math.Max(180, rightEdge - leftMargin);
-
-                int row2Y = y + UiStyleConstants.ToolbarRowHeight + 10;
-                cmbRoleFilter.Top = row2Y;
-                cmbRoleFilter.Left = leftMargin;
-                cmbRoleFilter.Height = UiStyleConstants.ToolbarRowHeight;
-                cmbRoleFilter.Width = 140;
-
-                chkIncludeInactive.Top = row2Y + (UiStyleConstants.ToolbarRowHeight - chkIncludeInactive.Height) / 2;
-                chkIncludeInactive.Left = cmbRoleFilter.Right + 16;
-
-                int cardTop = row2Y + UiStyleConstants.ToolbarRowHeight + 14;
-                pnlCard.Top = cardTop;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 20);
-            }
-
-            pnlCard.Left = leftMargin;
-            pnlCard.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
+            ResponsiveLayout.ListPage(this, lblTitle, lblSubtitle, null, txtSearch,
+                new Control[] { cmbRoleFilter, chkIncludeInactive }, new Control?[] { btnAdd }, pnlCard);
         }
 
         private async Task RefreshGridAsync(bool resetPage = false)

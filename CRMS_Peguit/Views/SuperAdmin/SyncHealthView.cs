@@ -116,6 +116,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _topPanel.Controls.Add(subLabel);
             _topPanel.Controls.Add(_lblFilterActive);
             _topPanel.Controls.Add(_btnClearFilter);
+            ResponsiveLayout.BindHeader(_topPanel, titleLabel, subLabel, _lblFilterActive, _btnClearFilter);
 
             // 2. Table Card Wrapper (Dock = Fill)
             var pnlGridWrapper = new Panel
@@ -169,6 +170,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             pnlCardHeader.SizeChanged += (_, _) =>
                 _txtSearch.Location = new Point(pnlCardHeader.Width - 284, 14);
             pnlCardHeader.Controls.Add(_txtSearch);
+            ResponsiveLayout.BindHeader(pnlCardHeader, lblCardTitle, null, _txtSearch);
 
             // Pagination
             _pagination = new PaginationControl
@@ -251,7 +253,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _gridSkeleton = GridSkeletonOverlay.CreateForGrid(_grid);
             pnlTableCard.Controls.Add(_pagination);
             pnlTableCard.Controls.Add(pnlCardHeader);
-            _pagination.BringToFront();
+            _pagination.SendToBack();
 
             pnlGridWrapper.Controls.Add(pnlTableCard);
 
@@ -269,7 +271,14 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to load sync health: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (!CRMS_Peguit.winforms.Audit.ScreenAuditor.IsAuditing)
+                {
+                    MessageBox.Show($"Failed to load sync health: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                else
+                {
+                    Console.WriteLine($"[AUDITOR WARNING] Failed to load sync health: {ex.Message}");
+                }
             }
             finally
             {

@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Models.Services
 {
@@ -128,22 +129,29 @@ namespace CRMS_Peguit.winforms.Models.Services
                 Location = new Point(0, 4),
                 AutoSize = true
             };
+            string displayVal1 = string.IsNullOrWhiteSpace(value1) ? "—" : value1;
             var lblVal1 = new Label
             {
-                Text = string.IsNullOrWhiteSpace(value1) ? "—" : value1,
+                Text = displayVal1,
                 Font = new Font("Segoe UI", 10f, FontStyle.Regular),
                 ForeColor = ValueTextColor,
                 Location = new Point(0, 24),
-                AutoSize = true,
-                MaximumSize = new Size(300, 24)
+                AutoSize = false,
+                AutoEllipsis = true,
+                Size = new Size(300, 22)
             };
+            var rowToolTip = new ToolTip();
+            rowToolTip.SetToolTip(lblVal1, displayVal1);
             row.Controls.Add(lblCaption1);
             row.Controls.Add(lblVal1);
+
+            Label? lblCaption2 = null;
+            Label? lblVal2 = null;
 
             // Right Column (if present)
             if (label2 is not null)
             {
-                var lblCaption2 = new Label
+                lblCaption2 = new Label
                 {
                     Text = label2.ToUpperInvariant(),
                     Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
@@ -151,18 +159,53 @@ namespace CRMS_Peguit.winforms.Models.Services
                     Location = new Point(330, 4),
                     AutoSize = true
                 };
-                var lblVal2 = new Label
+                string displayVal2 = string.IsNullOrWhiteSpace(value2) ? "—" : value2;
+                lblVal2 = new Label
                 {
-                    Text = string.IsNullOrWhiteSpace(value2) ? "—" : value2,
+                    Text = displayVal2,
                     Font = new Font("Segoe UI", 10f, FontStyle.Regular),
                     ForeColor = ValueTextColor,
                     Location = new Point(330, 24),
-                    AutoSize = true,
-                    MaximumSize = new Size(300, 24)
+                    AutoSize = false,
+                    AutoEllipsis = true,
+                    Size = new Size(300, 22)
                 };
+                rowToolTip.SetToolTip(lblVal2, displayVal2);
                 row.Controls.Add(lblCaption2);
                 row.Controls.Add(lblVal2);
             }
+
+            bool layoutBusy = false;
+            void LayoutRow()
+            {
+                if (layoutBusy || row.IsDisposed) return;
+                layoutBusy = true;
+                try
+                {
+                    int width = Math.Max(1, row.ClientSize.Width);
+                    bool columns = lblVal2 != null && width >= ResponsiveLayout.Scale(row, 480);
+                    int gap = ResponsiveLayout.Scale(row, 16);
+                    int columnWidth = columns ? (width - gap) / 2 : width;
+                    int firstBottom = ResponsiveLayout.LabelBlock(lblCaption1, 0, 4, columnWidth);
+                    firstBottom = ResponsiveLayout.LabelBlock(lblVal1, 0, firstBottom + 4, columnWidth);
+                    int bottom = firstBottom;
+                    if (lblCaption2 != null && lblVal2 != null)
+                    {
+                        int left = columns ? columnWidth + gap : 0;
+                        int top = columns ? 4 : firstBottom + gap;
+                        int secondBottom = ResponsiveLayout.LabelBlock(lblCaption2, left, top, columnWidth);
+                        secondBottom = ResponsiveLayout.LabelBlock(lblVal2, left, secondBottom + 4, columnWidth);
+                        bottom = Math.Max(firstBottom, secondBottom);
+                    }
+                    row.Height = bottom + ResponsiveLayout.Scale(row, 12);
+                }
+                finally { layoutBusy = false; }
+            }
+            row.SizeChanged += (_, _) => LayoutRow();
+            lblVal1.TextChanged += (_, _) => LayoutRow();
+            if (lblVal2 != null) lblVal2.TextChanged += (_, _) => LayoutRow();
+            row.Disposed += (_, _) => rowToolTip.Dispose();
+            LayoutRow();
 
             return row;
         }

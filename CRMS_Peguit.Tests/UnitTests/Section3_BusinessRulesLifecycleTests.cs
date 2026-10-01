@@ -7,6 +7,7 @@ using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Roles;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services.Offline;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -203,6 +204,7 @@ namespace CRMS_Peguit.Tests.UnitTests
             db.SaveChanges();
 
             // DEFECT FINDING: Updating stage after Lost/Converted is not blocked.
+            Assert.False(wasRejected);
             Assert.True(stageWasAltered, "DEFECT IDENTIFIED: LeadController.Update allows stage mutation on a Lead whose terminal stage was already Lost or Converted.");
         }
 
@@ -297,6 +299,7 @@ namespace CRMS_Peguit.Tests.UnitTests
             if (updatedProp != null) db.Properties.Remove(updatedProp);
             db.SaveChanges();
 
+            Assert.False(wasRejected);
             Assert.True(statusChanged, "DEFECT IDENTIFIED: PropertyController.Update allows status transition to Reserved from non-Available state (Sold).");
         }
 
@@ -475,6 +478,7 @@ namespace CRMS_Peguit.Tests.UnitTests
             if (updatedDeal != null) db.Deals.Remove(updatedDeal);
             db.SaveChanges();
 
+            Assert.False(wasRejected);
             Assert.True(stageMutated, "DEFECT IDENTIFIED: DealController.Update permits stage changes on already Closed or Lost Deals.");
         }
 
@@ -643,6 +647,106 @@ namespace CRMS_Peguit.Tests.UnitTests
             // Document defect: Property and Deal do not support soft delete, and their delete actions perform hard deletion.
             Assert.False(propHasSoftDelete, "DEFECT IDENTIFIED: Property entity lacks IsDeleted / DeletedAt soft delete properties. PropertyController.Delete performs a hard DELETE.");
             Assert.False(dealHasSoftDelete, "DEFECT IDENTIFIED: Deal entity lacks IsDeleted / DeletedAt soft delete properties. DealController.Delete performs a hard DELETE.");
+        }
+
+        [Fact]
+        public void Property_Delete_WhenReferencedByDeal_ThrowsInvalidOperationException()
+        {
+            CurrentSession.Start(1, 1, "Admin User", "admin@test.com", "Admin", null, false);
+            using var db = LocalDb.CreateContext(1);
+            using var custCtrl = new CustomerController();
+            using var propCtrl = new PropertyController();
+            using var dealCtrl = new DealController();
+
+            var customer = custCtrl.Add(new Customer
+            {
+                FirstName = "PropDeleteGuard",
+                LastName = $"Owner_{Guid.NewGuid():N}",
+                Email = $"propdel_{Guid.NewGuid():N}@test.com",
+                Type = "buyer",
+                CreatedByUserId = 1
+            });
+
+            var property = propCtrl.Add(new Property
+            {
+                Address = $"Test Address {Guid.NewGuid():N}",
+                Price = 5500000m,
+                OwnerCustomerId = customer.CustomerId,
+                CreatedByUserId = 1,
+                Status = "Available"
+            });
+
+            var deal = dealCtrl.Add(new Deal
+            {
+                CustomerId = customer.CustomerId,
+                PropertyId = property.PropertyId,
+                Value = 5500000m,
+                Stage = "Offer",
+                CreatedByUserId = 1
+            });
+
+            // Act & Assert: Deleting a property tied to a deal should throw an InvalidOperationException
+            var ex = Assert.Throws<InvalidOperationException>(() => propCtrl.Delete(property));
+            Assert.Contains("associated with one or more deals", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+            // Cleanup: remove deal, property, and customer
+            dealCtrl.Delete(deal);
+            propCtrl.Delete(property);
+            custCtrl.SoftDelete(customer);
+        }
+
+        [Fact]
+        public void Deal_Delete_EnqueuesOfflineDelete_AndRemovesSuccessfully()
+        {
+            CurrentSession.Start(1, 1, "Admin User", "admin@test.com", "Admin", null, false);
+            using var custCtrl = new CustomerController();
+            using var propCtrl = new PropertyController();
+            using var dealCtrl = new DealController();
+
+            var customer = custCtrl.Add(new Customer
+            {
+                FirstName = "DealDeleteTest",
+                LastName = $"Client_{Guid.NewGuid():N}",
+                Email = $"dealclient_{Guid.NewGuid():N}@test.com",
+                Type = "buyer",
+                CreatedByUserId = 1
+            });
+
+            var property = propCtrl.Add(new Property
+            {
+                Address = $"Deal Prop {Guid.NewGuid():N}",
+                Price = 3000000m,
+                OwnerCustomerId = customer.CustomerId,
+                CreatedByUserId = 1,
+                Status = "Available"
+            });
+
+            var deal = dealCtrl.Add(new Deal
+            {
+                CustomerId = customer.CustomerId,
+                PropertyId = property.PropertyId,
+                Value = 3000000m,
+                Stage = "Proposal",
+                CreatedByUserId = 1
+            });
+
+            int dealId = deal.DealId;
+            dealCtrl.Delete(deal);
+
+            // Verify deal is deleted from local DB
+            using var db = LocalDb.CreateContext(1);
+            var found = db.Deals.FirstOrDefault(d => d.DealId == dealId);
+            Assert.Null(found);
+
+            // Verify offline delete is queued
+            var queue = LocalDataCache.Instance.GetAllQueueItems(1);
+            var deleteItem = queue.FirstOrDefault(q => q.EntityType == "Deal" && q.Operation == "Delete" && q.EntityLocalId == dealId.ToString());
+            Assert.NotNull(deleteItem);
+
+            // Cleanup
+            propCtrl.Delete(property);
+            custCtrl.SoftDelete(customer);
+            LocalDataCache.Instance.DeleteQueueItem(deleteItem.QueueId);
         }
 
         #endregion

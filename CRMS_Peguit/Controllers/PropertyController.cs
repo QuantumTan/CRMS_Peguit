@@ -282,6 +282,11 @@ namespace CRMS_Peguit.winforms.Controllers
                 .SingleOrDefault(x => x.PropertyId == property.PropertyId);
             if (item is null) return;
 
+            if (_db.Deals.Any(d => d.PropertyId == item.PropertyId))
+            {
+                throw new InvalidOperationException("Cannot delete property because it is associated with one or more deals. Please reassign or delete the associated deals first.");
+            }
+
             _db.Properties.Remove(item);
             _db.SaveChanges();
             LogActivity("Property Removed", null, null, $"Property listing '{item.Address}' was removed.");
@@ -298,6 +303,12 @@ namespace CRMS_Peguit.winforms.Controllers
             var item = _db.Properties
                 .SingleOrDefault(x => x.PropertyId == property.PropertyId);
             if (item is null) return;
+
+            // If not assigned to an agent, assign to the staff member who passed/created it
+            if (!item.ListedByAgentId.HasValue && item.CreatedByUserId > 0)
+            {
+                item.ListedByAgentId = item.CreatedByUserId;
+            }
 
             item.AssignmentStatus = "approved";
             item.AssignmentReviewedByUserId = CurrentSession.UserId;
@@ -346,14 +357,23 @@ namespace CRMS_Peguit.winforms.Controllers
                 .ToList();
         }
 
-        public List<CustomerPickerItem> GetOwnerCustomers()
+        public List<CustomerPickerItem> GetOwnerCustomers(int? includeCustomerId = null)
         {
             var sellerTypes = new[] { "seller", "both" };
 
             using var db = LocalDb.CreateContext(TenantId);
-            return db.Customers
+            var query = db.Customers
                 .AsNoTracking()
-                .Where(c => sellerTypes.Contains(c.Type.ToLower()) && c.Status.ToLower() == "active")
+                .Where(c => !c.IsDeleted && ((sellerTypes.Contains(c.Type.ToLower()) && c.Status.ToLower() == "active") ||
+                            (includeCustomerId.HasValue && c.CustomerId == includeCustomerId.Value)));
+
+            if (RbacService.IsAgent && !RbacService.HasFullOversight)
+            {
+                int currentUserId = CurrentSession.UserId;
+                query = query.Where(c => c.AssignedAgentId == currentUserId || c.CreatedByUserId == currentUserId || (includeCustomerId.HasValue && c.CustomerId == includeCustomerId.Value));
+            }
+
+            return query
                 .OrderBy(c => c.LastName)
                 .ThenBy(c => c.FirstName)
                 .Select(c => new

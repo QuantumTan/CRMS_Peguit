@@ -165,7 +165,9 @@ namespace CRMS_Peguit.winforms.Controls
                 Font = new Font("Segoe UI", 8f, FontStyle.Regular),
                 ForeColor = Color.FromArgb(148, 163, 184), // Slate 400 (#94A3B8)
                 BackColor = Color.Transparent,
-                AutoSize = true,
+                AutoSize = false,
+                AutoEllipsis = true,
+                Size = new Size(120, 18),
                 Cursor = Cursors.Hand,
                 TextAlign = ContentAlignment.MiddleLeft
             };
@@ -433,7 +435,8 @@ namespace CRMS_Peguit.winforms.Controls
             {
                 var testFont = new Font("Segoe UI", sz, FontStyle.Bold);
                 var measured = TextRenderer.MeasureText(_lblValue.Text, testFont);
-                if (measured.Width <= maxValWidth || sz == fontSizes[^1])
+                int availableValueHeight = Math.Max(16, Height - _lblTitle.Bottom - _lblSubtitle.Font.Height - 12);
+                if ((measured.Width <= maxValWidth && measured.Height <= availableValueHeight) || sz == fontSizes[^1])
                 {
                     chosenFont = testFont;
                     break;
@@ -447,6 +450,7 @@ namespace CRMS_Peguit.winforms.Controls
                 _lblValue.Font = chosenFont;
                 oldFont?.Dispose();
             }
+            else chosenFont?.Dispose();
 
             // Primary value beneath title
             int valueY = _lblTitle.Bottom + 2;
@@ -466,19 +470,25 @@ namespace CRMS_Peguit.winforms.Controls
 
             // Structured secondary metric / amount layout
             const int horizontalGap = 8;
-            int availableWidth = _lblNavHint.Visible ? _lblNavHint.Left - 4
-                               : _lblClearFilter.Visible ? _lblClearFilter.Left - 4
-                               : Width - RightPadding;
+            int rightAffordanceLeft = _lblNavHint.Visible ? _lblNavHint.Left - 6
+                                    : _lblClearFilter.Visible ? _lblClearFilter.Left - 6
+                                    : Width - RightPadding;
 
-            if (_lblValue.Right + horizontalGap + _lblSubtitle.PreferredWidth <= availableWidth)
+            int measuredSubWidth = TextRenderer.MeasureText(_lblSubtitle.Text, _lblSubtitle.Font).Width;
+            int maxBesideWidth = rightAffordanceLeft - (_lblValue.Right + horizontalGap);
+
+            if (_lblValue.Right + horizontalGap + measuredSubWidth <= rightAffordanceLeft && maxBesideWidth >= 30)
             {
                 int subY = Math.Max(_lblTitle.Bottom + 2, _lblValue.Bottom - _lblSubtitle.PreferredHeight - 4);
                 _lblSubtitle.Location = new Point(_lblValue.Right + horizontalGap, subY);
+                _lblSubtitle.Size = new Size(Math.Max(10, maxBesideWidth), Math.Max(16, _lblSubtitle.PreferredHeight));
             }
             else
             {
                 int subY = Math.Max(_lblValue.Bottom + 2, Height - _lblSubtitle.PreferredHeight - 6);
                 _lblSubtitle.Location = new Point(LeftPadding, subY);
+                int maxBelowWidth = Math.Max(10, rightAffordanceLeft - LeftPadding);
+                _lblSubtitle.Size = new Size(maxBelowWidth, Math.Max(16, _lblSubtitle.PreferredHeight));
             }
         }
 

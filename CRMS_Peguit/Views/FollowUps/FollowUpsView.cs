@@ -57,7 +57,7 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             _pagination.PageChanged += (_, _) => PopulateGrid(resetPage: false);
             _pagination.PageSizeChanged += (_, _) => PopulateGrid(resetPage: true);
             pnlCard.Controls.Add(_pagination);
-            _pagination.BringToFront();
+            _pagination.SendToBack();
         }
 
         private void InitGridColumns()
@@ -167,85 +167,10 @@ namespace CRMS_Peguit.winforms.Views.FollowUps
             UiRadiusHelper.ApplyPillShape(btnFilterCompleted);
         }
 
-        private void LayoutToolbar()
+private void LayoutToolbar()
         {
-            if (this.IsDisposed) return;
-
-            int rightPadding = UiStyleConstants.PageMarginRight;
-            int leftMargin = UiStyleConstants.PageMarginLeft;
-            int totalWidth = ClientSize.Width;
-
-            // 1. Position and size KPI container
-            pnlKpiContainer.Left = leftMargin;
-            pnlKpiContainer.Top = Math.Max(90, lblSubtitle.Bottom + 10);
-            pnlKpiContainer.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
-            pnlKpiContainer.Height = UiStyleConstants.KpiRowHeight;
-
-            // 2. Position toolbar row (Search box on left, filter pills in center, action buttons rightmost at identical y)
-            int y = pnlKpiContainer.Bottom + 16;
-            int rightEdge = totalWidth - rightPadding;
-
-            if (btnAdd.Visible)
-            {
-                btnAdd.Top = y;
-                btnAdd.Height = UiStyleConstants.ToolbarRowHeight;
-                btnAdd.Left = rightEdge - btnAdd.Width;
-                rightEdge = btnAdd.Left - 10;
-            }
-
-            var pills = new[] { btnFilterCompleted, btnFilterAll, btnFilterUpcoming, btnFilterToday, btnFilterOverdue };
-            int filterRight = rightEdge;
-            int totalFilterWidth = 0;
-            foreach (var p in pills) totalFilterWidth += p.Width + 6;
-
-            int availableForSearch = filterRight - leftMargin - totalFilterWidth - 16;
-
-            if (availableForSearch >= 180)
-            {
-                // Single row
-                foreach (var p in pills)
-                {
-                    p.Top = y;
-                    p.Height = UiStyleConstants.ToolbarRowHeight;
-                    p.Left = filterRight - p.Width;
-                    filterRight = p.Left - 6;
-                }
-
-                txtSearch.Top = y;
-                txtSearch.Left = leftMargin;
-                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
-                txtSearch.Width = Math.Min(UiStyleConstants.SearchBoxWidth, availableForSearch);
-
-                int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
-                pnlCard.Top = cardTop;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - UiStyleConstants.PageMarginBottom);
-            }
-            else
-            {
-                // Two rows: search on row 1, filter pills wrapped to row 2
-                txtSearch.Top = y;
-                txtSearch.Left = leftMargin;
-                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
-                txtSearch.Width = Math.Max(180, rightEdge - leftMargin);
-
-                int pillY = y + UiStyleConstants.ToolbarRowHeight + 10;
-                int filterX = leftMargin;
-                var forwardPills = new[] { btnFilterAll, btnFilterOverdue, btnFilterToday, btnFilterUpcoming, btnFilterCompleted };
-                foreach (var p in forwardPills)
-                {
-                    p.Top = pillY;
-                    p.Height = UiStyleConstants.ToolbarRowHeight;
-                    p.Left = filterX;
-                    filterX += p.Width + 6;
-                }
-
-                int cardTop = pillY + UiStyleConstants.ToolbarRowHeight + 14;
-                pnlCard.Top = cardTop;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 20);
-            }
-
-            pnlCard.Left = leftMargin;
-            pnlCard.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
+            ResponsiveLayout.ListPage(this, lblTitle, lblSubtitle, pnlKpiContainer, txtSearch,
+                new Control[] { btnFilterAll, btnFilterOverdue, btnFilterToday, btnFilterUpcoming, btnFilterCompleted }, new Control?[] { btnAdd }, pnlCard);
         }
 
         private void BindEvents()

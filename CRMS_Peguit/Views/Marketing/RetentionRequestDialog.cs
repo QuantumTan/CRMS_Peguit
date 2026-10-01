@@ -128,7 +128,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             UiRadiusHelper.StyleCard(pnlNotice, 6);
             var lblNotice = new Label
             {
-                Text = "Strict Policy: Real estate advisory only. Retail coupons, promotional vouchers, and discount sales gimmicks are strictly not permitted.",
+                Text = "Strict Policy: Real estate client care services only. Retail coupons, promotional vouchers, and discount sales gimmicks are strictly not permitted.",
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(3, 105, 161),
                 Dock = DockStyle.Fill
@@ -170,12 +170,12 @@ namespace CRMS_Peguit.winforms.Views.Marketing
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 9.5f)
             };
-            _cboActionType.Items.AddRange(new object[] { "Complimentary Advisory Service", "CMA & Property Valuation", "Client Re-engagement Consultation", "Deed & Legal Document Review" });
+            _cboActionType.Items.AddRange(new object[] { "Complimentary Client Care Service", "CMA & Property Valuation", "Client Re-engagement Consultation", "Deed & Legal Document Review" });
             _cboActionType.SelectedIndex = 0;
             y += 40;
 
             // Proposed Service Offering
-            var lblIncentive = new Label { Text = "Complimentary Advisory Service Offering * (Licensed Appraisal, Deed Review, CMA Study)", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(10, y), AutoSize = true };
+            var lblIncentive = new Label { Text = "Complimentary Client Care Service Offering * (Licensed Appraisal, Deed Review, CMA Study)", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(10, y), AutoSize = true };
             y += 24;
             _txtProposedIncentive = new TextBox
             {

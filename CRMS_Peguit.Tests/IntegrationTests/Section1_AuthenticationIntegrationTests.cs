@@ -237,5 +237,144 @@ namespace CRMS_Peguit.Tests.IntegrationTests
         }
 
         #endregion
+
+        #region 1.8 Tenant Login & Shell Instantiation
+
+        [Fact]
+        public async Task TenantA_Admin_Login_And_MainForm_Creation_Succeeds_Without_Disposed_Icon_Error()
+        {
+            var authController = new CRMS_Peguit.winforms.Controllers.AuthController(new AuthService("http://127.0.0.1:59999"));
+            var result = await authController.LoginAsync("tenanta_admin@test.com", "Admin123!");
+            Assert.True(result.Success);
+            Assert.False(result.WasOffline);
+
+            // Construct MainForm - must not throw ObjectDisposedException: Cannot access a disposed object. Object name: 'Icon'.
+            using var mainForm = new CRMS_Peguit.winforms.MainForm();
+            Assert.NotNull(mainForm);
+            Assert.NotNull(mainForm.Icon);
+            Assert.NotEqual(IntPtr.Zero, mainForm.Icon.Handle);
+        }
+
+        #endregion
+
+        #region 1.9 Branch Context & Switching Constraints
+
+        [Fact]
+        public void Staff_AssignedToSpecificBranch_CannotSwitchBranch()
+        {
+            CurrentSession.Start(
+                userId: 55,
+                tenantId: 3,
+                fullName: "Tenant C Agent",
+                email: "agent_branch_lock@test.com",
+                roleName: "Agent",
+                jwtToken: null,
+                isOffline: false,
+                tier: TenantTier.TenantC,
+                tenantName: "Tenant C",
+                assignedBranchId: 5,
+                assignedBranchName: "Cebu Branch");
+
+            Assert.False(CurrentSession.CanSwitchBranch);
+            Assert.Equal(5, CurrentSession.ActiveBranchId);
+            Assert.Equal("Cebu Branch", CurrentSession.ActiveBranchName);
+
+            // Attempt to switch to company-wide (null)
+            CurrentSession.SetActiveBranch(null, null);
+            Assert.Equal(5, CurrentSession.ActiveBranchId);
+            Assert.Equal("Cebu Branch", CurrentSession.ActiveBranchName);
+
+            // Attempt to switch to another branch
+            CurrentSession.SetActiveBranch(99, "Davao Branch");
+            Assert.Equal(5, CurrentSession.ActiveBranchId);
+            Assert.Equal("Cebu Branch", CurrentSession.ActiveBranchName);
+        }
+
+        [Fact]
+        public void Staff_AssignedToAllBranches_CanSwitchBranchFreely()
+        {
+            CurrentSession.Start(
+                userId: 56,
+                tenantId: 3,
+                fullName: "Tenant C Roving Agent",
+                email: "roving_agent@test.com",
+                roleName: "Agent",
+                jwtToken: null,
+                isOffline: false,
+                tier: TenantTier.TenantC,
+                tenantName: "Tenant C",
+                assignedBranchId: null,
+                assignedBranchName: null);
+
+            Assert.True(CurrentSession.CanSwitchBranch);
+            Assert.Null(CurrentSession.ActiveBranchId);
+
+            // Switch to specific branch
+            CurrentSession.SetActiveBranch(5, "Cebu Branch");
+            Assert.Equal(5, CurrentSession.ActiveBranchId);
+            Assert.Equal("Cebu Branch", CurrentSession.ActiveBranchName);
+
+            // Switch back to all branches
+            CurrentSession.SetActiveBranch(null, null);
+            Assert.Null(CurrentSession.ActiveBranchId);
+            Assert.Null(CurrentSession.ActiveBranchName);
+        }
+
+        [Fact]
+        public void Admin_CanSwitchBranch_RegardlessOfBranchAssignment()
+        {
+            CurrentSession.Start(
+                userId: 1,
+                tenantId: 3,
+                fullName: "Tenant C Admin",
+                email: "admin_branch_test@test.com",
+                roleName: "Admin",
+                jwtToken: null,
+                isOffline: false,
+                tier: TenantTier.TenantC,
+                tenantName: "Tenant C",
+                assignedBranchId: 2,
+                assignedBranchName: "HQ");
+
+            Assert.True(CurrentSession.CanSwitchBranch);
+
+            // Can switch to all branches
+            CurrentSession.SetActiveBranch(null, null);
+            Assert.Null(CurrentSession.ActiveBranchId);
+
+            // Can switch to any branch
+            CurrentSession.SetActiveBranch(10, "Branch 10");
+            Assert.Equal(10, CurrentSession.ActiveBranchId);
+        }
+
+        [Fact]
+        public void LocalAuthCache_SavesAndRetrieves_BranchInformation()
+        {
+            var testDbPath = Path.Combine(Path.GetTempPath(), $"crms_test_auth_{Guid.NewGuid():N}.db");
+            try
+            {
+                var cache = new LocalAuthCache(testDbPath);
+                cache.SaveSuccessfulLogin(
+                    tenantId: 3,
+                    userId: 88,
+                    fullName: "Branch User",
+                    email: "branch_user@test.com",
+                    passwordHash: "hash123",
+                    roleName: "Agent",
+                    branchId: 7,
+                    branchName: "Metro Branch");
+
+                var record = cache.TryGetCachedLogin("branch_user@test.com");
+                Assert.NotNull(record);
+                Assert.Equal(7, record.BranchId);
+                Assert.Equal("Metro Branch", record.BranchName);
+            }
+            finally
+            {
+                if (File.Exists(testDbPath)) File.Delete(testDbPath);
+            }
+        }
+
+        #endregion
     }
 }

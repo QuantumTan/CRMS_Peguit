@@ -27,7 +27,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
         private Label _lblTitle = null!;
         private Label _lblSubtitle = null!;
         private Button _btnRefresh = null!;
-        private Button _btnExportCsv = null!;
+        private Button _btnExportPdf = null!;
         private Button _btnNewRequest = null!;
 
         private Panel _pnlTabStrip = null!;
@@ -201,6 +201,10 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             _pnlHeader.Dock = DockStyle.Top;
             pnlTop.Controls.Add(_pnlTabStrip);
             pnlTop.Controls.Add(_pnlHeader);
+            _pnlHeader.SizeChanged += (_, _) => pnlTop.Height = _pnlHeader.Height + _pnlTabStrip.Height;
+            _pnlTabStrip.SizeChanged += (_, _) => pnlTop.Height = _pnlHeader.Height + _pnlTabStrip.Height;
+            ResponsiveLayout.BindHeader(_pnlHeader, _lblTitle, _lblSubtitle, _btnNewRequest, _btnExportPdf, _btnRefresh);
+            ResponsiveLayout.BindToolbar(_pnlTabStrip, 8, _tabButtons.Cast<Control>().ToArray());
 
             _pnlTabContainer = new Panel
             {
@@ -277,7 +281,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
 
             _lblSubtitle = new Label
             {
-                Text = "Lifecycle retention segments, automated equity valuation campaigns & professional advisory governance",
+                Text = "Lifecycle retention segments, automated equity valuation campaigns & client care service governance",
                 Font = new Font("Segoe UI", 9.5f),
                 ForeColor = Color.FromArgb(100, 116, 139),
                 Location = new Point(28, 46),
@@ -298,9 +302,9 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             UiRadiusHelper.StyleButton(_btnNewRequest, 8);
             _btnNewRequest.Click += (s, e) => ShowNewRequestModal();
 
-            _btnExportCsv = new Button
+            _btnExportPdf = new Button
             {
-                Text = "📥 Export CSV",
+                Text = "📥 Export PDF",
                 Size = new Size(110, 36),
                 BackColor = Color.White,
                 ForeColor = Color.FromArgb(71, 85, 105),
@@ -308,9 +312,9 @@ namespace CRMS_Peguit.winforms.Views.Marketing
                 Font = new Font("Segoe UI", 9f),
                 Cursor = Cursors.Hand
             };
-            _btnExportCsv.FlatAppearance.BorderColor = Color.FromArgb(226, 232, 240);
-            UiRadiusHelper.StyleButton(_btnExportCsv, 8);
-            _btnExportCsv.Click += (s, e) => ExportCurrentViewToCsv();
+            _btnExportPdf.FlatAppearance.BorderColor = Color.FromArgb(226, 232, 240);
+            UiRadiusHelper.StyleButton(_btnExportPdf, 8);
+            _btnExportPdf.Click += (s, e) => ExportCurrentViewToPdf();
 
             _btnRefresh = new Button
             {
@@ -329,7 +333,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             _pnlHeader.Controls.Add(_lblTitle);
             _pnlHeader.Controls.Add(_lblSubtitle);
             _pnlHeader.Controls.Add(_btnNewRequest);
-            _pnlHeader.Controls.Add(_btnExportCsv);
+            _pnlHeader.Controls.Add(_btnExportPdf);
             _pnlHeader.Controls.Add(_btnRefresh);
 
             _pnlHeader.Resize += (_, _) => LayoutHeaderButtons();
@@ -338,11 +342,8 @@ namespace CRMS_Peguit.winforms.Views.Marketing
 
         private void LayoutHeaderButtons()
         {
-            if (_pnlHeader == null || _btnRefresh == null || _btnExportCsv == null || _btnNewRequest == null) return;
-            int right = _pnlHeader.ClientSize.Width - 28;
-            _btnRefresh.Location = new Point(right - _btnRefresh.Width, 24);
-            _btnExportCsv.Location = new Point(_btnRefresh.Left - 10 - _btnExportCsv.Width, 24);
-            _btnNewRequest.Location = new Point(_btnExportCsv.Left - 10 - _btnNewRequest.Width, 24);
+            if (_pnlHeader == null || _btnRefresh == null || _btnExportPdf == null || _btnNewRequest == null) return;
+            _pnlHeader.PerformLayout();
         }
 
         private void BuildTabStrip()
@@ -361,7 +362,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
                 "📝 Email Templates",
                 "🚀 Campaign Queue",
                 "✉ 1-to-1 Outreach",
-                "🛡 Advisory Requests"
+                "🛡 Client Care Requests"
             };
 
             int x = 20;
@@ -826,7 +827,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             if (customer == null) return;
 
             var menu = new ContextMenuStrip();
-            menu.Items.Add("✉ 1-to-1 Advisory Outreach", null, (s, ev) =>
+            menu.Items.Add("✉ 1-to-1 Outreach", null, (s, ev) =>
             {
                 _selectedOutreachCustomer = customer;
                 SwitchTab(4);
@@ -1116,7 +1117,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
                 Location = new Point(16, y + 22),
                 Width = 420,
                 Font = new Font("Segoe UI", 9.5f),
-                Text = "NEXA Real Estate Advisory"
+                Text = $"{BrandingService.GetDisplayName()} Advisory"
             };
             _txtBrokerageName.TextChanged += (s, e) => UpdateLiveSamplePreview();
 
@@ -1324,7 +1325,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             if (_lblSamplePreviewSubject == null || _lblSamplePreviewBody == null) return;
 
             decimal rate = _numAppreciation != null ? _numAppreciation.Value : 5.0m;
-            string brokerage = !string.IsNullOrWhiteSpace(_txtBrokerageName?.Text) ? _txtBrokerageName.Text.Trim() : "NEXA Real Estate Advisory";
+            string brokerage = !string.IsNullOrWhiteSpace(_txtBrokerageName?.Text) ? _txtBrokerageName.Text.Trim() : $"{BrandingService.GetDisplayName()} Advisory";
             string cta = !string.IsNullOrWhiteSpace(_txtCtaText?.Text) ? _txtCtaText.Text.Trim() : "Schedule Annual Home Check-up";
             string subjTemplate = !string.IsNullOrWhiteSpace(_txtSubjectTemplate?.Text) ? _txtSubjectTemplate.Text.Trim() : "Market Valuation & Equity Report for {PropertyAddress}";
 
@@ -1382,7 +1383,15 @@ namespace CRMS_Peguit.winforms.Views.Marketing
                 "sellers" => 2,
                 _ => 0
             };
-            if (audIdx >= 0 && audIdx < _cboAudience.Items.Count) _cboAudience.SelectedIndex = audIdx;
+            bool canManageValuation = !RbacService.IsAgent && (RbacService.HasFullOversight || RbacService.IsAdmin);
+            _btnSaveValuationSettings.Visible = canManageValuation;
+            _txtSubjectTemplate.ReadOnly = !canManageValuation;
+            _txtCtaText.ReadOnly = !canManageValuation;
+            _txtBrokerageName.ReadOnly = !canManageValuation;
+            _numAppreciation.Enabled = canManageValuation;
+            _chkEnableAutomation.Enabled = canManageValuation;
+            _cboFrequency.Enabled = canManageValuation;
+            _cboAudience.Enabled = canManageValuation;
 
             UpdateLiveSamplePreview();
         }
@@ -1577,7 +1586,8 @@ namespace CRMS_Peguit.winforms.Views.Marketing
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                Visible = !RbacService.IsAgent && (RbacService.HasFullOversight || RbacService.IsAdmin)
             };
             _btnCreateNewTemplate.FlatAppearance.BorderSize = 0;
             UiRadiusHelper.StyleButton(_btnCreateNewTemplate, 6);
@@ -1947,7 +1957,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
 
             _lblTplPreviewSignature = new Label
             {
-                Text = "Warm regards,\nAlthea Garcia | Licensed Advisor\nNEXA Real Estate Advisory",
+                Text = $"Warm regards,\nAlthea Garcia | Licensed Advisor\n{BrandingService.GetDisplayName()} Advisory",
                 Font = new Font("Segoe UI", 9f),
                 ForeColor = Color.FromArgb(100, 116, 139),
                 Location = new Point(12, 400),
@@ -2231,11 +2241,24 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             _txtTplBody.Text = normalizedBody;
 
             // Configure button visibility & state
-            _btnSaveTemplateChanges.Visible = true;
+            bool canManageTemplates = !RbacService.IsAgent && (RbacService.HasFullOversight || RbacService.IsAdmin);
+            _btnSaveTemplateChanges.Visible = canManageTemplates;
             _btnSendTemplateTest.Visible = true;
 
+            _txtTplName.ReadOnly = !canManageTemplates;
+            _txtTplSubject.ReadOnly = !canManageTemplates;
+            _txtTplCta.ReadOnly = !canManageTemplates;
+            _txtTplBody.ReadOnly = !canManageTemplates;
+            _cboTplAudience.Enabled = canManageTemplates;
+
+            Color tplFieldBg = canManageTemplates ? Color.White : Color.FromArgb(241, 245, 249);
+            _txtTplName.BackColor = tplFieldBg;
+            _txtTplSubject.BackColor = tplFieldBg;
+            _txtTplCta.BackColor = tplFieldBg;
+            _txtTplBody.BackColor = tplFieldBg;
+
             // Archive button:
-            if (model.IsAutomatedValuation)
+            if (model.IsAutomatedValuation || RbacService.IsAgent || (!RbacService.HasFullOversight && !RbacService.IsAdmin))
             {
                 _btnArchiveTemplate.Visible = false;
                 _btnDeleteTemplate.Visible = false;
@@ -2283,7 +2306,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
                 "As part of our continuous fiduciary client care, we monitor neighborhood transactions and equity appreciation for your property at {PropertyAddress}.\r\n\r\n" +
                 "Over the past year, your property has benefited from steady capital appreciation. We have prepared an updated comparative valuation summary for your review.\r\n\r\n" +
                 "Should you wish to review your property equity report in detail or discuss broader portfolio options, please connect with us at your earliest convenience.\r\n\r\n" +
-                "Warm regards,\r\n{AgentName}\r\nLicensed Real Estate Advisor\r\nNEXA Real Estate Advisory";
+                $"Warm regards,\r\n{{AgentName}}\r\nLicensed Real Estate Advisor\r\n{BrandingService.GetDisplayName()} Advisory";
 
             // Switch buttons
             _btnSaveTemplateChanges.Visible = false;
@@ -2524,7 +2547,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             _lblTplPreviewSubject.Text = $"Subject: {subject}";
             _lblTplPreviewBody.Text = body;
             _btnTplPreviewCta.Text = !string.IsNullOrWhiteSpace(rawCta) ? rawCta : "Schedule Advisory Review";
-            _lblTplPreviewSignature.Text = $"Warm regards,\n{sampleAgent}\nLicensed Real Estate Advisory Team\nNEXA Real Estate Advisory";
+            _lblTplPreviewSignature.Text = $"Warm regards,\n{sampleAgent}\nLicensed Real Estate Advisory Team\n{BrandingService.GetDisplayName()} Advisory";
         }
 
         private async Task OnSaveTemplateChangesAsync()
@@ -3320,8 +3343,8 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             };
             _cboOutreachTemplate.SelectedIndexChanged += (s, e) => ApplySelectedOutreachTemplate();
 
-            // Complimentary Advisory Service Offering
-            var lblInc = new Label { Text = "Complimentary Advisory Service Offering:", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(14, 250), AutoSize = true };
+            // Complimentary Client Care Service Offering
+            var lblInc = new Label { Text = "Complimentary Client Care Service Offering:", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Location = new Point(14, 250), AutoSize = true };
             _txtOutreachIncentive = new TextBox
             {
                 Location = new Point(14, 272),
@@ -3422,7 +3445,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
 
             var lblHeaderBrand = new Label
             {
-                Text = "NEXA Real Estate Advisory · Client Retention Outreach",
+                Text = $"{BrandingService.GetDisplayName()} Advisory · Client Retention Outreach",
                 Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
                 ForeColor = Theme.SidebarAccent,
                 Location = new Point(16, 14),
@@ -3485,7 +3508,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
 
             _lblPreviewSignature = new Label
             {
-                Text = "Best regards,\nYour Dedicated Real Estate Advisor\nNEXA Real Estate Advisory Team",
+                Text = $"Best regards,\nYour Dedicated Real Estate Advisor\n{BrandingService.GetDisplayName()} Advisory Team",
                 Font = new Font("Segoe UI", 9f),
                 ForeColor = Color.FromArgb(100, 116, 139),
                 Location = new Point(16, 405),
@@ -3669,7 +3692,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
                 _pnlPreviewIncentiveBox.Visible = false;
             }
 
-            _lblPreviewSignature.Text = $"Best regards,\n{advisor}\nLicensed Real Estate Advisory Team\nNEXA Real Estate Advisory";
+            _lblPreviewSignature.Text = $"Best regards,\n{advisor}\nLicensed Real Estate Advisory Team\n{BrandingService.GetDisplayName()} Advisory";
         }
 
         private async Task OnSendManualRetentionEmailAsync()
@@ -3797,8 +3820,8 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             };
 
             var banner = CreateGuidanceBanner(
-                "🛡️ Advisory Client Care Service Governance",
-                "What is this for? Agents propose complimentary brokerage-sponsored professional services (licensed appraisals, title deed reviews, neighborhood CMA studies) to re-engage valued homeowners. Managers/Admins review and approve before dispatch. (Strict Policy: Real estate advisory only — no retail coupons, vouchers, or sales discounts).",
+                "🛡️ Client Care Service Governance",
+                "What is this for? Agents propose complimentary brokerage-sponsored professional services (licensed appraisals, title deed reviews, neighborhood CMA studies) to re-engage valued homeowners. Managers/Admins review and approve before dispatch. (Strict Policy: Real estate client care services only — no retail coupons, vouchers, or sales discounts).",
                 "➕ Request Service",
                 () => ShowNewRequestModal());
 
@@ -3954,7 +3977,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
 
             var lblTitle = new Label
             {
-                Text = "No Advisory Service Requests Pending",
+                Text = "No Client Care Service Requests Pending",
                 Font = new Font("Segoe UI", 13f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(15, 23, 42),
                 TextAlign = ContentAlignment.MiddleCenter,
@@ -3964,7 +3987,7 @@ namespace CRMS_Peguit.winforms.Views.Marketing
 
             var lblDesc = new Label
             {
-                Text = "No complimentary advisory service requests have been submitted for this period.\nAgents can submit proposals for manager approval to offer licensed appraisals or deed reviews to valued clients.",
+                Text = "No complimentary client care service requests have been submitted for this period.\nAgents can submit proposals for manager approval to offer licensed appraisals or deed reviews to valued clients.",
                 Font = new Font("Segoe UI", 9.5f),
                 ForeColor = Color.FromArgb(100, 116, 139),
                 TextAlign = ContentAlignment.MiddleCenter,
@@ -4127,20 +4150,20 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             }
         }
 
-        private void ExportCurrentViewToCsv()
+        private void ExportCurrentViewToPdf()
         {
             try
             {
                 using var sfd = new SaveFileDialog
                 {
-                    Filter = "CSV Files (*.csv)|*.csv",
-                    FileName = $"NEXA_Retention_Roster_{DateTime.Now:yyyyMMdd_HHmm}.csv"
+                    Filter = "PDF Files (*.pdf)|*.pdf",
+                    FileName = $"{BrandingService.GetDisplayName().Replace(" ", "_")}_Retention_Roster_{DateTime.Now:yyyyMMdd_HHmm}.pdf"
                 };
 
                 if (sfd.ShowDialog() == DialogResult.OK)
                 {
-                    _retentionController.ExportRetentionToCsv(_allClients, sfd.FileName);
-                    MessageBox.Show($"Retention roster exported successfully to {sfd.FileName}", "Export Completed", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    _retentionController.ExportRetentionToPdf(_allClients, sfd.FileName);
+                    MessageBox.Show($"Retention roster exported successfully to:\n{sfd.FileName}", "Export Completed", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }
             catch (Exception ex)

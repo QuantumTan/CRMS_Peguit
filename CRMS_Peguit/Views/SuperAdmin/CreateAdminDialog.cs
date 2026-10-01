@@ -35,7 +35,13 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _tenants = tenants;
 
             Text = "Create Administrator";
-            Size = new Size(520, 520);
+            Size = new Size(540, 600);
+            MinimumSize = new Size(500, 540);
+            StartPosition = FormStartPosition.CenterParent;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            BackColor = Color.White;
             UiRadiusHelper.StyleModal(this, 8);
 
             var pnlContent = new Panel
@@ -126,40 +132,73 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Location = new Point(24, y)
             };
             pnlContent.Controls.Add(_lblError);
+            y += 24;
 
-            // Footer Panel
+            // Spacing panel at the bottom of content to ensure comfortable scrolling
+            var pnlBottomSpacer = new Panel
+            {
+                Location = new Point(24, y),
+                Size = new Size(436, 20),
+                BackColor = Color.Transparent
+            };
+            pnlContent.Controls.Add(pnlBottomSpacer);
+
+            // Fixed Footer Panel (Dock = Bottom, Height = 64)
             var pnlFooter = new Panel
             {
                 Dock = DockStyle.Bottom,
-                Height = 60,
-                BackColor = Color.FromArgb(248, 250, 252)
+                Height = 64,
+                BackColor = Color.FromArgb(248, 250, 252),
+                Padding = new Padding(20, 14, 20, 14)
+            };
+            pnlFooter.Paint += (s, e) =>
+            {
+                using var p = new Pen(Theme.Border, 1f);
+                e.Graphics.DrawLine(p, 0, 0, pnlFooter.Width, 0);
             };
 
-            // Buttons
-            var btnCancel = new Button
+            var pnlButtons = new FlowLayoutPanel
             {
-                Text = "Cancel",
-                DialogResult = DialogResult.Cancel,
-                Location = new Point(248, 12),
-                Size = new Size(100, 36),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
+                Dock = DockStyle.Right,
+                Width = 280,
+                FlowDirection = FlowDirection.RightToLeft,
+                BackColor = Color.Transparent
             };
-            UiRadiusHelper.StyleSecondaryButton(btnCancel, 6);
-            pnlFooter.Controls.Add(btnCancel);
 
             var btnCreate = new Button
             {
                 Text = "Create Admin",
-                Location = new Point(356, 12),
-                Size = new Size(112, 36),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
+                Size = new Size(130, 36),
+                BackColor = Theme.Primary,
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Margin = new Padding(10, 0, 0, 0)
             };
             UiRadiusHelper.StylePrimaryButton(btnCreate, 6);
             btnCreate.Click += BtnCreate_Click;
-            pnlFooter.Controls.Add(btnCreate);
 
+            var btnCancel = new Button
+            {
+                Text = "Cancel",
+                DialogResult = DialogResult.Cancel,
+                Size = new Size(100, 36),
+                BackColor = Theme.Surface,
+                ForeColor = Theme.TextPrimary,
+                Font = new Font("Segoe UI", 9f),
+                Cursor = Cursors.Hand,
+                Margin = new Padding(0)
+            };
+            UiRadiusHelper.StyleSecondaryButton(btnCancel, 6);
+
+            pnlButtons.Controls.Add(btnCreate);
+            pnlButtons.Controls.Add(btnCancel);
+            pnlFooter.Controls.Add(pnlButtons);
+
+            // Correct docking order: Fill added first, then Bottom
             Controls.Add(pnlContent);
             Controls.Add(pnlFooter);
+            ResponsiveLayout.BindInputPanel(pnlContent);
 
             AcceptButton = btnCreate;
             CancelButton = btnCancel;

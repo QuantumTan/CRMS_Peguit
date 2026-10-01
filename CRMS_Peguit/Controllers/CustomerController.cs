@@ -90,9 +90,10 @@ namespace CRMS_Peguit.winforms.Controllers
                 {
                     int currentUserId = CurrentSession.UserId;
                     query = query.Where(c =>
-                        (c.AssignedAgentId.HasValue && c.AssignedAgentId.Value > 0)
+                        ((c.AssignedAgentId.HasValue && c.AssignedAgentId.Value > 0)
                             ? c.AssignedAgentId.Value == currentUserId
-                            : c.CreatedByUserId == currentUserId);
+                            : c.CreatedByUserId == currentUserId)
+                        || db.Deals.Any(d => d.CustomerId == c.CustomerId && (d.AgentId == currentUserId || d.CreatedByUserId == currentUserId)));
                 }
 
                 if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
@@ -183,7 +184,11 @@ namespace CRMS_Peguit.winforms.Controllers
                 if (item is null) return null;
 
                 if (!RbacService.CanAgentViewRecord(item.AssignedAgentId, item.CreatedByUserId))
-                    return null;
+                {
+                    bool hasDeal = _db.Deals.Any(d => d.CustomerId == item.CustomerId && (d.AgentId == CurrentSession.UserId || d.CreatedByUserId == CurrentSession.UserId));
+                    if (!hasDeal)
+                        return null;
+                }
 
                 return item;
             }
@@ -439,6 +444,12 @@ namespace CRMS_Peguit.winforms.Controllers
             var item = _db.Customers.SingleOrDefault(x => x.CustomerId == customer.CustomerId);
             if (item is null) return;
 
+            // If not assigned to an agent, assign to the staff member who passed/created it
+            if (!item.AssignedAgentId.HasValue && item.CreatedByUserId > 0)
+            {
+                item.AssignedAgentId = item.CreatedByUserId;
+            }
+
             item.AssignmentStatus = "approved";
             item.AssignmentReviewedByUserId = CurrentSession.UserId;
             item.AssignmentReviewedAt = DateTime.UtcNow;
@@ -512,7 +523,7 @@ namespace CRMS_Peguit.winforms.Controllers
             using var db = LocalDb.CreateContext(TenantId);
             return db.Customers
                 .AsNoTracking()
-                .Where(c => c.AssignmentStatus == "pending_review" || c.AssignedAgentId == null)
+                .Where(c => !c.IsDeleted && (c.AssignmentStatus == "pending_review" || c.AssignedAgentId == null))
                 .OrderByDescending(c => c.CreatedAt)
                 .ToList();
         }

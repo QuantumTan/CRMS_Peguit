@@ -132,6 +132,16 @@ namespace CRMS_Peguit.api.Controllers
         {
             var user = CurrentUser;
             if (user.UserId <= 0) return Unauthorized();
+
+            if (string.IsNullOrWhiteSpace(property.Address))
+                return BadRequest(new { message = "Property address is required." });
+            if (property.Price < 0)
+                return BadRequest(new { message = "Property price cannot be negative." });
+            if (property.OwnerCustomerId <= 0)
+                return BadRequest(new { message = "A valid OwnerCustomerId is required." });
+            if (string.IsNullOrWhiteSpace(property.Status))
+                property.Status = "Available";
+
             property.CreatedAt = DateTime.UtcNow;
             property.CreatedByUserId = user.UserId;
 
@@ -166,6 +176,13 @@ namespace CRMS_Peguit.api.Controllers
                 if (!allowed) return Forbid();
             }
 
+            if (string.IsNullOrWhiteSpace(updated.Address))
+                return BadRequest(new { message = "Property address is required." });
+            if (updated.Price < 0)
+                return BadRequest(new { message = "Property price cannot be negative." });
+            if (updated.OwnerCustomerId <= 0)
+                return BadRequest(new { message = "A valid OwnerCustomerId is required." });
+
             item.Address = updated.Address;
             item.PropertyType = updated.PropertyType;
             item.Price = updated.Price;
@@ -176,10 +193,13 @@ namespace CRMS_Peguit.api.Controllers
             if (ApiSecurityHelper.CanAssignRecords(user.Role))
             {
                 item.ListedByAgentId = updated.ListedByAgentId <= 0 ? null : updated.ListedByAgentId;
-                item.AssignmentStatus = updated.AssignmentStatus;
-                item.AssignmentReviewedByUserId = updated.AssignmentReviewedByUserId;
-                item.AssignmentReviewedAt = updated.AssignmentReviewedAt;
-                item.AssignmentReviewNotes = updated.AssignmentReviewNotes;
+                if (!string.IsNullOrWhiteSpace(updated.AssignmentStatus) && updated.AssignmentStatus != item.AssignmentStatus)
+                {
+                    item.AssignmentStatus = updated.AssignmentStatus;
+                    item.AssignmentReviewedByUserId = user.UserId > 0 ? user.UserId : null;
+                    item.AssignmentReviewedAt = DateTime.UtcNow;
+                    item.AssignmentReviewNotes = updated.AssignmentReviewNotes;
+                }
             }
 
             await _db.SaveChangesAsync();
@@ -201,6 +221,11 @@ namespace CRMS_Peguit.api.Controllers
                 if (!allowed) return Forbid();
             }
 
+            if (await _db.Deals.AnyAsync(d => d.PropertyId == id))
+            {
+                return BadRequest(new { message = "Cannot delete property because it is associated with one or more deals. Please reassign or delete the associated deals first." });
+            }
+
             _db.Properties.Remove(item);
             await _db.SaveChangesAsync();
             return NoContent();
@@ -219,7 +244,7 @@ namespace CRMS_Peguit.api.Controllers
             var newAgentId = request.AgentId <= 0 ? null : request.AgentId;
             if (newAgentId.HasValue && !await _db.Users.AnyAsync(u => u.UserId == newAgentId.Value))
             {
-                newAgentId = null;
+                return BadRequest(new { message = $"Agent with ID {newAgentId.Value} does not exist." });
             }
 
             item.ListedByAgentId = newAgentId;
@@ -254,6 +279,10 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("pending-review")]
         public async Task<IActionResult> GetPendingReview()
         {
+            var user = CurrentUser;
+            if (!ApiSecurityHelper.HasFullOversight(user.Role))
+                return StatusCode(StatusCodes.Status403Forbidden, "Only Manager or Admin can view records pending review.");
+
             var items = await _db.Properties
                 .AsNoTracking()
                 .Where(p => p.AssignmentStatus == "pending_review" || p.ListedByAgentId == null)
@@ -287,7 +316,7 @@ namespace CRMS_Peguit.api.Controllers
 
             var agents = await _db.Users
                 .AsNoTracking()
-                .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status.ToLower() != "inactive")
+                .Where(u => agentRoleIds.Contains(u.RoleId) && u.Status != null && !u.Status.Equals("inactive", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(u => u.LastName)
                 .ThenBy(u => u.FirstName)
                 .Select(u => new AgentPickerDto(u.UserId, u.FullName, u.Email))

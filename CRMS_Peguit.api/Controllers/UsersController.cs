@@ -95,6 +95,28 @@ namespace CRMS_Peguit.api.Controllers
             Branch = u.Branch
         };
 
+        private async Task<string?> ValidateBranchAssignmentAsync(int? branchId)
+        {
+            // Tenants that have active branches use branch-scoped accounts. This keeps
+            // non-branch subscription tiers compatible while preventing branch-enabled
+            // tenants from creating company-wide Manager/Agent accounts by omission.
+            bool hasActiveBranches = await _db.Branches.AsNoTracking().AnyAsync(b => b.IsActive);
+            if (!hasActiveBranches && !branchId.HasValue)
+            {
+                return null;
+            }
+
+            if (!branchId.HasValue || branchId.Value <= 0)
+            {
+                return "BranchId is required when the tenant has active branches.";
+            }
+
+            bool branchIsActive = await _db.Branches
+                .AsNoTracking()
+                .AnyAsync(b => b.BranchId == branchId.Value && b.IsActive);
+            return branchIsActive ? null : "The selected branch does not exist or is inactive.";
+        }
+
         [HttpGet]
         public async Task<IActionResult> GetAll([FromQuery] bool includeInactive = false, [FromQuery] int? branchId = null)
         {
@@ -190,6 +212,13 @@ namespace CRMS_Peguit.api.Controllers
                 return BadRequest("Cannot assign SuperAdmin role via this API.");
             }
 
+            int? branchId = req.GetEffectiveBranchId();
+            string? branchError = await ValidateBranchAssignmentAsync(branchId);
+            if (branchError != null)
+            {
+                return BadRequest(branchError);
+            }
+
             var password = req.GetEffectivePassword();
             if (string.IsNullOrWhiteSpace(password))
             {
@@ -204,7 +233,7 @@ namespace CRMS_Peguit.api.Controllers
                 Suffix = req.GetEffectiveSuffix()?.Trim(),
                 Email = email,
                 RoleId = roleId,
-                BranchId = req.GetEffectiveBranchId(),
+                BranchId = branchId,
                 PasswordHash = PasswordHasher.Hash(password),
                 Status = "active",
                 CreatedAt = DateTime.UtcNow
@@ -254,16 +283,27 @@ namespace CRMS_Peguit.api.Controllers
                 existing.RoleId = updated.RoleId;
             }
 
-            if (await _db.Users.AnyAsync(u => u.Email == updated.Email.Trim() && u.UserId != id))
+            string? branchError = await ValidateBranchAssignmentAsync(updated.BranchId);
+            if (branchError != null)
             {
-                return BadRequest("A user with this email already exists in your tenant.");
+                return BadRequest(branchError);
+            }
+
+            if (!string.IsNullOrWhiteSpace(updated.Email))
+            {
+                var cleanEmail = updated.Email.Trim();
+                var emailLower = cleanEmail.ToLower();
+                if (await _db.Users.AnyAsync(u => u.Email.ToLower() == emailLower && u.UserId != id))
+                {
+                    return BadRequest("A user with this email already exists in your tenant.");
+                }
+                existing.Email = cleanEmail;
             }
 
             existing.FirstName = updated.FirstName;
             existing.MiddleName = updated.MiddleName;
             existing.LastName = updated.LastName;
             existing.Suffix = updated.Suffix;
-            existing.Email = updated.Email;
             existing.BranchId = updated.BranchId;
 
             await _db.SaveChangesAsync();
@@ -380,6 +420,7 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("stats/team-roster")]
         public async Task<IActionResult> GetTeamRoster([FromQuery] int maxCount = 8)
         {
+            int validMax = Math.Clamp(maxCount, 1, 100);
             var managedRoles = new[] { "Manager", "Agent", "Sales Staff" };
             var users = await _db.Users
                 .AsNoTracking()
@@ -388,7 +429,7 @@ namespace CRMS_Peguit.api.Controllers
                 .OrderByDescending(u => u.Role.RoleName == "Manager")
                 .ThenBy(u => u.FirstName)
                 .ThenBy(u => u.LastName)
-                .Take(maxCount)
+                .Take(validMax)
                 .ToListAsync();
 
             var list = users.Select(u => new TeamRosterDto(

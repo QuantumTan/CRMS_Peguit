@@ -324,6 +324,8 @@ namespace CRMS_Peguit.winforms.Controllers
                 .SingleOrDefault(x => x.LeadId == lead.LeadId);
             if (item is null) return;
 
+            var oldStage = item.Stage;
+
             item.FirstName = lead.FirstName;
             item.MiddleName = lead.MiddleName;
             item.LastName = lead.LastName;
@@ -359,12 +361,12 @@ namespace CRMS_Peguit.winforms.Controllers
                     LogActivity("Lead Assignment Changed", item.LeadId, null,
                         $"Lead '{item.FullName}' assignment changed from Agent #{oldAgentId?.ToString() ?? "Unassigned"} to Agent #{newAgentId?.ToString() ?? "Unassigned"} by User #{CurrentSession.UserId}.");
                 }
-                else if (item.Stage != lead.Stage && item.AssignedAgentId.HasValue && item.AssignedAgentId.Value > 0)
+                else if (oldStage != lead.Stage && item.AssignedAgentId.HasValue && item.AssignedAgentId.Value > 0)
                 {
                     _notifCtrl.CreateNotification(TenantId, item.AssignedAgentId.Value, NotificationType.LeadStageChanged, "Lead Stage Updated", $"Lead '{item.FullName}' stage changed to {lead.Stage}.", "Lead", item.LeadId);
                 }
             }
-            else if (item.Stage != lead.Stage && item.AssignedAgentId.HasValue && item.AssignedAgentId.Value > 0)
+            else if (oldStage != lead.Stage && item.AssignedAgentId.HasValue && item.AssignedAgentId.Value > 0)
             {
                 _notifCtrl.CreateNotification(TenantId, item.AssignedAgentId.Value, NotificationType.LeadStageChanged, "Lead Stage Updated", $"Lead '{item.FullName}' stage changed to {lead.Stage}.", "Lead", item.LeadId);
             }
@@ -472,6 +474,18 @@ namespace CRMS_Peguit.winforms.Controllers
             if (string.Equals(item.Stage, "converted", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("This lead has already been converted.");
 
+            if (!item.AssignedAgentId.HasValue)
+            {
+                if (item.CreatedByUserId > 0)
+                {
+                    item.AssignedAgentId = item.CreatedByUserId;
+                }
+                else if (CurrentSession.UserId > 0)
+                {
+                    item.AssignedAgentId = CurrentSession.UserId;
+                }
+            }
+
             var customer = new Customer
             {
                 CreatedByUserId = item.CreatedByUserId > 0 ? item.CreatedByUserId : (CurrentSession.UserId > 0 ? CurrentSession.UserId : 1),
@@ -484,21 +498,43 @@ namespace CRMS_Peguit.winforms.Controllers
                 Type = "buyer",
                 Status = "active",
                 AssignedAgentId = item.AssignedAgentId,
-                AssignmentStatus = item.AssignmentStatus,
-                AssignmentReviewedByUserId = item.AssignmentReviewedByUserId,
-                AssignmentReviewedAt = item.AssignmentReviewedAt,
-                AssignmentReviewNotes = item.AssignmentReviewNotes,
+                AssignmentStatus = "approved",
+                AssignmentReviewedByUserId = item.AssignmentReviewedByUserId ?? (CurrentSession.UserId > 0 ? CurrentSession.UserId : 1),
+                AssignmentReviewedAt = item.AssignmentReviewedAt ?? DateTime.UtcNow,
+                AssignmentReviewNotes = item.AssignmentReviewNotes ?? "Approved upon conversion from lead.",
                 CreatedAt = DateTime.UtcNow,
                 IsDeleted = false,
                 DeletedAt = null
             };
 
-            _db.Customers.Add(customer);
-            _db.SaveChanges();
+            var strategy = _db.Database.CreateExecutionStrategy();
+            strategy.Execute(() =>
+            {
+                using var tx = _db.Database.BeginTransaction();
+                try
+                {
+                    _db.Customers.Add(customer);
+                    _db.SaveChanges();
 
-            item.Stage = "converted";
-            item.ConvertedCustomerId = customer.CustomerId;
-            _db.SaveChanges();
+                    item.Stage = "converted";
+                    item.AssignmentStatus = "approved";
+                    item.ConvertedCustomerId = customer.CustomerId;
+                    if (!ReferenceEquals(lead, item))
+                    {
+                        lead.Stage = item.Stage;
+                        lead.AssignmentStatus = item.AssignmentStatus;
+                        lead.ConvertedCustomerId = item.ConvertedCustomerId;
+                    }
+                    _db.SaveChanges();
+                    tx.Commit();
+                }
+                catch
+                {
+                    tx.Rollback();
+                    throw;
+                }
+            });
+
             LogActivity("Lead Converted", item.LeadId, customer.CustomerId, $"Lead '{item.FullName}' was converted to customer #{customer.CustomerId}.");
 
             SyncService.Instance.EnqueueOfflineCreate("Customer", customer, TenantId, CurrentSession.UserId, customer.CustomerId.ToString());
@@ -547,6 +583,12 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             var item = _db.Leads.SingleOrDefault(x => x.LeadId == lead.LeadId);
             if (item is null) return;
+
+            // If not assigned to an agent, assign to the staff member who passed/created it
+            if (!item.AssignedAgentId.HasValue && item.CreatedByUserId > 0)
+            {
+                item.AssignedAgentId = item.CreatedByUserId;
+            }
 
             item.AssignmentStatus = "approved";
             item.AssignmentReviewedByUserId = CurrentSession.UserId;
@@ -636,7 +678,7 @@ namespace CRMS_Peguit.winforms.Controllers
             using var db = LocalDb.CreateContext(TenantId);
             return db.Leads
                 .AsNoTracking()
-                .Where(l => l.AssignmentStatus == "pending_review" || l.AssignedAgentId == null)
+                .Where(l => !l.IsDeleted && l.Stage != "converted" && l.Stage != "lost" && (l.AssignmentStatus == "pending_review" || l.AssignedAgentId == null))
                 .OrderByDescending(l => l.CreatedAt)
                 .ToList();
         }
@@ -895,7 +937,7 @@ namespace CRMS_Peguit.winforms.Controllers
             {
                 var query = _db.Leads
                     .AsNoTracking()
-                    .Where(l => !l.IsDeleted && (l.AssignmentStatus == "pending_review" || l.AssignedAgentId == null));
+                    .Where(l => !l.IsDeleted && l.Stage != "converted" && l.Stage != "lost" && (l.AssignmentStatus == "pending_review" || l.AssignedAgentId == null));
 
                 if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
                 {

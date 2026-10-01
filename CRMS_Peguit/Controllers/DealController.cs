@@ -39,7 +39,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 if (!RbacService.HasFullOversight && RbacService.IsAgent)
                 {
                     int currentUserId = CurrentSession.UserId;
-                    query = query.Where(d => d.AgentId == currentUserId);
+                    query = query.Where(d => d.AgentId == currentUserId || (!d.AgentId.HasValue && d.CreatedByUserId == currentUserId));
                 }
 
                 if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
@@ -83,7 +83,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 if (!RbacService.HasFullOversight && RbacService.IsAgent)
                 {
                     int currentUserId = CurrentSession.UserId;
-                    query = query.Where(d => d.AgentId == currentUserId);
+                    query = query.Where(d => d.AgentId == currentUserId || (!d.AgentId.HasValue && d.CreatedByUserId == currentUserId));
                 }
 
                 if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
@@ -152,7 +152,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 if (!RbacService.HasFullOversight && RbacService.IsAgent)
                 {
                     int currentUserId = CurrentSession.UserId;
-                    query = query.Where(d => d.AgentId == currentUserId);
+                    query = query.Where(d => d.AgentId == currentUserId || (!d.AgentId.HasValue && d.CreatedByUserId == currentUserId));
                 }
 
                 if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
@@ -201,7 +201,8 @@ namespace CRMS_Peguit.winforms.Controllers
 
             if (item is null) return null;
 
-            if (!RbacService.HasFullOversight && RbacService.IsAgent && item.AgentId != CurrentSession.UserId)
+            if (!RbacService.HasFullOversight && RbacService.IsAgent &&
+                (item.AgentId.HasValue ? item.AgentId != CurrentSession.UserId : item.CreatedByUserId != CurrentSession.UserId))
                 return null;
 
             return item;
@@ -209,6 +210,8 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public Deal Add(Deal deal)
         {
+            if (DealCommercialRules.Validate(deal) is string error) throw new ArgumentException(error);
+            if (!RbacService.CanAssignRecords) deal.AgentId = null;
             deal.CreatedByUserId = CurrentSession.UserId > 0 ? CurrentSession.UserId : 1;
             deal.CreatedAt = DateTime.UtcNow;
 
@@ -220,6 +223,9 @@ namespace CRMS_Peguit.winforms.Controllers
             // Apply defaults for commercial terms if not specified
             if (string.IsNullOrWhiteSpace(deal.PaymentScheme))
                 deal.PaymentScheme = "Bank Financing";
+
+            deal.Contingencies ??= new List<DealContingency>();
+            deal.DealClauses ??= new List<DealClause>();
 
             if (deal.Contingencies.Count == 0)
             {
@@ -238,7 +244,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 }
             }
 
-            if (deal.DealClauses.Count == 0)
+            if (deal.DealClauses.Count == 0 && !deal.ClauseSelectionProvided)
             {
                 var defaultClauseIds = new[] { "TTL-01", "TAX-01", "FIN-01", "TRN-01", "DEF-01" };
                 foreach (var cid in defaultClauseIds)
@@ -257,6 +263,12 @@ namespace CRMS_Peguit.winforms.Controllers
             }
 
             _db.Deals.Add(deal);
+            foreach (var clause in deal.DealClauses)
+            {
+                var definition = DealClauseLibrary.GetStandardClauses().FirstOrDefault(c => c.Id == clause.ClauseId);
+                clause.Title ??= definition?.Title ?? clause.ClauseId;
+                clause.ClauseText ??= definition?.ClauseText;
+            }
             _db.SaveChanges();
             try { LocalDataCache.Instance.SaveDealsMirror(TenantId, new[] { deal }); } catch { }
 
@@ -271,6 +283,7 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public void Update(Deal deal)
         {
+            if (DealCommercialRules.Validate(deal) is string error) throw new ArgumentException(error);
             var item = _db.Deals.Include(d => d.Contingencies).Include(d => d.DealClauses).SingleOrDefault(x => x.DealId == deal.DealId);
             if (item is null) return;
 
@@ -279,7 +292,7 @@ namespace CRMS_Peguit.winforms.Controllers
 
             item.CustomerId = deal.CustomerId;
             item.PropertyId = deal.PropertyId;
-            item.AgentId = deal.AgentId;
+            if (RbacService.CanAssignRecords) item.AgentId = deal.AgentId;
             item.Value = deal.Value;
             item.CommissionRate = deal.CommissionRate;
             item.Stage = deal.Stage;
@@ -295,6 +308,14 @@ namespace CRMS_Peguit.winforms.Controllers
             item.RegistrationFeePayer = deal.RegistrationFeePayer;
             item.SpecialStipulations = deal.SpecialStipulations;
             item.ContractSignedDate = deal.ContractSignedDate;
+
+            DealCommercialRules.ApplyClauseSelection(item, deal);
+            foreach (var clause in item.DealClauses)
+            {
+                var definition = DealClauseLibrary.GetStandardClauses().FirstOrDefault(c => c.Id == clause.ClauseId);
+                clause.Title ??= definition?.Title ?? clause.ClauseId;
+                clause.ClauseText ??= definition?.ClauseText;
+            }
 
             _db.SaveChanges();
             try { LocalDataCache.Instance.SaveDealsMirror(TenantId, new[] { item }); } catch { }
@@ -347,7 +368,7 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public void UpdateContingencyStatus(int dealId, int contingencyIndex, string newStatus, string? notes = null)
         {
-            var item = _db.Deals.Include(d => d.Contingencies).SingleOrDefault(x => x.DealId == dealId);
+            var item = _db.Deals.Include(d => d.Contingencies).Include(d => d.DealClauses).SingleOrDefault(x => x.DealId == dealId);
             if (item is null) return;
 
             var contingencies = item.Contingencies.OrderBy(c => c.DealContingencyId).ToList();
@@ -370,16 +391,27 @@ namespace CRMS_Peguit.winforms.Controllers
                     c.Description = notes;
                 }
                 _db.SaveChanges();
+                SyncService.Instance.EnqueueOfflineUpdate("Deal", item.DealId, item, TenantId, CurrentSession.UserId, item.CreatedAt);
             }
         }
 
         public void Delete(Deal deal)
         {
-            var item = _db.Deals.SingleOrDefault(x => x.DealId == deal.DealId);
+            var item = _db.Deals
+                .Include(d => d.Contingencies)
+                .Include(d => d.DealClauses)
+                .SingleOrDefault(x => x.DealId == deal.DealId);
             if (item is null) return;
 
+            int dealId = item.DealId;
             _db.Deals.Remove(item);
             _db.SaveChanges();
+
+            SyncService.Instance.EnqueueOfflineDelete("Deal", dealId, TenantId, CurrentSession.UserId);
+            if (SyncService.Instance.IsOnline && !CurrentSession.IsOffline)
+            {
+                _ = Task.Run(() => SyncService.Instance.SyncAsync());
+            }
         }
 
         public Dictionary<int, string> GetCustomerNames()
@@ -424,10 +456,18 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             var buyerTypes = new[] { "buyer", "both" };
 
-            return _db.Customers
+            var query = _db.Customers
                 .AsNoTracking()
-                .Where(c => (buyerTypes.Contains(c.Type.ToLower()) && c.Status.ToLower() != "inactive") ||
-                            (includeCustomerId.HasValue && c.CustomerId == includeCustomerId.Value))
+                .Where(c => !c.IsDeleted && (((buyerTypes.Contains(c.Type.ToLower()) && c.Status.ToLower() != "inactive")) ||
+                            (includeCustomerId.HasValue && c.CustomerId == includeCustomerId.Value)));
+
+            if (RbacService.IsAgent && !RbacService.HasFullOversight)
+            {
+                int currentUserId = CurrentSession.UserId;
+                query = query.Where(c => c.AssignedAgentId == currentUserId || c.CreatedByUserId == currentUserId || (includeCustomerId.HasValue && c.CustomerId == includeCustomerId.Value));
+            }
+
+            return query
                 .OrderBy(c => c.LastName)
                 .ThenBy(c => c.FirstName)
                 .ToList()
@@ -435,10 +475,29 @@ namespace CRMS_Peguit.winforms.Controllers
                 .ToList();
         }
 
-        public List<KeyValuePair<int, string>> GetPropertyPickerList()
+        public List<KeyValuePair<int, string>> GetPropertyPickerList(int? includePropertyId = null)
         {
-            return _db.Properties
+            var query = _db.Properties
                 .AsNoTracking()
+                .Where(p => !p.Address.Contains("AllEntities") && !p.Address.Contains("Batch_") &&
+                            (p.Status.ToLower() != "sold" && p.Status.ToLower() != "inactive" ||
+                             (includePropertyId.HasValue && p.PropertyId == includePropertyId.Value)));
+
+            if (RbacService.IsAgent && !RbacService.HasFullOversight)
+            {
+                int currentUserId = CurrentSession.UserId;
+                query = query.Where(p =>
+                    (p.ListedByAgentId.HasValue && p.ListedByAgentId.Value > 0)
+                        ? p.ListedByAgentId.Value == currentUserId
+                        : (p.CreatedByUserId == currentUserId || (includePropertyId.HasValue && p.PropertyId == includePropertyId.Value)));
+            }
+
+            if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
+            {
+                query = query.Where(p => p.BranchId == CurrentSession.ActiveBranchId.Value);
+            }
+
+            return query
                 .OrderBy(p => p.Address)
                 .Select(p => new KeyValuePair<int, string>(p.PropertyId, $"{p.Address} (₱{p.Price:N2})"))
                 .ToList();
@@ -457,6 +516,11 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public static DealFinancingResult CalculateFinancing(decimal dealValue, decimal downPaymentPercent, string? paymentScheme)
         {
+            return CalculateFinancing(dealValue, downPaymentPercent, paymentScheme, null);
+        }
+
+        public static DealFinancingResult CalculateFinancing(decimal dealValue, decimal downPaymentPercent, string? paymentScheme, decimal? reservationFee)
+        {
             if (string.Equals(paymentScheme, "Spot Cash", StringComparison.OrdinalIgnoreCase))
             {
                 return new DealFinancingResult
@@ -469,7 +533,7 @@ namespace CRMS_Peguit.winforms.Controllers
             }
 
             decimal downAmt = dealValue * (downPaymentPercent / 100m);
-            decimal balAmt = Math.Max(0, dealValue - downAmt);
+            decimal balAmt = Math.Max(0, dealValue - downAmt - (reservationFee ?? 0m));
             return new DealFinancingResult
             {
                 DownPaymentAmount = downAmt,
@@ -552,7 +616,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 var now = DateTime.UtcNow;
                 var query = _db.Deals.AsNoTracking().Where(d => d.Stage.ToLower() == "closed" &&
                                ((d.ContractSignedDate.HasValue && d.ContractSignedDate.Value.Year == now.Year && d.ContractSignedDate.Value.Month == now.Month) ||
-                                (d.CreatedAt.Year == now.Year && d.CreatedAt.Month == now.Month)));
+                                (!d.ContractSignedDate.HasValue && d.CreatedAt.Year == now.Year && d.CreatedAt.Month == now.Month)));
 
                 if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
                 {
@@ -577,7 +641,7 @@ namespace CRMS_Peguit.winforms.Controllers
                     .AsNoTracking()
                     .Where(d => d.Stage.ToLower() == "closed" &&
                                ((d.ContractSignedDate.HasValue && d.ContractSignedDate.Value.Year == now.Year && d.ContractSignedDate.Value.Month == now.Month) ||
-                                (d.CreatedAt.Year == now.Year && d.CreatedAt.Month == now.Month)));
+                                (!d.ContractSignedDate.HasValue && d.CreatedAt.Year == now.Year && d.CreatedAt.Month == now.Month)));
 
                 if (CurrentSession.CanAccessBranching && CurrentSession.ActiveBranchId.HasValue)
                 {

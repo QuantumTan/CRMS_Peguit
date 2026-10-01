@@ -13,44 +13,110 @@ namespace CRMS_Peguit.winforms.Models.Services
     /// </summary>
     public static class AppBrand
     {
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern bool DestroyIcon(IntPtr handle);
-
-        private static Image? _logoImage;
+        private static readonly object _lock = new();
+        private static byte[]? _logoBytes;
         private static Icon? _appIcon;
         private static bool _initialized;
 
         /// <summary>
-        /// Gets the cached brand logo image.
+        /// Creates a completely independent, standalone GDI+ Bitmap from a byte array.
+        /// Does NOT keep any stream open, preventing GDI+ "Parameter is not valid" crashes
+        /// when Windows Forms controls or ImageAnimator inspect or animate the image.
+        /// </summary>
+        public static Bitmap? CreateBitmapFromBytes(byte[]? bytes)
+        {
+            if (bytes == null || bytes.Length == 0) return null;
+            try
+            {
+                using var ms = new MemoryStream(bytes);
+                using var temp = Image.FromStream(ms);
+                return new Bitmap(temp);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Gets the brand logo image as a fresh, independent Bitmap instance.
         /// </summary>
         public static Image? Logo
         {
             get
             {
-                EnsureLoaded();
-                return _logoImage;
+                lock (_lock)
+                {
+                    EnsureLoaded();
+                    return CreateBitmapFromBytes(_logoBytes);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the raw brand logo bytes.
+        /// </summary>
+        public static byte[]? LogoBytes
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    EnsureLoaded();
+                    return _logoBytes != null ? (byte[])_logoBytes.Clone() : null;
+                }
             }
         }
 
         /// <summary>
         /// Gets the application icon derived from the brand logo.
+        /// Always returns an independent, non-disposed Icon instance.
         /// </summary>
         public static Icon? AppIcon
         {
             get
             {
-                EnsureLoaded();
-                return _appIcon;
+                lock (_lock)
+                {
+                    EnsureLoaded();
+                    if (_appIcon != null)
+                    {
+                        try
+                        {
+                            // Test if the handle is valid
+                            _ = _appIcon.Handle;
+                            return (Icon)_appIcon.Clone();
+                        }
+                        catch
+                        {
+                            _appIcon = null;
+                            _initialized = false;
+                            EnsureLoaded();
+                            if (_appIcon != null)
+                            {
+                                try
+                                {
+                                    return (Icon)_appIcon.Clone();
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                    return null;
+                }
             }
         }
 
         public static void ApplyAppIcon(Form form)
         {
+            if (form is null) return;
+
             try
             {
-                if (AppIcon != null)
+                var icon = AppIcon;
+                if (icon != null)
                 {
-                    form.Icon = AppIcon;
+                    form.Icon = icon;
                 }
             }
             catch
@@ -117,10 +183,14 @@ namespace CRMS_Peguit.winforms.Models.Services
 
             try
             {
-                _logoImage = LoadLogoImage();
-                if (_logoImage is Bitmap bmp)
+                _logoBytes = LoadLogoBytes();
+                if (_logoBytes != null && _logoBytes.Length > 0)
                 {
-                    _appIcon = CreateIconFromBitmap(bmp);
+                    using var bmp = CreateBitmapFromBytes(_logoBytes);
+                    if (bmp != null)
+                    {
+                        _appIcon = CreateIconFromBitmap(bmp);
+                    }
                 }
             }
             catch
@@ -129,7 +199,7 @@ namespace CRMS_Peguit.winforms.Models.Services
             }
         }
 
-        private static Image? LoadLogoImage()
+        private static byte[]? LoadLogoBytes()
         {
             // 1. Try loading from Embedded Resources
             var asm = Assembly.GetExecutingAssembly();
@@ -144,7 +214,7 @@ namespace CRMS_Peguit.winforms.Models.Services
                 {
                     using var ms = new MemoryStream();
                     stream.CopyTo(ms);
-                    return Image.FromStream(ms);
+                    return ms.ToArray();
                 }
             }
 
@@ -165,8 +235,7 @@ namespace CRMS_Peguit.winforms.Models.Services
                     try
                     {
                         var bytes = File.ReadAllBytes(path);
-                        using var ms = new MemoryStream(bytes);
-                        return Image.FromStream(ms);
+                        if (bytes.Length > 0) return bytes;
                     }
                     catch
                     {
@@ -180,7 +249,8 @@ namespace CRMS_Peguit.winforms.Models.Services
 
         private static Icon? CreateIconFromBitmap(Bitmap bitmap)
         {
-            IntPtr hIcon = IntPtr.Zero;
+            if (bitmap == null) return null;
+
             try
             {
                 using var iconBmp = new Bitmap(48, 48);
@@ -191,30 +261,53 @@ namespace CRMS_Peguit.winforms.Models.Services
                     g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
                     float scale = Math.Min(48f / bitmap.Width, 48f / bitmap.Height);
-                    int nw = (int)(bitmap.Width * scale);
-                    int nh = (int)(bitmap.Height * scale);
+                    int nw = Math.Max(1, (int)(bitmap.Width * scale));
+                    int nh = Math.Max(1, (int)(bitmap.Height * scale));
                     int nx = (48 - nw) / 2;
                     int ny = (48 - nh) / 2;
                     g.DrawImage(bitmap, nx, ny, nw, nh);
                 }
 
-                hIcon = iconBmp.GetHicon();
-                using var tempIcon = Icon.FromHandle(hIcon);
-                return (Icon)tempIcon.Clone();
+                // Pack into a valid, standalone Windows .ICO stream with PNG payload
+                using var pngStream = new MemoryStream();
+                iconBmp.Save(pngStream, System.Drawing.Imaging.ImageFormat.Png);
+                byte[] pngBytes = pngStream.ToArray();
+
+                using var icoStream = new MemoryStream();
+                using var writer = new BinaryWriter(icoStream);
+
+                // ICONDIR header (6 bytes)
+                writer.Write((short)0); // Reserved. Must always be 0.
+                writer.Write((short)1); // Specifies image type: 1 for icon (.ICO) image.
+                writer.Write((short)1); // Specifies number of images in the file.
+
+                // ICONDIRENTRY (16 bytes)
+                writer.Write((byte)48); // Specifies image width in pixels.
+                writer.Write((byte)48); // Specifies image height in pixels.
+                writer.Write((byte)0);  // Specifies number of colors in the color palette (0 if no palette).
+                writer.Write((byte)0);  // Reserved. Must be 0.
+                writer.Write((short)1); // Specifies color planes. Should be 0 or 1.
+                writer.Write((short)32);// Specifies bits per pixel.
+                writer.Write((int)pngBytes.Length); // Specifies the size of the image's data in bytes.
+                writer.Write((int)22);  // Specifies the offset of BMP/PNG data from the beginning of the ICO/CUR file (6 + 16 = 22).
+
+                // Image Data (PNG bytes)
+                writer.Write(pngBytes);
+                writer.Flush();
+
+                icoStream.Position = 0;
+                return new Icon(icoStream);
             }
             catch
             {
-                return null;
-            }
-            finally
-            {
-                if (hIcon != IntPtr.Zero)
+                try
                 {
-                    try
-                    {
-                        DestroyIcon(hIcon);
-                    }
-                    catch { }
+                    IntPtr hIcon = bitmap.GetHicon();
+                    return Icon.FromHandle(hIcon);
+                }
+                catch
+                {
+                    return null;
                 }
             }
         }

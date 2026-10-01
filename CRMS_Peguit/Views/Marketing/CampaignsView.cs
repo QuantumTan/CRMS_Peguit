@@ -63,10 +63,15 @@ namespace CRMS_Peguit.winforms.Views.Marketing
             _paginationLeads.PageChanged += (_, _) => RenderPagedLeads(resetPage: false);
             _paginationLeads.PageSizeChanged += (_, _) => RenderPagedLeads(resetPage: true);
             pnlGridCard.Controls.Add(_paginationLeads);
-            _paginationLeads.BringToFront();
+            _paginationLeads.SendToBack();
 
             UiGridHelper.ApplyModernGridStyle(gridLeads, 48);
             _gridSkeleton = GridSkeletonOverlay.CreateForGrid(gridLeads);
+            lblTitle.Font = UiStyleConstants.PageTitleFont;
+            ResponsiveLayout.BindHeader(pnlHeader, lblTitle, lblSubtitle, btnRefresh, btnAddCampaign);
+            ResponsiveLayout.BindToolbar(pnlStats, 16, lblStatChannels, lblStatTotalLeads, lblStatConversion);
+            pnlSourcePills.AutoSize = true;
+            pnlSourcePills.WrapContents = true;
         }
 
         private void BindEvents()

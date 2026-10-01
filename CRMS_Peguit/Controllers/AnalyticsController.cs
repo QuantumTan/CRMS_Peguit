@@ -135,8 +135,8 @@ namespace CRMS_Peguit.winforms.Controllers
                     LeadFunnel = GetLeadFunnel(range),
                     DealsWonVsLost = GetDealsWonVsLost(range),
                     TicketBreakdown = GetTicketBreakdown(range),
-                    TopAgents = RbacService.IsAgent ? null : GetTopAgents(range),
-                    LeadSourceBreakdown = RbacService.IsAgent ? null : GetLeadSourceBreakdown(range),
+                    TopAgents = (RbacService.IsAgent && !RbacService.HasFullOversight) ? null : GetTopAgents(range),
+                    LeadSourceBreakdown = GetLeadSourceBreakdown(range),
                     PropertyDistribution = GetPropertyDistribution(range),
                     RecentActivity = GetRecentActivityFeed(15)
                 };
@@ -263,24 +263,41 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             try
             {
-                if (RbacService.IsAgent)
+                if (RbacService.IsAgent && !RbacService.HasFullOversight)
                 {
-                    throw new InvalidOperationException("Agent role cannot access team performance data.");
+                    return new List<AgentPerformance>();
                 }
 
-                var deals = GetDealsQuery()
+                using var db = LocalDb.CreateContext(TenantId);
+                var deals = GetDealsQuery(db)
                     .Include(d => d.Agent)
                     .Where(d => (d.Stage.ToLower() == "closed" || d.Stage.ToLower() == "closed-won" || d.Stage.ToLower() == "won") &&
                                 (d.ContractSignedDate ?? d.CreatedAt) >= range.StartDate && (d.ContractSignedDate ?? d.CreatedAt) <= range.EndDate)
                     .ToList();
 
-                var grouped = deals.GroupBy(d => d.Agent)
-                    .Select(g => new AgentPerformance
+                // If no deals in the selected date range, fallback to all closed deals
+                if (deals.Count == 0)
+                {
+                    deals = GetDealsQuery(db)
+                        .Include(d => d.Agent)
+                        .Where(d => d.Stage.ToLower() == "closed" || d.Stage.ToLower() == "closed-won" || d.Stage.ToLower() == "won")
+                        .ToList();
+                }
+
+                var grouped = deals
+                    .Where(d => d.AgentId.HasValue && d.AgentId.Value > 0)
+                    .GroupBy(d => d.AgentId!.Value)
+                    .Select(g =>
                     {
-                        AgentName = g.Key != null ? g.Key.FullName : "Unknown",
-                        DealsClosed = g.Count(),
-                        TotalValue = g.Sum(d => d.Value),
-                        CommissionEarned = g.Sum(d => d.Value * (d.CommissionRate > 1m ? d.CommissionRate / 100m : d.CommissionRate))
+                        var agent = g.First().Agent;
+                        string agentName = agent != null ? agent.FullName : $"Agent #{g.Key}";
+                        return new AgentPerformance
+                        {
+                            AgentName = agentName,
+                            DealsClosed = g.Count(),
+                            TotalValue = g.Sum(d => d.Value),
+                            CommissionEarned = g.Sum(d => d.Value * (d.CommissionRate > 1m ? d.CommissionRate / 100m : d.CommissionRate))
+                        };
                     })
                     .OrderByDescending(x => x.TotalValue).ThenByDescending(x => x.DealsClosed)
                     .Take(10)
@@ -291,7 +308,6 @@ namespace CRMS_Peguit.winforms.Controllers
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error in GetTopAgents: {ex.Message}");
-                if (ex is InvalidOperationException) throw;
                 return new List<AgentPerformance>();
             }
         }
@@ -300,14 +316,20 @@ namespace CRMS_Peguit.winforms.Controllers
         {
             try
             {
-                if (RbacService.IsAgent)
+                using var db = LocalDb.CreateContext(TenantId);
+                var leads = GetLeadsQuery(db)
+                    .Where(l => !l.IsDeleted && l.CreatedAt >= range.StartDate && l.CreatedAt <= range.EndDate)
+                    .ToList();
+
+                // If no leads found in range, fall back to all active leads so chart is populated
+                if (leads.Count == 0)
                 {
-                    return new List<SourceMetric>();
+                    leads = GetLeadsQuery(db)
+                        .Where(l => !l.IsDeleted)
+                        .ToList();
                 }
 
-                var leads = GetLeadsQuery().Where(l => l.CreatedAt >= range.StartDate && l.CreatedAt <= range.EndDate).ToList();
-                
-                var grouped = leads.GroupBy(l => string.IsNullOrEmpty(l.Source) ? "Unknown" : l.Source)
+                var grouped = leads.GroupBy(l => string.IsNullOrWhiteSpace(l.Source) ? "Direct / Other" : l.Source.Trim())
                     .Select(g => new SourceMetric
                     {
                         Source = g.Key,
@@ -490,7 +512,7 @@ namespace CRMS_Peguit.winforms.Controllers
                 {
                     string ticketTitle = !string.IsNullOrWhiteSpace(t.Category)
                         ? (t.Customer != null ? $"{t.Category} ({t.Customer.FullName})" : t.Category)
-                        : (t.Description.Length > 40 ? t.Description[..40] + "..." : t.Description);
+                        : (string.IsNullOrEmpty(t.Description) ? "No description" : (t.Description.Length > 40 ? t.Description[..40] + "..." : t.Description));
 
                     list.Add(new AnalyticsDetailRow
                     {

@@ -751,10 +751,19 @@ namespace CRMS_Peguit.winforms.Controllers
             return dict.TryGetValue(assignedAgentId.Value, out var name) ? name : null;
         }
 
-        public List<Customer> GetCustomers()
+        public List<Customer> GetCustomers(int? includeCustomerId = null)
         {
-            return _db.Customers
+            var query = _db.Customers
                 .AsNoTracking()
+                .Where(c => !c.IsDeleted || (includeCustomerId.HasValue && c.CustomerId == includeCustomerId.Value));
+
+            if (RbacService.IsAgent && !RbacService.HasFullOversight)
+            {
+                int currentUserId = CurrentSession.UserId;
+                query = query.Where(c => c.AssignedAgentId == currentUserId || c.CreatedByUserId == currentUserId || (includeCustomerId.HasValue && c.CustomerId == includeCustomerId.Value));
+            }
+
+            return query
                 .OrderBy(c => c.LastName)
                 .ThenBy(c => c.FirstName)
                 .ToList();

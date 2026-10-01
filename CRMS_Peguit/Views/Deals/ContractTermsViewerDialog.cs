@@ -259,12 +259,19 @@ namespace CRMS_Peguit.winforms.Views.Deals
 
             if (sfd.ShowDialog(this) == DialogResult.OK)
             {
-                File.WriteAllText(sfd.FileName, _documentText);
-                MessageBox.Show(
-                    $"Contract & Term Sheet saved successfully to:\n{sfd.FileName}",
-                    "File Saved",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                try
+                {
+                    File.WriteAllText(sfd.FileName, _documentText);
+                    MessageBox.Show(
+                        $"Contract & Term Sheet saved successfully to:\n{sfd.FileName}",
+                        "File Saved",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to save file: {ex.Message}", "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
         }
     }

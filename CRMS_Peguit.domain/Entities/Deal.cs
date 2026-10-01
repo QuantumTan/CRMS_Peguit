@@ -30,7 +30,8 @@ namespace CRMS_Peguit.domain.entities
         [NotMapped]
         public decimal DownPaymentAmount
         {
-            get => (Value * (DownPaymentPercent ?? 0m)) / 100m;
+            get => string.Equals(PaymentScheme, "Spot Cash", StringComparison.OrdinalIgnoreCase)
+                ? Value : (Value * (DownPaymentPercent ?? 0m)) / 100m;
             set { /* Calculated on the fly */ }
         }
 
@@ -57,15 +58,32 @@ namespace CRMS_Peguit.domain.entities
         public string? ContingenciesJson
         {
             get => (Contingencies != null && Contingencies.Count > 0) ? DealContingency.SerializeList(Contingencies) : null;
-            set { }
+            set
+            {
+                if (value != null) Contingencies = DealContingency.DeserializeList(value);
+            }
         }
 
         [NotMapped]
         public string? ApprovedClauseIds
         {
-            get => DealClauses.Count > 0 ? string.Join(",", DealClauses.Select(c => c.ClauseId)) : null;
-            set { }
+            get => DealClauses.Count > 0 ? string.Join(",", DealClauses.Select(c => c.ClauseId))
+                : ClauseSelectionProvided ? string.Empty : null;
+            set
+            {
+                if (value == null) return;
+                ClauseSelectionProvided = true;
+                DealClauses = (value ?? string.Empty)
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Select(id => new DealClause { ClauseId = id }).ToList();
+            }
         }
+
+        [NotMapped, JsonIgnore]
+        public bool ClauseSelectionProvided { get; private set; }
+
+        public void MarkClauseSelectionProvided() => ClauseSelectionProvided = true;
 
         public string? SpecialStipulations { get; set; }
         public DateTime? ContractSignedDate { get; set; }

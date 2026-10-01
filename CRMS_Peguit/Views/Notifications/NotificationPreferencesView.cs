@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
@@ -43,7 +43,7 @@ namespace CRMS_Peguit.winforms.Views.Notifications
 
         private void InitializeComponent()
         {
-            Text = "Notification Preferences — NEXA CRM";
+            Text = $"Notification Preferences — {BrandingService.GetDisplayName()}";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -81,6 +81,7 @@ namespace CRMS_Peguit.winforms.Views.Notifications
 
             pnlHeader.Controls.Add(lblHeaderTitle);
             pnlHeader.Controls.Add(lblHeaderSub);
+            ResponsiveLayout.BindHeader(pnlHeader, lblHeaderTitle, lblHeaderSub);
 
             pnlHeader.Paint += (s, e) =>
             {
@@ -129,6 +130,7 @@ namespace CRMS_Peguit.winforms.Views.Notifications
 
             pnlFooter.Controls.Add(_btnCancel);
             pnlFooter.Controls.Add(_btnSave);
+            ResponsiveLayout.BindToolbar(pnlFooter, 14, _btnCancel, _btnSave);
 
             pnlFooter.Paint += (s, e) =>
             {

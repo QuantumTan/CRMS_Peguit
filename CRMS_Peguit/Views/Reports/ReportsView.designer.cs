@@ -37,7 +37,6 @@ namespace CRMS_Peguit.winforms.Views.Reports
             this.lblSecondaryFilter = new System.Windows.Forms.Label();
             this.cboSecondaryFilter = new System.Windows.Forms.ComboBox();
             this.btnRunReport = new System.Windows.Forms.Button();
-            this.btnExportExcel = new System.Windows.Forms.Button();
             this.btnExportPdf = new System.Windows.Forms.Button();
 
             this.btnViewBoth = new System.Windows.Forms.Button();
@@ -107,7 +106,7 @@ namespace CRMS_Peguit.winforms.Views.Reports
             this.lblSubtitle.Name = "lblSubtitle";
             this.lblSubtitle.Size = new System.Drawing.Size(420, 17);
             this.lblSubtitle.TabIndex = 1;
-            this.lblSubtitle.Text = "Interactive data graphs, detailed tabular audits, and PDF/CSV export engine";
+            this.lblSubtitle.Text = "Interactive data graphs, detailed tabular audits, and PDF export engine";
 
             // 
             // btnGoToAnalytics
@@ -145,7 +144,6 @@ namespace CRMS_Peguit.winforms.Views.Reports
             this.pnlFilters.Controls.Add(this.lblSecondaryFilter);
             this.pnlFilters.Controls.Add(this.cboSecondaryFilter);
             this.pnlFilters.Controls.Add(this.btnRunReport);
-            this.pnlFilters.Controls.Add(this.btnExportExcel);
             this.pnlFilters.Controls.Add(this.btnExportPdf);
             this.pnlFilters.Dock = System.Windows.Forms.DockStyle.Top;
             this.pnlFilters.Location = new System.Drawing.Point(0, 72);
@@ -289,21 +287,6 @@ namespace CRMS_Peguit.winforms.Views.Reports
             this.btnRunReport.UseVisualStyleBackColor = false;
 
             // 
-            // btnExportExcel
-            // 
-            this.btnExportExcel.BackColor = System.Drawing.Color.FromArgb(241, 245, 249);
-            this.btnExportExcel.FlatAppearance.BorderSize = 1;
-            this.btnExportExcel.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(203, 213, 225);
-            this.btnExportExcel.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnExportExcel.Font = new System.Drawing.Font("Segoe UI Semibold", 9F);
-            this.btnExportExcel.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
-            this.btnExportExcel.Location = new System.Drawing.Point(160, 72);
-            this.btnExportExcel.Name = "btnExportExcel";
-            this.btnExportExcel.Size = new System.Drawing.Size(120, 32);
-            this.btnExportExcel.TabIndex = 12;
-            this.btnExportExcel.Text = "📊 Export Excel";
-            this.btnExportExcel.UseVisualStyleBackColor = false;
-
             // 
             // btnExportPdf
             // 
@@ -313,10 +296,10 @@ namespace CRMS_Peguit.winforms.Views.Reports
             this.btnExportPdf.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnExportPdf.Font = new System.Drawing.Font("Segoe UI Semibold", 9F);
             this.btnExportPdf.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
-            this.btnExportPdf.Location = new System.Drawing.Point(290, 72);
+            this.btnExportPdf.Location = new System.Drawing.Point(160, 72);
             this.btnExportPdf.Name = "btnExportPdf";
-            this.btnExportPdf.Size = new System.Drawing.Size(110, 32);
-            this.btnExportPdf.TabIndex = 13;
+            this.btnExportPdf.Size = new System.Drawing.Size(120, 32);
+            this.btnExportPdf.TabIndex = 12;
             this.btnExportPdf.Text = "📄 Export PDF";
             this.btnExportPdf.UseVisualStyleBackColor = false;
 
@@ -622,7 +605,6 @@ namespace CRMS_Peguit.winforms.Views.Reports
         private System.Windows.Forms.Label lblSecondaryFilter;
         private System.Windows.Forms.ComboBox cboSecondaryFilter;
         private System.Windows.Forms.Button btnRunReport;
-        private System.Windows.Forms.Button btnExportExcel;
         private System.Windows.Forms.Button btnExportPdf;
 
         private System.Windows.Forms.Button btnViewBoth;

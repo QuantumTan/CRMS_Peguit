@@ -8,6 +8,7 @@ using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Auth;
+using CRMS_Peguit.winforms.Services.Offline;
 
 namespace CRMS_Peguit.winforms.Controllers
 {
@@ -34,16 +35,11 @@ namespace CRMS_Peguit.winforms.Controllers
 
                 try
                 {
-                    using var tenantDb = LocalDb.CreateContext(company.CompanyId);
-
                     // COUNTS AND TIMESTAMPS ONLY! Never payload or record details.
-                    int pendingCount = await tenantDb.Set<PendingSyncQueue>()
-                        .CountAsync(q => q.Status == "Pending" || q.Status == "Syncing");
-                    int failedCount = await tenantDb.Set<PendingSyncQueue>()
-                        .CountAsync(q => q.Status == "Failed");
-                    var lastSuccess = await tenantDb.Set<PendingSyncQueue>()
-                        .Where(q => q.Status == "Synced")
-                        .MaxAsync(q => (DateTime?)q.CreatedAt);
+                    var counts = LocalDataCache.Instance.GetQueueCounts(company.CompanyId);
+                    int pendingCount = counts.Pending + counts.Syncing;
+                    int failedCount = counts.Failed;
+                    var lastSuccess = LocalDataCache.Instance.GetLastSuccessfulSync(company.CompanyId);
 
                     dto.PendingCount = pendingCount;
                     dto.FailedCount = failedCount;

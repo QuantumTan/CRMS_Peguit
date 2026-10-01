@@ -9,6 +9,7 @@ using Xunit;
 
 namespace CRMS_Peguit.Tests.IntegrationTests
 {
+    [Collection("FeatureGateAndBrandingTests")]
     public class Section7_TierGatingIntegrationTests
     {
         public Section7_TierGatingIntegrationTests()
@@ -160,6 +161,137 @@ namespace CRMS_Peguit.Tests.IntegrationTests
             var (annualEnd, annualStatus) = Subscription.CalculateExtension(currentExpiry, refDate, "Tenant C Annual Plan", refDate);
             Assert.Equal(currentExpiry.AddYears(1).Date, annualEnd.Date);
             Assert.Equal("Active", annualStatus);
+        }
+
+        #endregion
+
+        #region 7.6 Dynamic Tier Entitlements & Real-Time Module Gating
+
+        [Fact]
+        public void TierEntitlements_DynamicOverride_EnforcesRealtimeButtonAccess()
+        {
+            try
+            {
+                CRMS_Peguit.domain.Common.FeatureGate.ClearOverrides();
+
+                CurrentSession.Start(10, 10, "Tenant A Admin", "tenanta@test.com", "Admin", null, false, tier: TenantTier.TenantA);
+                Assert.False(CurrentSession.CanAccessBranching);
+                Assert.False(CurrentSession.CanAccess("Branching"));
+
+                // Super Admin enables MultiBranching for Starter (Tenant A) via Matrix
+                var matrix = new System.Collections.Generic.Dictionary<string, bool>
+                {
+                    [CRMS_Peguit.domain.Common.FeatureGate.GetMatrixKey(TenantTier.TenantA, CRMS_Peguit.domain.Common.FeatureGate.MultiBranching)] = true
+                };
+                CRMS_Peguit.domain.Common.FeatureGate.SetOverrides(matrix);
+
+                // Runtime gate must instantly allow access
+                Assert.True(CRMS_Peguit.domain.Common.FeatureGate.CanAccessBranching(TenantTier.TenantA));
+                Assert.True(CurrentSession.CanAccessBranching);
+                Assert.True(CurrentSession.CanAccess("Branching"));
+
+                // Revert overrides -> access instantly revoked
+                CRMS_Peguit.domain.Common.FeatureGate.ClearOverrides();
+                Assert.False(CurrentSession.CanAccessBranching);
+                Assert.False(CurrentSession.CanAccess("Branching"));
+            }
+            finally
+            {
+                CRMS_Peguit.domain.Common.FeatureGate.ClearOverrides();
+            }
+        }
+
+        [Fact]
+        public void TierEntitlements_DynamicDisable_RevokesAccessInstantly()
+        {
+            try
+            {
+                CRMS_Peguit.domain.Common.FeatureGate.ClearOverrides();
+
+                CurrentSession.Start(20, 20, "Tenant B Admin", "tenantb@test.com", "Admin", null, false, tier: TenantTier.TenantB);
+                Assert.True(CurrentSession.CanAccessBusinessIntelligence);
+                Assert.True(CurrentSession.CanAccess("Analytics"));
+
+                // Super Admin disables BusinessIntelligence for Professional (Tenant B)
+                var matrix = new System.Collections.Generic.Dictionary<string, bool>
+                {
+                    [CRMS_Peguit.domain.Common.FeatureGate.GetMatrixKey(TenantTier.TenantB, CRMS_Peguit.domain.Common.FeatureGate.BusinessIntelligence)] = false
+                };
+                CRMS_Peguit.domain.Common.FeatureGate.SetOverrides(matrix);
+
+                // Runtime gate must immediately deny access
+                Assert.False(CRMS_Peguit.domain.Common.FeatureGate.CanAccessBusinessIntelligence(TenantTier.TenantB));
+                Assert.False(CurrentSession.CanAccessBusinessIntelligence);
+                Assert.False(CurrentSession.CanAccess("Analytics"));
+                Assert.False(CurrentSession.CanAccess("Reports"));
+            }
+            finally
+            {
+                CRMS_Peguit.domain.Common.FeatureGate.ClearOverrides();
+            }
+        }
+
+        [Fact]
+        public void TierEntitlements_MasterTier_AlwaysHasAccessUnconditionally()
+        {
+            try
+            {
+                // Override ALL 13 features to false across all tiers
+                var matrix = new System.Collections.Generic.Dictionary<string, bool>();
+                foreach (var f in CRMS_Peguit.domain.Common.FeatureGate.RegisteredFeatures)
+                {
+                    matrix[CRMS_Peguit.domain.Common.FeatureGate.GetMatrixKey(TenantTier.TenantA, f.Key)] = false;
+                    matrix[CRMS_Peguit.domain.Common.FeatureGate.GetMatrixKey(TenantTier.TenantB, f.Key)] = false;
+                    matrix[CRMS_Peguit.domain.Common.FeatureGate.GetMatrixKey(TenantTier.TenantC, f.Key)] = false;
+                }
+                CRMS_Peguit.domain.Common.FeatureGate.SetOverrides(matrix);
+
+                // Master tier must STILL have access to every module
+                foreach (var f in CRMS_Peguit.domain.Common.FeatureGate.RegisteredFeatures)
+                {
+                    Assert.True(CRMS_Peguit.domain.Common.FeatureGate.IsFeatureEnabled(TenantTier.Master, f.Key));
+                }
+
+                CurrentSession.Start(1, 0, "Super Administrator", "superadmin@platform.local", "SuperAdmin", null, false);
+                Assert.True(CurrentSession.CanAccessBranching);
+                Assert.True(CurrentSession.CanAccessBusinessIntelligence);
+                Assert.True(CurrentSession.CanAccessActions);
+                Assert.True(CurrentSession.CanUseCustomLogo);
+                Assert.True(CurrentSession.CanUseAccentColor);
+                Assert.True(CurrentSession.CanHidePoweredBy);
+            }
+            finally
+            {
+                CRMS_Peguit.domain.Common.FeatureGate.ClearOverrides();
+            }
+        }
+
+        [Fact]
+        public void TierEntitlements_PlanInclusions_DeriveFromActiveMatrix()
+        {
+            try
+            {
+                CRMS_Peguit.domain.Common.FeatureGate.ClearOverrides();
+
+                var defaultA = CRMS_Peguit.winforms.Controllers.SuperAdminSubscriptionController.GetDefaultPlanInclusions(TenantTier.TenantA);
+                Assert.Equal(6, defaultA.Length);
+                Assert.DoesNotContain(defaultA, item => item.Contains("Branch", StringComparison.OrdinalIgnoreCase));
+
+                // Grant MultiBranching to Tenant A
+                var matrix = new System.Collections.Generic.Dictionary<string, bool>
+                {
+                    [CRMS_Peguit.domain.Common.FeatureGate.GetMatrixKey(TenantTier.TenantA, CRMS_Peguit.domain.Common.FeatureGate.MultiBranching)] = true
+                };
+                CRMS_Peguit.domain.Common.FeatureGate.SetOverrides(matrix);
+
+                var updatedA = CRMS_Peguit.winforms.Controllers.SuperAdminSubscriptionController.GetDefaultPlanInclusions(TenantTier.TenantA);
+                Assert.Equal(7, updatedA.Length);
+                Assert.Contains(updatedA, item => item.Contains("Branch", StringComparison.OrdinalIgnoreCase));
+            }
+            finally
+            {
+                CRMS_Peguit.domain.Common.FeatureGate.ClearOverrides();
+            }
         }
 
         #endregion

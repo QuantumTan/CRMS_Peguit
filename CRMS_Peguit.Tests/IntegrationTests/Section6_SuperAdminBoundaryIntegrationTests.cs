@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CRMS_Peguit.domain.entities;
 using CRMS_Peguit.infrastructure.data;
+using CRMS_Peguit.winforms;
 using CRMS_Peguit.winforms.Auth;
 using CRMS_Peguit.winforms.Controllers;
 using CRMS_Peguit.winforms.Models.Services;
@@ -100,6 +101,24 @@ namespace CRMS_Peguit.Tests.IntegrationTests
             using var retCtrl = new RetentionController();
             var ex = Assert.ThrowsAsync<UnauthorizedAccessException>(async () => await retCtrl.GetSummaryAsync());
             Assert.NotNull(ex);
+        }
+
+        [Fact]
+        public async Task SuperAdmin_TenantController_GetTenantsAsync_ReturnsMetadataWithoutOperationalData()
+        {
+            CurrentSession.Start(1, 0, "Platform Super Admin", "superadmin@crms.com", "SuperAdmin", null, false);
+            var controller = new SuperAdminTenantController();
+            var tenants = await controller.GetTenantsAsync();
+
+            Assert.NotNull(tenants);
+            Assert.NotEmpty(tenants);
+            Assert.All(tenants, t =>
+            {
+                Assert.True(t.CompanyId > 0);
+                Assert.False(string.IsNullOrWhiteSpace(t.CompanyName));
+                Assert.False(string.IsNullOrWhiteSpace(t.CompanyCode));
+                Assert.False(string.IsNullOrWhiteSpace(t.TierLevel));
+            });
         }
     }
 }

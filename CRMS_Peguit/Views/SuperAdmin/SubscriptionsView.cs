@@ -13,7 +13,7 @@ using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Services;
 
 // =============================================================================
-// SubscriptionsView — Tenant Subscriptions, Seat Usage & Payment Processing
+// SubscriptionsView — Tenant Subscriptions, Billing Lifecycle & Payment Processing
 // =============================================================================
 
 namespace CRMS_Peguit.winforms.Views.SuperAdmin
@@ -29,7 +29,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         private KpiCard _kpiMrr = null!;
         private KpiCard _kpiActiveTenants = null!;
         private KpiCard _kpiExpiringSoon = null!;
-        private KpiCard _kpiTotalSeats = null!;
+        private KpiCard _kpiTotalTenants = null!;
         private string _activeKpiFilter = "all";
         private ScreenFilterCoordinator _filterCoord = null!;
 
@@ -43,7 +43,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         private Label _lblFeaturesTitle = null!;
         private FlowLayoutPanel _pnlFeaturesList = null!;
         private Button _btnUpgradePlan = null!;
-        private Button _btnEditSeats = null!;
+        private Button _btnEditInclusions = null!;
         private Button _btnViewTerms = null!;
 
         // ── Right Side: Billing History Controls ─────────────────────────────
@@ -52,10 +52,17 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         private Button _btnProcessPayment = null!;
         private Button _btnViewHistory = null!;
 
-        public SubscriptionsView()
+        // ── Overall Platform Transactions Controls ───────────────────────────
+        private List<PaymentRecordDto> _allTransactions = new();
+        private Panel _pnlTransactionsCard = null!;
+        private DataGridView _gridTransactions = null!;
+        private TextBox _txtTransSearch = null!;
+        private Label _lblTransSummary = null!;
+
+        public SubscriptionsView(bool loadData = true)
         {
             InitializeComponent();
-            _ = LoadDataAsync();
+            if (loadData) _ = LoadDataAsync();
         }
 
         private void InitializeComponent()
@@ -85,14 +92,16 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Text = "Subscription",
                 Font = UiStyleConstants.PageTitleFont,
                 ForeColor = Theme.TextPrimary,
+                UseMnemonic = false,
                 AutoSize = true,
-                Location = new Point(28, 18)
+                Location = new Point(28, 14)
             };
             var lblSub = new Label
             {
-                Text = "Tenant plans, billing history, and seat usage across the platform",
+                Text = "Tenant plans, billing history, and active organization subscriptions across the platform",
                 Font = UiStyleConstants.SubtitleFont,
                 ForeColor = Theme.TextSecondary,
+                UseMnemonic = false,
                 AutoSize = true,
                 Location = new Point(28, 56)
             };
@@ -116,6 +125,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             pnlPageHeader.SizeChanged += (_, _) =>
                 btnAddTenant.Location = new Point(pnlPageHeader.Width - 158, 29);
             pnlPageHeader.Controls.Add(btnAddTenant);
+            ResponsiveLayout.BindHeader(pnlPageHeader, lblTitle, lblSub, btnAddTenant);
 
             // ──────────────────────────────────────────────────────────────────
             // 2. 4 TOP KPI METRIC CARDS (Dock = Top)
@@ -154,7 +164,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Dock = DockStyle.Fill,
                 Margin = new Padding(5, 0, 10, 0)
             };
-            _kpiTotalSeats = new KpiCard("TOTAL SEATS USED", "seats", Theme.TextPrimary, KpiIconType.Users)
+            _kpiTotalTenants = new KpiCard("TOTAL TENANTS", "all", Theme.TextPrimary, KpiIconType.Users)
             {
                 Dock = DockStyle.Fill,
                 Margin = new Padding(5, 0, 0, 0)
@@ -162,15 +172,16 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
             // Clickable KPI Filters
             _filterCoord = new ScreenFilterCoordinator();
-            _filterCoord.Register(_kpiMrr, _kpiActiveTenants, _kpiExpiringSoon, _kpiTotalSeats);
+            _filterCoord.Register(_kpiMrr, _kpiActiveTenants, _kpiExpiringSoon, _kpiTotalTenants);
             _filterCoord.FilterChanged += (s, key) => SelectKpiFilter(key ?? "all");
 
             _pnlKpis.Controls.Add(_kpiMrr, 0, 0);
             _pnlKpis.Controls.Add(_kpiActiveTenants, 1, 0);
             _pnlKpis.Controls.Add(_kpiExpiringSoon, 2, 0);
-            _pnlKpis.Controls.Add(_kpiTotalSeats, 3, 0);
+            _pnlKpis.Controls.Add(_kpiTotalTenants, 3, 0);
 
             pnlKpiContainer.Controls.Add(_pnlKpis);
+            ResponsiveLayout.BindKpis(_pnlKpis, pnlKpiContainer);
 
             // ──────────────────────────────────────────────────────────────────
             // 3. MAIN SPLIT CONTENT AREA (Dock = Fill)
@@ -181,6 +192,14 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Padding = new Padding(28, 8, 28, 28),
                 BackColor = Theme.Background,
                 AutoScroll = true
+            };
+
+            // Top Split Panel: Tenant Cards (Left) & Features/Billing (Right)
+            var pnlTopSplit = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 670,
+                BackColor = Color.Transparent
             };
 
             // Left side: Tenant Cards (Width = 560)
@@ -206,8 +225,57 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
             BuildRightSidePanels();
 
-            pnlBodyWrapper.Controls.Add(_pnlRight);
-            pnlBodyWrapper.Controls.Add(_pnlTenantCards);
+            pnlTopSplit.Controls.Add(_pnlRight);
+            pnlTopSplit.Controls.Add(_pnlTenantCards);
+            bool splitLayoutBusy = false;
+            void LayoutSubscriptionSplit()
+            {
+                if (splitLayoutBusy) return;
+                splitLayoutBusy = true;
+                try
+                {
+                    int rightHeight = _pnlFeaturesCard.Height + _pnlBillingCard.Height + 16;
+                    bool stacked = pnlTopSplit.ClientSize.Width < ResponsiveLayout.Scale(pnlTopSplit, 1000);
+                    _pnlTenantCards.Dock = _pnlRight.Dock = DockStyle.None;
+                    _pnlTenantCards.Anchor = _pnlRight.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+                    _pnlRight.AutoScroll = false;
+                    int leftWidth = stacked ? pnlTopSplit.ClientSize.Width : pnlTopSplit.ClientSize.Width * 42 / 100;
+                    _pnlTenantCards.Bounds = new Rectangle(0, 0, leftWidth, stacked ? 320 : rightHeight);
+                    _pnlRight.Bounds = stacked
+                        ? new Rectangle(0, 336, pnlTopSplit.ClientSize.Width, rightHeight)
+                        : new Rectangle(leftWidth + 16, 0, Math.Max(1, pnlTopSplit.ClientSize.Width - leftWidth - 16), rightHeight);
+                    rightHeight = _pnlFeaturesCard.Height + _pnlBillingCard.Height + 16;
+                    _pnlRight.Height = rightHeight;
+                    pnlTopSplit.Height = stacked ? rightHeight + 336 : rightHeight;
+                    pnlBodyWrapper.AutoScrollMinSize = new Size(0, pnlTopSplit.Height + (_pnlTransactionsCard?.Height ?? 360) + 90);
+                }
+                finally { splitLayoutBusy = false; }
+            }
+            pnlTopSplit.SizeChanged += (_, _) => LayoutSubscriptionSplit();
+            _pnlFeaturesCard.SizeChanged += (_, _) => LayoutSubscriptionSplit();
+
+            // Spacing between Top Subscriptions area and Overall Transactions table
+            var pnlSplitGap = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 18,
+                BackColor = Color.Transparent
+            };
+
+            // Overall Platform Transaction & Payment History Card
+            BuildOverallTransactionsPanel();
+
+            var pnlBottomGap = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 32,
+                BackColor = Color.Transparent
+            };
+
+            pnlBodyWrapper.Controls.Add(pnlBottomGap);
+            pnlBodyWrapper.Controls.Add(_pnlTransactionsCard);
+            pnlBodyWrapper.Controls.Add(pnlSplitGap);
+            pnlBodyWrapper.Controls.Add(pnlTopSplit);
 
             Controls.Add(pnlBodyWrapper);
             Controls.Add(pnlKpiContainer);
@@ -220,7 +288,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _pnlFeaturesCard = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 315,
+                Height = 360,
                 BackColor = Color.White,
                 Padding = new Padding(24, 20, 24, 20),
                 Margin = new Padding(0, 0, 0, 16)
@@ -239,16 +307,17 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
             _pnlFeaturesList = new FlowLayoutPanel
             {
-                Location = new Point(24, 52),
-                Size = new Size(Math.Max(300, _pnlFeaturesCard.Width - 48), 175),
+                Location = new Point(24, 48),
+                Size = new Size(Math.Max(300, _pnlFeaturesCard.Width - 48), 235),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 FlowDirection = FlowDirection.TopDown,
                 WrapContents = false,
+                AutoScroll = true,
                 BackColor = Color.Transparent
             };
             _pnlFeaturesList.SizeChanged += (_, _) =>
             {
-                int targetW = Math.Max(300, _pnlFeaturesList.ClientSize.Width - 8);
+                int targetW = Math.Max(1, _pnlFeaturesList.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 12);
                 foreach (Control c in _pnlFeaturesList.Controls)
                 {
                     c.Width = targetW;
@@ -256,10 +325,10 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             };
             _pnlFeaturesCard.Controls.Add(_pnlFeaturesList);
 
-            // Action Buttons (Cleanly positioned below features with 20px clearance)
+            // Action Buttons (Cleanly positioned below features)
             var pnlFeatureButtons = new FlowLayoutPanel
             {
-                Location = new Point(24, 252),
+                Location = new Point(24, 298),
                 Size = new Size(Math.Max(300, _pnlFeaturesCard.Width - 48), 48),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 FlowDirection = FlowDirection.LeftToRight,
@@ -268,34 +337,34 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
             _btnUpgradePlan = new Button
             {
-                Text = "Upgrade Plan",
-                Size = new Size(130, 36),
+                Text = "Change Tier",
+                Size = new Size(115, 36),
                 BackColor = Color.FromArgb(15, 23, 42),
                 ForeColor = Color.White,
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                 Cursor = Cursors.Hand,
-                Margin = new Padding(0, 0, 10, 0)
+                Margin = new Padding(0, 0, 8, 0)
             };
             UiRadiusHelper.StyleButton(_btnUpgradePlan, 6);
             _btnUpgradePlan.Click += BtnUpgradePlan_Click;
 
-            _btnEditSeats = new Button
+            _btnEditInclusions = new Button
             {
-                Text = "Edit Seats",
-                Size = new Size(110, 36),
+                Text = "⚙ Module Matrix",
+                Size = new Size(130, 36),
                 BackColor = Color.White,
                 ForeColor = Color.FromArgb(15, 23, 42),
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                 Cursor = Cursors.Hand,
-                Margin = new Padding(0, 0, 10, 0)
+                Margin = new Padding(0, 0, 8, 0)
             };
-            _btnEditSeats.Paint += (s, e) =>
+            _btnEditInclusions.Paint += (s, e) =>
             {
                 using var p = new Pen(Theme.BorderAccessible, 1f);
-                e.Graphics.DrawRectangle(p, 0, 0, _btnEditSeats.Width - 1, _btnEditSeats.Height - 1);
+                e.Graphics.DrawRectangle(p, 0, 0, _btnEditInclusions.Width - 1, _btnEditInclusions.Height - 1);
             };
-            UiRadiusHelper.StyleButton(_btnEditSeats, 6);
-            _btnEditSeats.Click += BtnEditSeats_Click;
+            UiRadiusHelper.StyleButton(_btnEditInclusions, 6);
+            _btnEditInclusions.Click += BtnEditInclusions_Click;
 
             _btnViewTerms = new Button
             {
@@ -303,9 +372,9 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Size = new Size(110, 36),
                 BackColor = Color.White,
                 ForeColor = Color.FromArgb(15, 23, 42),
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                 Cursor = Cursors.Hand,
-                Margin = new Padding(0, 0, 10, 0)
+                Margin = new Padding(0)
             };
             _btnViewTerms.Paint += (s, e) =>
             {
@@ -316,9 +385,32 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _btnViewTerms.Click += BtnViewTerms_Click;
 
             pnlFeatureButtons.Controls.Add(_btnUpgradePlan);
-            pnlFeatureButtons.Controls.Add(_btnEditSeats);
+            pnlFeatureButtons.Controls.Add(_btnEditInclusions);
             pnlFeatureButtons.Controls.Add(_btnViewTerms);
             _pnlFeaturesCard.Controls.Add(pnlFeatureButtons);
+            pnlFeatureButtons.WrapContents = true;
+            pnlFeatureButtons.AutoSize = true;
+            pnlFeatureButtons.SizeChanged += (_, _) => _pnlFeaturesCard.Height = pnlFeatureButtons.Bottom + 24;
+            bool featureLayoutBusy = false;
+            _pnlFeaturesCard.SizeChanged += (_, _) =>
+            {
+                if (featureLayoutBusy) return;
+                featureLayoutBusy = true;
+                try
+                {
+                    int width = Math.Max(1, _pnlFeaturesCard.ClientSize.Width - 48);
+                    int bottom = ResponsiveLayout.LabelBlock(_lblFeaturesTitle, 24, 18, width);
+                    _pnlFeaturesList.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+                    _pnlFeaturesList.Location = new Point(24, bottom + 12);
+                    _pnlFeaturesList.Width = width;
+                    pnlFeatureButtons.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+                    pnlFeatureButtons.MaximumSize = new Size(width, 0);
+                    pnlFeatureButtons.Width = width;
+                    pnlFeatureButtons.Top = _pnlFeaturesList.Bottom + 12;
+                    _pnlFeaturesCard.Height = pnlFeatureButtons.Bottom + 24;
+                }
+                finally { featureLayoutBusy = false; }
+            };
 
             // Spacing panel
             var pnlGap = new Panel
@@ -393,11 +485,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             pnlHeaderActions.Controls.Add(_btnProcessPayment);
             pnlHeaderActions.Controls.Add(_btnViewHistory);
             pnlBillingHeader.Controls.Add(pnlHeaderActions);
-
-            _pnlBillingCard.SizeChanged += (_, _) =>
-            {
-                pnlHeaderActions.Location = new Point(_pnlBillingCard.Width - 280, 4);
-            };
+            ResponsiveLayout.BindHeader(pnlBillingHeader, lblBillingTitle, null, pnlHeaderActions);
 
             _pnlInvoicesList = new FlowLayoutPanel
             {
@@ -410,7 +498,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             };
             _pnlInvoicesList.SizeChanged += (_, _) =>
             {
-                int targetW = Math.Max(400, _pnlInvoicesList.ClientSize.Width - 8);
+                int targetW = Math.Max(1, _pnlInvoicesList.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 8);
                 foreach (Control c in _pnlInvoicesList.Controls)
                 {
                     c.Width = targetW;
@@ -426,6 +514,264 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _pnlRight.Controls.Add(_pnlFeaturesCard);
         }
 
+        // ── Overall Platform Transaction & Payment History Card ─────────────
+        private void BuildOverallTransactionsPanel()
+        {
+            _pnlTransactionsCard = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 490,
+                BackColor = Color.White,
+                Padding = new Padding(24, 18, 24, 16)
+            };
+            UiRadiusHelper.StyleCard(_pnlTransactionsCard, 8);
+
+            // 1. Header Area (Dock = Top, Height = 56)
+            var pnlTransHeader = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 56,
+                BackColor = Color.Transparent
+            };
+
+            var lblTransTitle = new Label
+            {
+                Text = "Overall Transaction & Subscription History",
+                Font = new Font("Segoe UI", 12f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(15, 23, 42),
+                AutoSize = true,
+                Location = new Point(0, 4)
+            };
+
+            var lblTransSub = new Label
+            {
+                Text = "Global platform ledger of all tenant subscription charges, manual bank transfers, and GCash payments",
+                Font = new Font("Segoe UI", 9f),
+                ForeColor = Color.FromArgb(100, 116, 139),
+                AutoSize = true,
+                Location = new Point(0, 28)
+            };
+
+            pnlTransHeader.Controls.Add(lblTransTitle);
+            pnlTransHeader.Controls.Add(lblTransSub);
+
+            var pnlTransActions = new FlowLayoutPanel
+            {
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(_pnlTransactionsCard.Width - 380, 8),
+                Size = new Size(360, 38),
+                FlowDirection = FlowDirection.RightToLeft,
+                BackColor = Color.Transparent
+            };
+
+            var btnTransRefresh = new Button
+            {
+                Text = "🔄 Refresh",
+                Size = new Size(95, 32),
+                BackColor = Color.FromArgb(241, 245, 249),
+                ForeColor = Color.FromArgb(15, 23, 42),
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Margin = new Padding(0)
+            };
+            UiRadiusHelper.StyleButton(btnTransRefresh, 4);
+            btnTransRefresh.Click += async (_, _) => await LoadDataAsync();
+
+            _txtTransSearch = new TextBox
+            {
+                PlaceholderText = "🔍 Search tenant, ref #, method...",
+                Size = new Size(240, 32),
+                Font = new Font("Segoe UI", 9f),
+                Margin = new Padding(10, 0, 0, 0)
+            };
+            UiRadiusHelper.SetPadding(_txtTransSearch, 4, 4);
+            _txtTransSearch.TextChanged += (_, _) => RenderOverallTransactionsTable();
+
+            pnlTransActions.Controls.Add(btnTransRefresh);
+            pnlTransActions.Controls.Add(_txtTransSearch);
+            pnlTransHeader.Controls.Add(pnlTransActions);
+            ResponsiveLayout.BindHeader(pnlTransHeader, lblTransTitle, lblTransSub, pnlTransActions);
+
+            // 2. Footer Area (Dock = Bottom, Height = 36)
+            var pnlTransFooter = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 36,
+                BackColor = Color.Transparent,
+                Padding = new Padding(0, 8, 0, 0)
+            };
+
+            _lblTransSummary = new Label
+            {
+                Text = "Loading platform transactions...",
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(71, 85, 105),
+                AutoSize = true,
+                Location = new Point(0, 10)
+            };
+            var lblHint = new Label
+            {
+                Text = "💡 Double-click any transaction row to view or print the official payment receipt",
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Italic),
+                ForeColor = Color.FromArgb(148, 163, 184),
+                AutoSize = true,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(_pnlTransactionsCard.Width - 460, 10)
+            };
+            pnlTransFooter.Controls.Add(_lblTransSummary);
+            pnlTransFooter.Controls.Add(lblHint);
+            ResponsiveLayout.BindToolbar(pnlTransFooter, 8, _lblTransSummary, lblHint);
+
+            // 3. Grid (Dock = Fill)
+            _gridTransactions = new DataGridView
+            {
+                Dock = DockStyle.Fill,
+                BackgroundColor = Color.White,
+                BorderStyle = BorderStyle.None,
+                RowHeadersVisible = false,
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                ReadOnly = true,
+                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                MultiSelect = false,
+                RowTemplate = { Height = 48 }
+            };
+            UiGridHelper.ApplyModernGridStyle(_gridTransactions);
+
+            _gridTransactions.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "colDate",
+                HeaderText = "Payment Date",
+                Width = 115
+            });
+            _gridTransactions.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "colTenant",
+                HeaderText = "Tenant Organization",
+                Width = 210
+            });
+            _gridTransactions.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "colCode",
+                HeaderText = "Code",
+                Width = 90
+            });
+            _gridTransactions.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "colAmount",
+                HeaderText = "Amount Paid",
+                Width = 125,
+                DefaultCellStyle = new DataGridViewCellStyle
+                {
+                    Alignment = DataGridViewContentAlignment.MiddleRight,
+                    Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                    ForeColor = Color.FromArgb(15, 23, 42)
+                }
+            });
+            _gridTransactions.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "colMethod",
+                HeaderText = "Method",
+                Width = 120
+            });
+            _gridTransactions.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "colRef",
+                HeaderText = "Reference No.",
+                Width = 160
+            });
+            _gridTransactions.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "colRecordedBy",
+                HeaderText = "Recorded By",
+                Width = 150
+            });
+            _gridTransactions.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "colNotes",
+                HeaderText = "Notes / Description",
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill
+            });
+            _gridTransactions.Columns.Add(new DataGridViewButtonColumn
+            {
+                Name = "colReceipt",
+                HeaderText = "Receipt",
+                Text = "Receipt",
+                UseColumnTextForButtonValue = true,
+                Width = 80
+            });
+
+            _gridTransactions.CellContentClick += (s, e) =>
+            {
+                if (e.RowIndex >= 0 && e.ColumnIndex == _gridTransactions.Columns["colReceipt"]?.Index)
+                {
+                    if (_gridTransactions.Rows[e.RowIndex].Tag is PaymentRecordDto rec)
+                    {
+                        ShowPaymentReceipt(rec);
+                    }
+                }
+            };
+
+            _gridTransactions.CellDoubleClick += (s, e) =>
+            {
+                if (e.RowIndex >= 0 && _gridTransactions.Rows[e.RowIndex].Tag is PaymentRecordDto rec)
+                {
+                    ShowPaymentReceipt(rec);
+                }
+            };
+
+            // Correct docking: Fill added first, then Bottom, then Top
+            _pnlTransactionsCard.Controls.Add(_gridTransactions);
+            _pnlTransactionsCard.Controls.Add(pnlTransFooter);
+            _pnlTransactionsCard.Controls.Add(pnlTransHeader);
+        }
+
+        private void RenderOverallTransactionsTable()
+        {
+            if (_gridTransactions == null) return;
+
+            _gridTransactions.Rows.Clear();
+
+            string search = _txtTransSearch?.Text.Trim().ToLowerInvariant() ?? "";
+            var filtered = _allTransactions.AsEnumerable();
+
+            if (!string.IsNullOrEmpty(search))
+            {
+                filtered = filtered.Where(t =>
+                    (t.CompanyName != null && t.CompanyName.ToLowerInvariant().Contains(search)) ||
+                    (t.CompanyCode != null && t.CompanyCode.ToLowerInvariant().Contains(search)) ||
+                    (t.PaymentReference != null && t.PaymentReference.ToLowerInvariant().Contains(search)) ||
+                    (t.PaymentMethodDisplay != null && t.PaymentMethodDisplay.ToLowerInvariant().Contains(search)) ||
+                    (t.RecordedByName != null && t.RecordedByName.ToLowerInvariant().Contains(search)) ||
+                    (t.Notes != null && t.Notes.ToLowerInvariant().Contains(search)));
+            }
+
+            var list = filtered.ToList();
+            decimal totalCollected = 0m;
+
+            foreach (var rec in list)
+            {
+                totalCollected += rec.AmountPaid;
+                int rowIndex = _gridTransactions.Rows.Add(
+                    rec.PaymentDate.ToString("MMM dd, yyyy"),
+                    rec.CompanyName,
+                    rec.CompanyCode,
+                    $"₱{rec.AmountPaid:N2}",
+                    rec.PaymentMethodDisplay,
+                    rec.PaymentReference,
+                    rec.RecordedByName,
+                    rec.Notes ?? "—",
+                    "Receipt");
+
+                _gridTransactions.Rows[rowIndex].Tag = rec;
+            }
+
+            if (_lblTransSummary != null)
+            {
+                _lblTransSummary.Text = $"Showing {list.Count} of {_allTransactions.Count} transactions · Total Revenue Recorded: ₱{totalCollected:N2}";
+            }
+        }
+
         // ──────────────────────────────────────────────────────────────────────
         // DATA LOADING & METRICS
         // ──────────────────────────────────────────────────────────────────────
@@ -435,33 +781,42 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _kpiMrr.ShowLoadingSkeleton();
             _kpiActiveTenants.ShowLoadingSkeleton();
             _kpiExpiringSoon.ShowLoadingSkeleton();
-            _kpiTotalSeats.ShowLoadingSkeleton();
+            _kpiTotalTenants.ShowLoadingSkeleton();
             _cardsSkeleton?.ShowSkeleton(3);
 
             try
             {
                 _allSubscriptions = await _controller.GetAllSubscriptionsAsync();
+                _allTransactions = await _controller.GetAllPaymentRecordsAsync();
 
                 UpdateKpis();
                 RenderTenantCards();
                 RenderBillingHistory();
+                RenderOverallTransactionsTable();
 
-                if (_allSubscriptions.Count > 0)
+                if (_allSubscriptions.Count > 0 && _selectedSub == null)
                 {
                     SelectTenantCard(_allSubscriptions[0]);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to load subscriptions: {ex.Message}",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (!CRMS_Peguit.winforms.Audit.ScreenAuditor.IsAuditing)
+                {
+                    MessageBox.Show($"Failed to load subscriptions: {ex.Message}",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                else
+                {
+                    Console.WriteLine($"[AUDITOR WARNING] Failed to load subscriptions: {ex.Message}");
+                }
             }
             finally
             {
                 _kpiMrr.HideLoadingSkeleton();
                 _kpiActiveTenants.HideLoadingSkeleton();
                 _kpiExpiringSoon.HideLoadingSkeleton();
-                _kpiTotalSeats.HideLoadingSkeleton();
+                _kpiTotalTenants.HideLoadingSkeleton();
                 _cardsSkeleton?.HideSkeleton();
             }
         }
@@ -477,7 +832,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             _kpiMrr.SetValue($"₱{totalMrr:N0}");
             _kpiActiveTenants.SetValue(activeCount);
             _kpiExpiringSoon.SetValue(expiring);
-            _kpiTotalSeats.SetValue("43 / 70"); // Exact Figma seat count metric
+            _kpiTotalTenants.SetValue(_allSubscriptions.Count);
         }
 
         private void SelectKpiFilter(string filterKey)
@@ -502,21 +857,15 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
             var list = query.ToList();
 
-            // Default seed display matching Figma image if DB has standard 3 tenants
-            int idx = 0;
             foreach (var sub in list)
             {
-                string companyName = sub.CompanyName.Contains("(") ? sub.CompanyName.Substring(0, sub.CompanyName.IndexOf("(")).Trim() : sub.CompanyName;
-                string planName = sub.PlanName.Contains("Tenant") ? GetFriendlyPlanName(sub.PlanName) : sub.PlanName;
-                decimal price = idx == 0 ? 5000m : (idx == 1 ? 12000m : 8000m);
-                int seatsUsed = idx == 0 ? 4 : (idx == 1 ? 11 : 28);
-                int totalSeats = idx == 0 ? 5 : (idx == 1 ? 15 : 50);
-                string nextBilling = idx == 0 ? "Oct 1, 2026" : (idx == 1 ? "Oct 8, 2026" : "Oct 15, 2026");
-                Color accentColor = idx == 0 ? Color.FromArgb(71, 85, 105) : (idx == 1 ? Color.FromArgb(6, 182, 212) : Color.FromArgb(139, 92, 246));
+                string companyName = string.IsNullOrEmpty(sub.CompanyName) ? "Tenant" : (sub.CompanyName.Contains("(") ? sub.CompanyName.Substring(0, sub.CompanyName.IndexOf("(")).Trim() : sub.CompanyName);
+                string planName = string.IsNullOrEmpty(sub.PlanName) ? "Starter Plan" : (sub.PlanName.Contains("Tenant") ? GetFriendlyPlanName(sub.PlanName) : sub.PlanName);
+                decimal price = sub.BillingAmount > 0 ? sub.BillingAmount : (sub.PlanName.Contains("Tenant C") ? 9500m : sub.PlanName.Contains("Tenant B") ? 5500m : 2500m);
+                Color accentColor = sub.PlanName.Contains("Tenant C") ? Color.FromArgb(16, 185, 129) : (sub.PlanName.Contains("Tenant B") ? Color.FromArgb(37, 99, 235) : Color.FromArgb(71, 85, 105));
 
-                var card = CreateTenantCard(sub, companyName, planName, price, seatsUsed, totalSeats, nextBilling, accentColor);
+                var card = CreateTenantCard(sub, companyName, planName, price, accentColor);
                 _pnlTenantCards.Controls.Add(card);
-                idx++;
             }
 
             _pnlTenantCards.ResumeLayout(true);
@@ -530,7 +879,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             return raw;
         }
 
-        private Panel CreateTenantCard(TenantSubscriptionDto sub, string company, string plan, decimal price, int seatsUsed, int totalSeats, string nextBilling, Color accentColor)
+        private Panel CreateTenantCard(TenantSubscriptionDto sub, string company, string plan, decimal price, Color accentColor)
         {
             bool isSelected = _selectedSub != null && _selectedSub.CompanyId == sub.CompanyId;
 
@@ -554,7 +903,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 }
             };
 
-            // Avatar Icon Box ("T")
+            // Avatar Icon Box
             var pnlAvatar = new Panel
             {
                 Location = new Point(18, 16),
@@ -562,9 +911,10 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 BackColor = accentColor
             };
             UiRadiusHelper.StyleCard(pnlAvatar, 6);
+            string initial = !string.IsNullOrWhiteSpace(company) ? company.Substring(0, 1).ToUpperInvariant() : "T";
             var lblT = new Label
             {
-                Text = "T",
+                Text = initial,
                 Font = new Font("Segoe UI", 12f, FontStyle.Bold),
                 ForeColor = Color.White,
                 Dock = DockStyle.Fill,
@@ -615,29 +965,30 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             card.Controls.Add(lblPrice);
             card.Controls.Add(lblStatus);
 
-            // Bottom row: Seat usage & next billing
-            var lblSeatUsage = new Label
+            // Middle row: Subscription cycle info & Paid Through
+            string startStr = sub.StartDate.ToString("MMM d, yyyy");
+            string billingDateStr = sub.EndDate.HasValue ? sub.EndDate.Value.ToString("MMM d, yyyy") : "Continuous (Active)";
+            var lblBillingCycle = new Label
             {
-                Text = $"Seat usage: {seatsUsed} / {totalSeats}",
+                Text = $"Term Started: {startStr}",
                 Font = new Font("Segoe UI", 8.5f),
                 ForeColor = Color.FromArgb(100, 116, 139),
                 AutoSize = true,
                 Location = new Point(18, 70)
             };
-            string billingDateStr = sub.EndDate.HasValue ? sub.EndDate.Value.ToString("MMM d, yyyy") : nextBilling;
             var lblBillingDate = new Label
             {
                 Text = $"Paid through: {billingDateStr}",
-                Font = new Font("Segoe UI", 8.5f),
-                ForeColor = Color.FromArgb(100, 116, 139),
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+                ForeColor = sub.Status == "Expired" ? Theme.StatusAlert : Color.FromArgb(71, 85, 105),
                 AutoSize = true,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(card.Width - 190, 70)
+                Location = new Point(card.Width - 210, 70)
             };
-            card.Controls.Add(lblSeatUsage);
+            card.Controls.Add(lblBillingCycle);
             card.Controls.Add(lblBillingDate);
 
-            // Progress Bar
+            // Progress Bar representing billing cycle elapsed
             var pnlProgressTrack = new Panel
             {
                 Location = new Point(18, 94),
@@ -646,12 +997,18 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             };
             UiRadiusHelper.StyleCard(pnlProgressTrack, 3);
 
-            float pct = Math.Min(1f, (float)seatsUsed / totalSeats);
+            float pct = 1f;
+            if (sub.EndDate.HasValue && sub.EndDate.Value > sub.StartDate)
+            {
+                double total = (sub.EndDate.Value - sub.StartDate).TotalDays;
+                double elapsed = (DateTime.UtcNow - sub.StartDate).TotalDays;
+                pct = total > 0 ? (float)Math.Clamp(elapsed / total, 0.05, 1.0) : 1f;
+            }
             var pnlProgressFill = new Panel
             {
                 Location = new Point(0, 0),
                 Size = new Size((int)(pnlProgressTrack.Width * pct), 6),
-                BackColor = accentColor
+                BackColor = sub.Status == "Expired" ? Theme.StatusAlert : accentColor
             };
             UiRadiusHelper.StyleCard(pnlProgressFill, 3);
             pnlProgressTrack.Controls.Add(pnlProgressFill);
@@ -667,7 +1024,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             lblT.Click += (_, _) => clickHandler();
             lblPrice.Click += (_, _) => clickHandler();
             lblStatus.Click += (_, _) => clickHandler();
-            lblSeatUsage.Click += (_, _) => clickHandler();
+            lblBillingCycle.Click += (_, _) => clickHandler();
             lblBillingDate.Click += (_, _) => clickHandler();
 
             return card;
@@ -679,7 +1036,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             string plan = GetFriendlyPlanName(sub.PlanName);
             _lblFeaturesTitle.Text = $"{plan.Replace(" Plan", "")} — Included Features";
 
-            UpdateFeaturesList(plan);
+            _ = UpdateFeaturesListAsync(sub.Tier);
             _ = RenderBillingHistoryAsync();
 
             // Re-render to update selected border highlight
@@ -689,18 +1046,14 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             }
         }
 
-        private void UpdateFeaturesList(string plan)
+        private async Task UpdateFeaturesListAsync(TenantTier tier)
         {
             _pnlFeaturesList.SuspendLayout();
             _pnlFeaturesList.Controls.Clear();
 
-            string[] features = plan.Contains("Starter")
-                ? new[] { "Up to 5 users", "Basic CRM features", "Property & Leads management", "Email support", "5 GB storage" }
-                : (plan.Contains("Professional")
-                    ? new[] { "Up to 15 users", "Advanced CRM & BI reports", "Multi-Branching enabled", "Priority email & chat support", "25 GB storage" }
-                    : new[] { "Up to 50 users", "Full enterprise suite & automations", "Unlimited branches & custom workflows", "Dedicated 24/7 account manager", "100 GB storage" });
+            var features = await _controller.GetPlanInclusionsAsync(tier);
 
-            int fRowWidth = Math.Max(300, _pnlFeaturesList.ClientSize.Width - 8);
+            int fRowWidth = Math.Max(1, _pnlFeaturesList.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 16);
             foreach (var f in features)
             {
                 var row = new Panel
@@ -723,7 +1076,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                     Font = new Font("Segoe UI", 9.5f),
                     ForeColor = Color.FromArgb(30, 41, 59),
                     AutoSize = true,
-                    Location = new Point(24, 4)
+                    Location = new Point(28, 4)
                 };
                 row.Controls.Add(lblCheck);
                 row.Controls.Add(lblText);
@@ -732,6 +1085,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
             _pnlFeaturesList.ResumeLayout(true);
         }
+
 
         // ──────────────────────────────────────────────────────────────────────
         // BILLING HISTORY & PAYMENT PROCESSING (MATCHING FIGMA IMAGE 6)
@@ -759,7 +1113,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 records = await _controller.GetCompanyPaymentHistoryAsync(_selectedSub.CompanyId);
             }
 
-            int initialRowWidth = Math.Max(400, _pnlInvoicesList.ClientSize.Width - 8);
+            int initialRowWidth = Math.Max(1, _pnlInvoicesList.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 8);
 
             if (records.Count == 0)
             {
@@ -794,7 +1148,7 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 };
 
                 // Col 0: Reference & Date
-                int refColWidth = Math.Max(140, initialRowWidth - 320);
+                int refColWidth = Math.Max(120, initialRowWidth - 365);
                 var pnlRefCol = new Panel
                 {
                     Location = new Point(0, 4),
@@ -832,9 +1186,9 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                     Text = $"₱{rec.AmountPaid:N2}",
                     Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                     ForeColor = Color.FromArgb(15, 23, 42),
-                    Location = new Point(initialRowWidth - 310, 16),
-                    Size = new Size(95, 20),
-                    TextAlign = ContentAlignment.MiddleLeft,
+                    Location = new Point(initialRowWidth - 355, 16),
+                    Size = new Size(110, 20),
+                    TextAlign = ContentAlignment.MiddleRight,
                     Anchor = AnchorStyles.Top | AnchorStyles.Right
                 };
                 row.Controls.Add(lblAmt);
@@ -846,8 +1200,8 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                     Font = new Font("Segoe UI", 8.5f),
                     ForeColor = Color.FromArgb(71, 85, 105),
                     AutoEllipsis = true,
-                    Location = new Point(initialRowWidth - 205, 16),
-                    Size = new Size(125, 20),
+                    Location = new Point(initialRowWidth - 235, 16),
+                    Size = new Size(150, 20),
                     TextAlign = ContentAlignment.MiddleLeft,
                     Anchor = AnchorStyles.Top | AnchorStyles.Right
                 };
@@ -882,11 +1236,12 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
 
         private void ShowPaymentReceipt(PaymentRecordDto rec)
         {
-            string tenant = _selectedSub?.CompanyName ?? "Tenant Organization";
+            string tenant = !string.IsNullOrEmpty(rec.CompanyName) ? rec.CompanyName : (_selectedSub?.CompanyName ?? "Tenant Organization");
             string summary = $"NEXA MANUAL PAYMENT RECEIPT\n\n" +
                 $"Reference No: {rec.PaymentReference}\n" +
                 $"Payment Date: {rec.PaymentDate:MMM dd, yyyy}\n" +
                 $"Billed Organization: {tenant}\n" +
+                $"Tenant Code: {rec.CompanyCode}\n" +
                 $"Payment Method: {rec.PaymentMethodDisplay}\n" +
                 $"Amount Paid: ₱{rec.AmountPaid:N2}\n" +
                 $"Recorded By: {rec.RecordedByName}\n" +
@@ -928,17 +1283,65 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         // ACTIONS: ADD TENANT, UPGRADE PLAN, TERMS & CONDITIONS
         // ──────────────────────────────────────────────────────────────────────
 
-        private void BtnAddTenant_Click(object? sender, EventArgs e)
+        private async void BtnAddTenant_Click(object? sender, EventArgs e)
         {
-            using var termsDlg = new TenantTermsAndConditionsDialog("New Tenant Organization", "Starter Plan");
-            if (termsDlg.ShowDialog(this) != DialogResult.OK) return;
+            // Step 1: Mandatory Terms & Conditions acceptance first
+            using var termsDlg = new TenantTermsAndConditionsDialog(
+                "New Tenant Organization",
+                "Starter Plan",
+                isReadOnly: false);
 
-            MessageBox.Show(
-                "Tenant organization onboarded successfully with agreed Master Service Terms & Data Privacy Compliance.\n\nDatabase container initialized.",
-                "Tenant Created",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            _ = LoadDataAsync();
+            if (termsDlg.ShowDialog(this) != DialogResult.OK)
+            {
+                // Terms not agreed to; onboarding cannot proceed
+                return;
+            }
+
+            // Step 2: Onboarding Form
+            using var createDlg = new CreateTenantDialog();
+            if (createDlg.ShowDialog(this) != DialogResult.OK || createDlg.Request == null)
+            {
+                return;
+            }
+
+            try
+            {
+                Cursor = Cursors.WaitCursor;
+                var (success, error) = await _controller.CreateTenantAsync(createDlg.Request);
+                if (success)
+                {
+                    MessageBox.Show(
+                        $"Tenant organization '{createDlg.Request.CompanyName}' has been successfully onboarded!\n\n" +
+                        $"• Organization: {createDlg.Request.CompanyName}\n" +
+                        $"• Brand Display Name: {createDlg.Request.DisplayName ?? createDlg.Request.CompanyName}\n" +
+                        $"• Tenant Code: {createDlg.Request.CompanyCode}\n" +
+                        $"• Tier Level: {createDlg.Request.TierLevel}\n" +
+                        $"• Administrator: {createDlg.Request.AdminEmail}\n" +
+                        $"• Master Terms & Conditions: Accepted & Recorded\n\n" +
+                        "Database container and initial subscription ledger provisioned.",
+                        "Tenant Onboarding Successful",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+
+                    await LoadDataAsync();
+                }
+                else
+                {
+                    MessageBox.Show(
+                        $"Failed to onboard tenant organization:\n\n{error}",
+                        "Onboarding Error",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error creating tenant: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                Cursor = Cursors.Default;
+            }
         }
 
         private async void BtnUpgradePlan_Click(object? sender, EventArgs e)
@@ -972,11 +1375,16 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             }
         }
 
-        private void BtnEditSeats_Click(object? sender, EventArgs e)
+        private async void BtnEditInclusions_Click(object? sender, EventArgs e)
         {
-            if (_selectedSub == null) return;
-            MessageBox.Show($"Allocated seat quota for {_selectedSub.CompanyName} updated.", "Seat Allocation",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            using var dlg = new ManageTierEntitlementsDialog();
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
+                if (_selectedSub != null)
+                {
+                    await UpdateFeaturesListAsync(_selectedSub.Tier);
+                }
+            }
         }
 
         private void BtnViewTerms_Click(object? sender, EventArgs e)

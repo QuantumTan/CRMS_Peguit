@@ -111,7 +111,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
             _pagination.PageChanged += async (_, _) => await RefreshGridAsync(resetPage: false, animate: true);
             _pagination.PageSizeChanged += async (_, _) => await RefreshGridAsync(resetPage: true, animate: false);
             pnlCard.Controls.Add(_pagination);
-            _pagination.BringToFront();
+            _pagination.SendToBack();
         }
 
         private void InitEmptyState()
@@ -158,7 +158,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
             {
                 _btnExport = new Button
                 {
-                    Text = "Export CSV",
+                    Text = "📄 Export PDF",
                     BackColor = Color.White,
                     ForeColor = Theme.Primary,
                     Cursor = Cursors.Hand,
@@ -167,7 +167,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
                     Size = new Size(120, 36)
                 };
                 _btnExport.FlatAppearance.BorderColor = Theme.Primary;
-                _btnExport.Click += (_, _) => ExportToCsv();
+                _btnExport.Click += (_, _) => ExportToPdf();
                 UiRadiusHelper.StyleButton(_btnExport, 8);
                 Controls.Add(_btnExport);
                 _btnExport.BringToFront();
@@ -583,9 +583,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
             if (grid.Columns[e.ColumnIndex] is not ActionsColumn) return;
 
             grid.Rows[e.RowIndex].Selected = true;
-            grid.CurrentCell = grid.Rows[e.RowIndex].Cells[e.ColumnIndex];
-
-            Lead? lead = GetSelectedLead();
+            Lead? lead = GetLeadAtRow(e.RowIndex);
             if (lead is null) return;
 
             var menu = new ContextMenuStrip
@@ -762,6 +760,16 @@ namespace CRMS_Peguit.winforms.Views.Leads
 
         private void ConvertLead(Lead lead)
         {
+            if (!string.Equals(lead.AssignmentStatus, "approved", StringComparison.OrdinalIgnoreCase) || !lead.AssignedAgentId.HasValue)
+            {
+                MessageBox.Show(
+                    "This lead cannot be converted into a customer yet because its assignment has not been approved by a manager or administrator.\n\nPlease ensure the lead is assigned and approved before converting.",
+                    "Approval Required",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
             var confirmation = MessageBox.Show(
                 $"Convert '{lead.FullName}' into a customer?\n\n" +
                 "A new customer record will be created and this lead will be marked as converted.",
@@ -769,33 +777,63 @@ namespace CRMS_Peguit.winforms.Views.Leads
 
             if (confirmation != DialogResult.Yes) return;
 
-            Customer customer = _controller.ConvertToCustomer(lead);
+            try
+            {
+                Customer customer = _controller.ConvertToCustomer(lead);
 
-            MessageBox.Show(
-                $"'{lead.FullName}' is now customer #{customer.CustomerId}.",
-                "Conversion Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(
+                    $"'{lead.FullName}' is now customer #{customer.CustomerId}.",
+                    "Conversion Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-            RefreshGrid();
+                RefreshGrid();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Conversion Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
-        private void ExportToCsv()
+        private void ExportToPdf()
         {
             using var sfd = new SaveFileDialog
             {
-                Filter = "CSV File (*.csv)|*.csv",
-                FileName = $"Leads_Export_{DateTime.Now:yyyyMMdd_HHmm}.csv"
+                Filter = "PDF Document (*.pdf)|*.pdf",
+                FileName = $"Leads_Export_{DateTime.Now:yyyyMMdd_HHmm}.pdf"
             };
             if (sfd.ShowDialog() == DialogResult.OK)
             {
                 var leads = _controller.GetAll().ToList();
-                var sb = new System.Text.StringBuilder();
-                sb.AppendLine("LeadId,FullName,Source,Stage,Priority,ExpectedValue,Phone,Email,AssignedAgent,CreatedAt");
-                foreach (var l in leads)
+                string[] headers = new[] { "ID", "Full Name", "Source", "Stage", "Priority", "Est. Value", "Phone", "Email", "Assigned Agent", "Created At" };
+                var rows = leads.Select(l => new string[]
                 {
-                    sb.AppendLine($"\"{l.LeadId}\",\"{l.FullName}\",\"{l.Source}\",\"{l.Stage}\",\"{l.Priority}\",\"{l.ExpectedValue}\",\"{l.Phone}\",\"{l.Email}\",\"{_controller.GetAssignedAgentName(l.AssignedAgentId)}\",\"{l.CreatedAt:yyyy-MM-dd}\"");
+                    l.LeadId.ToString(),
+                    l.FullName,
+                    l.Source,
+                    l.Stage,
+                    l.Priority,
+                    l.ExpectedValue.HasValue ? $"₱ {l.ExpectedValue.Value:N2}" : "—",
+                    l.Phone,
+                    l.Email,
+                    _controller.GetAssignedAgentName(l.AssignedAgentId),
+                    l.CreatedAt.ToString("yyyy-MM-dd")
+                }).ToList();
+
+                var kpis = new List<(string Title, string Value, string ColorHex)>
+                {
+                    ("Total Leads", leads.Count.ToString(), "#25679C"),
+                    ("Qualified", leads.Count(x => string.Equals(x.Stage, "Qualified", StringComparison.OrdinalIgnoreCase)).ToString(), "#059669"),
+                    ("Contacted", leads.Count(x => string.Equals(x.Stage, "Contacted", StringComparison.OrdinalIgnoreCase)).ToString(), "#D97706"),
+                    ("Est. Pipeline", $"₱ {leads.Sum(x => x.ExpectedValue ?? 0):N2}", "#8B5CF6")
+                };
+
+                if (CRMS_Peguit.winforms.Services.PdfExportHelper.TryExportTable("Leads Pipeline & Acquisition Register", headers, rows, sfd.FileName, out string? error, activeFilter: _filterStage, kpis: kpis))
+                {
+                    MessageBox.Show("Leads exported to PDF successfully.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
-                System.IO.File.WriteAllText(sfd.FileName, sb.ToString());
-                MessageBox.Show("Leads exported successfully.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                else
+                {
+                    MessageBox.Show(error ?? "Export failed.", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
         }
 
@@ -805,94 +843,10 @@ namespace CRMS_Peguit.winforms.Views.Leads
                    value.Contains(search, StringComparison.OrdinalIgnoreCase);
         }
 
-        private void LayoutToolbar()
+private void LayoutToolbar()
         {
-            if (this.IsDisposed) return;
-
-            int rightPadding = UiStyleConstants.PageMarginRight;
-            int leftMargin = UiStyleConstants.PageMarginLeft;
-            int totalWidth = ClientSize.Width;
-
-            // 1. Page Title & Subtitle
-            lblTitle.Location = new Point(leftMargin, UiStyleConstants.PageMarginTop);
-            lblSubtitle.Location = new Point(leftMargin + 2, lblTitle.Bottom + 4);
-
-            // 2. KPI Row
-            _pnlKpiContainer.Location = new Point(leftMargin, lblSubtitle.Bottom + 12);
-            _pnlKpiContainer.Size = new Size(Math.Max(100, totalWidth - leftMargin - rightPadding), UiStyleConstants.KpiRowHeight);
-
-            // 3. Toolbar Row (All controls aligned at y)
-            int y = _pnlKpiContainer.Bottom + 14;
-
-            int rightEdge = totalWidth - rightPadding;
-            if (btnAdd.Visible)
-            {
-                btnAdd.Top = y;
-                btnAdd.Height = UiStyleConstants.ToolbarRowHeight;
-                btnAdd.Left = rightEdge - btnAdd.Width;
-                rightEdge = btnAdd.Left - 10;
-            }
-            if (_btnExport != null && _btnExport.Visible)
-            {
-                _btnExport.Top = y;
-                _btnExport.Height = UiStyleConstants.ToolbarRowHeight;
-                _btnExport.Left = rightEdge - _btnExport.Width;
-                rightEdge = _btnExport.Left - 10;
-            }
-
-            var pills = new[] { btnFilterConverted, btnFilterQualified, btnFilterContacted, btnFilterNew, btnFilterAll };
-            int filterRight = rightEdge;
-            int totalFilterWidth = 0;
-            foreach (var p in pills) totalFilterWidth += p.Width + 6;
-
-            int availableForSearch = filterRight - leftMargin - totalFilterWidth - 16;
-
-            if (availableForSearch >= 180)
-            {
-                // Single row
-                foreach (var p in pills)
-                {
-                    p.Top = y;
-                    p.Height = UiStyleConstants.ToolbarRowHeight;
-                    p.Left = filterRight - p.Width;
-                    filterRight = p.Left - 6;
-                }
-
-                txtSearch.Top = y;
-                txtSearch.Left = leftMargin;
-                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
-                txtSearch.Width = Math.Min(UiStyleConstants.SearchBoxWidth, availableForSearch);
-
-                int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
-                pnlCard.Top = cardTop;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - UiStyleConstants.PageMarginBottom);
-            }
-            else
-            {
-                // Two rows: search on row 1, filter pills wrapped to row 2
-                txtSearch.Top = y;
-                txtSearch.Left = leftMargin;
-                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
-                txtSearch.Width = Math.Max(180, rightEdge - leftMargin);
-
-                int pillY = y + UiStyleConstants.ToolbarRowHeight + 10;
-                int filterX = leftMargin;
-                var forwardPills = new[] { btnFilterAll, btnFilterNew, btnFilterContacted, btnFilterQualified, btnFilterConverted };
-                foreach (var p in forwardPills)
-                {
-                    p.Top = pillY;
-                    p.Height = UiStyleConstants.ToolbarRowHeight;
-                    p.Left = filterX;
-                    filterX += p.Width + 6;
-                }
-
-                int cardTop = pillY + UiStyleConstants.ToolbarRowHeight + 14;
-                pnlCard.Top = cardTop;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 20);
-            }
-
-            pnlCard.Left = leftMargin;
-            pnlCard.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
+            ResponsiveLayout.ListPage(this, lblTitle, lblSubtitle, _pnlKpiContainer, txtSearch,
+                new Control[] { btnFilterAll, btnFilterNew, btnFilterContacted, btnFilterQualified, btnFilterConverted }, new Control?[] { _btnExport, btnAdd }, pnlCard);
         }
     }
 }

@@ -21,7 +21,10 @@ namespace CRMS_Peguit.winforms.Views.Sync
         private Button _btnSyncNow = null!;
         private Button _btnRetryAll = null!;
         private Button _btnClearSynced = null!;
+        private Button _btnClearFailed = null!;
         private string _activeFilter = "All";
+        private EventHandler<bool>? _onConnectivityChanged;
+        private EventHandler<SyncProgressEventArgs>? _onSyncProgressChanged;
 
         public SyncStatusForm()
         {
@@ -125,6 +128,20 @@ namespace CRMS_Peguit.winforms.Views.Sync
             };
             _btnRetryAll.FlatAppearance.BorderSize = 0;
 
+            _btnClearFailed = new Button
+            {
+                Text = "🗑 Clear Failed",
+                Size = new Size(110, 36),
+                Location = new Point(760, 56),
+                BackColor = Color.FromArgb(241, 245, 249),
+                ForeColor = Color.FromArgb(185, 28, 28),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9F, FontStyle.Regular),
+                Cursor = Cursors.Hand,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            _btnClearFailed.FlatAppearance.BorderSize = 0;
+
             _btnClearSynced = new Button
             {
                 Text = "🧹 Clear Synced",
@@ -139,14 +156,15 @@ namespace CRMS_Peguit.winforms.Views.Sync
             };
             _btnClearSynced.FlatAppearance.BorderSize = 0;
 
-            pnlTop.Controls.AddRange(new Control[] { lblTitle, _lblStatusBadge, pnlMetrics, _btnSyncNow, _btnRetryAll, _btnClearSynced });
+            pnlTop.Controls.AddRange(new Control[] { lblTitle, _lblStatusBadge, pnlMetrics, _btnSyncNow, _btnRetryAll, _btnClearFailed, _btnClearSynced });
 
             pnlTop.Resize += (_, _) =>
             {
                 int rightEdge = pnlTop.Width - 24;
                 _btnClearSynced.Location = new Point(rightEdge - _btnClearSynced.Width, 56);
-                _btnRetryAll.Location = new Point(_btnClearSynced.Left - _btnRetryAll.Width - 10, 56);
-                _btnSyncNow.Location = new Point(_btnRetryAll.Left - _btnSyncNow.Width - 10, 56);
+                _btnClearFailed.Location = new Point(_btnClearSynced.Left - _btnClearFailed.Width - 8, 56);
+                _btnRetryAll.Location = new Point(_btnClearFailed.Left - _btnRetryAll.Width - 8, 56);
+                _btnSyncNow.Location = new Point(_btnRetryAll.Left - _btnSyncNow.Width - 8, 56);
             };
 
             // ==========================================================
@@ -288,6 +306,10 @@ namespace CRMS_Peguit.winforms.Views.Sync
 
             pnlBottom.Controls.AddRange(new Control[] { lblTip, btnClose });
 
+            this.CancelButton = btnClose;
+            this.AcceptButton = _btnSyncNow;
+            this.MinimumSize = new Size(860, 560);
+
             this.Controls.Add(pnlGrid);
             this.Controls.Add(pnlFilter);
             this.Controls.Add(pnlTop);
@@ -397,6 +419,31 @@ namespace CRMS_Peguit.winforms.Views.Sync
                 LoadData();
             };
 
+            _btnClearFailed.Click += (_, _) =>
+            {
+                int tenantId = CurrentSession.TenantId > 0 ? CurrentSession.TenantId : 1;
+                var counts = LocalDataCache.Instance.GetQueueCounts(tenantId);
+                if (counts.Failed == 0)
+                {
+                    MessageBox.Show("There are no failed sync queue items to clear.", "Queue Clear",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                var confirm = MessageBox.Show(
+                    $"Are you sure you want to dismiss and clear all {counts.Failed} failed item(s) from the sync queue?\r\n\r\n" +
+                    "These items will be permanently removed from the local retry queue.",
+                    "Confirm Clear Failed Items",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (confirm == DialogResult.Yes)
+                {
+                    LocalDataCache.Instance.ClearFailedQueue(tenantId);
+                    LoadData();
+                }
+            };
+
             _grid.CellContentClick += async (s, e) =>
             {
                 var actionCol = _grid.Columns["Action"];
@@ -415,12 +462,36 @@ namespace CRMS_Peguit.winforms.Views.Sync
                 }
                 else if (status == "Failed")
                 {
-                    await SyncService.Instance.RetryItemAsync(queueId);
-                    LoadData();
+                    string entityType = _grid.Rows[e.RowIndex].Cells["EntityType"].Value?.ToString() ?? "Record";
+                    var qItem = LocalDataCache.Instance.GetQueueItem(queueId);
+                    string reason = qItem?.FailureReason ?? _grid.Rows[e.RowIndex].Cells["Details"].Value?.ToString() ?? "Unknown error";
+                    string op = _grid.Rows[e.RowIndex].Cells["Operation"].Value?.ToString() ?? "Operation";
+
+                    var choice = MessageBox.Show(
+                        $"Sync Failure Details for {entityType} #{queueId} ({op}):\r\n\r\n" +
+                        $"Error: {reason}\r\n\r\n" +
+                        "Choose an action:\r\n" +
+                        "• Click [Yes] to Retry synchronization now\r\n" +
+                        "• Click [No] to Dismiss and remove this item from the queue\r\n" +
+                        "• Click [Cancel] to keep this item in the queue",
+                        "Sync Queue Item Action",
+                        MessageBoxButtons.YesNoCancel,
+                        MessageBoxIcon.Question);
+
+                    if (choice == DialogResult.Yes)
+                    {
+                        await SyncService.Instance.RetryItemAsync(queueId);
+                        LoadData();
+                    }
+                    else if (choice == DialogResult.No)
+                    {
+                        LocalDataCache.Instance.DeleteQueueItem(queueId);
+                        LoadData();
+                    }
                 }
             };
 
-            _grid.CellDoubleClick += (s, e) =>
+            _grid.CellDoubleClick += async (s, e) =>
             {
                 if (e.RowIndex < 0) return;
                 int queueId = Convert.ToInt32(_grid.Rows[e.RowIndex].Cells["QueueId"].Value);
@@ -434,24 +505,82 @@ namespace CRMS_Peguit.winforms.Views.Sync
                         LoadData();
                     }
                 }
-            };
-
-            SyncService.Instance.ConnectivityChanged += (s, online) =>
-            {
-                if (this.IsDisposed) return;
-                this.BeginInvoke(new Action(() =>
+                else if (status == "Failed")
                 {
-                    _lblStatusBadge.Text = online ? "● Cloud Connected (Online)" : "● Disconnected (Offline)";
-                    _lblStatusBadge.ForeColor = online ? Color.FromArgb(22, 163, 74) : Color.FromArgb(220, 38, 38);
-                    _lblStatusBadge.BackColor = online ? Color.FromArgb(240, 253, 244) : Color.FromArgb(254, 242, 242);
-                    LoadData();
-                }));
+                    string entityType = _grid.Rows[e.RowIndex].Cells["EntityType"].Value?.ToString() ?? "Record";
+                    var qItem = LocalDataCache.Instance.GetQueueItem(queueId);
+                    string reason = qItem?.FailureReason ?? _grid.Rows[e.RowIndex].Cells["Details"].Value?.ToString() ?? "Unknown error";
+                    string op = _grid.Rows[e.RowIndex].Cells["Operation"].Value?.ToString() ?? "Operation";
+
+                    var choice = MessageBox.Show(
+                        $"Sync Failure Details for {entityType} #{queueId} ({op}):\r\n\r\n" +
+                        $"Error: {reason}\r\n\r\n" +
+                        "Choose an action:\r\n" +
+                        "• Click [Yes] to Retry synchronization now\r\n" +
+                        "• Click [No] to Dismiss and remove this item from the queue\r\n" +
+                        "• Click [Cancel] to keep this item in the queue",
+                        "Sync Queue Item Action",
+                        MessageBoxButtons.YesNoCancel,
+                        MessageBoxIcon.Question);
+
+                    if (choice == DialogResult.Yes)
+                    {
+                        await SyncService.Instance.RetryItemAsync(queueId);
+                        LoadData();
+                    }
+                    else if (choice == DialogResult.No)
+                    {
+                        LocalDataCache.Instance.DeleteQueueItem(queueId);
+                        LoadData();
+                    }
+                }
             };
 
-            SyncService.Instance.SyncProgressChanged += (s, e) =>
+            _onConnectivityChanged = (s, online) =>
             {
-                if (this.IsDisposed) return;
-                this.BeginInvoke(new Action(LoadData));
+                if (this.IsDisposed || !this.IsHandleCreated) return;
+                try
+                {
+                    this.BeginInvoke(new Action(() =>
+                    {
+                        if (this.IsDisposed) return;
+                        _lblStatusBadge.Text = online ? "● Cloud Connected (Online)" : "● Disconnected (Offline)";
+                        _lblStatusBadge.ForeColor = online ? Color.FromArgb(22, 163, 74) : Color.FromArgb(220, 38, 38);
+                        _lblStatusBadge.BackColor = online ? Color.FromArgb(240, 253, 244) : Color.FromArgb(254, 242, 242);
+                        LoadData();
+                    }));
+                }
+                catch { }
+            };
+            SyncService.Instance.ConnectivityChanged += _onConnectivityChanged;
+
+            _onSyncProgressChanged = (s, e) =>
+            {
+                if (this.IsDisposed || !this.IsHandleCreated) return;
+                try
+                {
+                    this.BeginInvoke(new Action(() =>
+                    {
+                        if (this.IsDisposed) return;
+                        LoadData();
+                    }));
+                }
+                catch { }
+            };
+            SyncService.Instance.SyncProgressChanged += _onSyncProgressChanged;
+
+            this.FormClosed += (_, _) =>
+            {
+                if (_onConnectivityChanged != null)
+                {
+                    SyncService.Instance.ConnectivityChanged -= _onConnectivityChanged;
+                    _onConnectivityChanged = null;
+                }
+                if (_onSyncProgressChanged != null)
+                {
+                    SyncService.Instance.SyncProgressChanged -= _onSyncProgressChanged;
+                    _onSyncProgressChanged = null;
+                }
             };
         }
 

@@ -19,6 +19,8 @@ namespace CRMS_Peguit.winforms.Views.Leads
             _existingLead = lead;
 
             InitializeComponent();
+            CRMS_Peguit.winforms.Services.ResponsiveLayout.BindInputPanel(pnlContent);
+            CRMS_Peguit.winforms.Services.ResponsiveLayout.BindToolbar(pnlFooter, 12, btnCancel, btnSave);
             UiRadiusHelper.StyleButton(btnSave, 8);
             UiRadiusHelper.StyleButton(btnCancel, 8);
             UiRadiusHelper.AttachHoverFeedback(btnCancel, Color.White, Color.FromArgb(241, 245, 249));
@@ -199,7 +201,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
                 _existingLead.MiddleName = NullIfEmpty(txtMiddleName.Text);
                 _existingLead.LastName = lastName;
                 _existingLead.Suffix = NullIfEmpty(cmbSuffix.Text);
-                _existingLead.Email = NullIfEmpty(txtEmail.Text);
+                _existingLead.Email = txtEmail.Text.Trim();
                 _existingLead.Phone = NullIfEmpty(txtPhone.Text);
                 _existingLead.Source = NullIfEmpty(cmbSource.Text);
                 _existingLead.Stage = cmbStage.SelectedItem?.ToString() ?? "new";
@@ -217,7 +219,7 @@ namespace CRMS_Peguit.winforms.Views.Leads
                     MiddleName = NullIfEmpty(txtMiddleName.Text),
                     LastName = lastName,
                     Suffix = NullIfEmpty(cmbSuffix.Text),
-                    Email = NullIfEmpty(txtEmail.Text),
+                    Email = txtEmail.Text.Trim(),
                     Phone = NullIfEmpty(txtPhone.Text),
                     Source = NullIfEmpty(cmbSource.Text),
                     Stage = cmbStage.SelectedItem?.ToString() ?? "new",

@@ -8,6 +8,8 @@ using CRMS_Peguit.domain.Common;
 using CRMS_Peguit.infrastructure.data;
 using CRMS_Peguit.winforms.Models.Services;
 using CRMS_Peguit.winforms.Auth;
+using System.Text.Json;
+using CRMS_Peguit.winforms.Views.SuperAdmin;
 
 namespace CRMS_Peguit.winforms.Controllers
 {
@@ -38,27 +40,21 @@ namespace CRMS_Peguit.winforms.Controllers
                 summary.ActiveSubscriptions = allSubs.Count(s => Subscription.CalculateStatus(s.EndDate, now) == "Active");
                 summary.ExpiringSubscriptions = allSubs.Count(s => Subscription.CalculateStatus(s.EndDate, now) == "Expiring Soon");
                 summary.ExpiredSubscriptions = allSubs.Count(s => Subscription.CalculateStatus(s.EndDate, now) == "Expired");
-                summary.TotalMrr = allSubs.Where(s => Subscription.CalculateStatus(s.EndDate, now) == "Active").Sum(s => s.BillingAmount);
+                summary.TotalMrr = allSubs.Where(s => s.StartDate <= now && Subscription.CalculateStatus(s.EndDate, now) != "Expired").Sum(s => s.BillingAmount);
 
                 summary.TenantACount = allSubs.Count(s => s.PlanName.Contains("Tenant A", StringComparison.OrdinalIgnoreCase));
                 summary.TenantBCount = allSubs.Count(s => s.PlanName.Contains("Tenant B", StringComparison.OrdinalIgnoreCase));
                 summary.TenantCCount = allSubs.Count(s => s.PlanName.Contains("Tenant C", StringComparison.OrdinalIgnoreCase));
             }
-            catch
+            catch (Exception ex)
             {
-                // Fallback defaults if Master DB empty
-                summary.TotalTenants = 3;
-                summary.ActiveSubscriptions = 3;
-                summary.TotalMrr = 17500m;
-                summary.TenantACount = 1;
-                summary.TenantBCount = 1;
-                summary.TenantCCount = 1;
+                System.Diagnostics.Debug.WriteLine($"[GetPlatformBiSummaryAsync] Error: {ex.Message}");
             }
 
             return summary;
         }
 
-        public async Task<List<TenantSubscriptionDto>> GetAllSubscriptionsAsync()
+        public async Task<List<TenantSubscriptionDto>> GetAllSubscriptionsAsync(bool throwOnError = false)
         {
             var list = new List<TenantSubscriptionDto>();
 
@@ -80,11 +76,11 @@ namespace CRMS_Peguit.winforms.Controllers
                             CompanyId = comp.CompanyId,
                             CompanyCode = comp.CompanyCode,
                             CompanyName = comp.CompanyName,
-                            PlanName = Subscription.TierTenantA,
+                            PlanName = "No subscription",
                             Tier = TenantTier.TenantA,
                             StartDate = comp.CreatedAt,
-                            BillingAmount = 2500m,
-                            Status = "Active"
+                            BillingAmount = 0m,
+                            Status = "Not subscribed"
                         });
                     }
                     else
@@ -108,50 +104,10 @@ namespace CRMS_Peguit.winforms.Controllers
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Return seeded mock if Master DB not yet seeded
-                list.Add(new TenantSubscriptionDto
-                {
-                    SubscriptionId = 1,
-                    CompanyId = 1,
-                    CompanyCode = "TENANT-A",
-                    CompanyName = "Metro Manila Real Estate (Tenant A)",
-                    PlanName = Subscription.TierTenantA,
-                    Tier = TenantTier.TenantA,
-                    StartDate = DateTime.UtcNow.AddMonths(-6),
-                    EndDate = DateTime.UtcNow.AddMonths(6),
-                    BillingAmount = 2500m,
-                    Status = "Active"
-                });
-
-                list.Add(new TenantSubscriptionDto
-                {
-                    SubscriptionId = 2,
-                    CompanyId = 2,
-                    CompanyCode = "TENANT-B",
-                    CompanyName = "Apex Properties & Investments (Tenant B)",
-                    PlanName = Subscription.TierTenantB,
-                    Tier = TenantTier.TenantB,
-                    StartDate = DateTime.UtcNow.AddMonths(-4),
-                    EndDate = DateTime.UtcNow.AddMonths(8),
-                    BillingAmount = 5500m,
-                    Status = "Active"
-                });
-
-                list.Add(new TenantSubscriptionDto
-                {
-                    SubscriptionId = 3,
-                    CompanyId = 3,
-                    CompanyCode = "TENANT-C",
-                    CompanyName = "Summit Global Realty Corp. (Tenant C)",
-                    PlanName = Subscription.TierTenantC,
-                    Tier = TenantTier.TenantC,
-                    StartDate = DateTime.UtcNow.AddMonths(-2),
-                    EndDate = DateTime.UtcNow.AddMonths(10),
-                    BillingAmount = 9500m,
-                    Status = "Active"
-                });
+                System.Diagnostics.Debug.WriteLine($"[GetAllSubscriptionsAsync] Error: {ex.Message}");
+                if (throwOnError) throw;
             }
 
             return list;
@@ -378,7 +334,7 @@ namespace CRMS_Peguit.winforms.Controllers
                         PaymentReference = r.PaymentReference,
                         PaymentDate = r.PaymentDate,
                         RecordedByUserId = r.RecordedByUserId,
-                        RecordedByName = r.RecordedBySuperAdmin != null 
+                        RecordedByName = r.RecordedBySuperAdmin != null
                             ? $"{r.RecordedBySuperAdmin.FirstName} {r.RecordedBySuperAdmin.LastName}".Trim()
                             : "Platform Super Admin",
                         Notes = r.Notes,
@@ -423,7 +379,7 @@ namespace CRMS_Peguit.winforms.Controllers
                         PaymentReference = r.PaymentReference,
                         PaymentDate = r.PaymentDate,
                         RecordedByUserId = r.RecordedByUserId,
-                        RecordedByName = r.RecordedBySuperAdmin != null 
+                        RecordedByName = r.RecordedBySuperAdmin != null
                             ? $"{r.RecordedBySuperAdmin.FirstName} {r.RecordedBySuperAdmin.LastName}".Trim()
                             : "Platform Super Admin",
                         Notes = r.Notes,
@@ -436,6 +392,353 @@ namespace CRMS_Peguit.winforms.Controllers
                 System.Diagnostics.Debug.WriteLine($"[GetCompanyPaymentHistoryAsync] Error: {ex.Message}");
             }
             return list;
+        }
+
+        public async Task<List<PaymentRecordDto>> GetAllPaymentRecordsAsync(bool throwOnError = false)
+        {
+            var list = new List<PaymentRecordDto>();
+            try
+            {
+                using var masterDb = CreateMasterDb();
+                var records = await masterDb.PaymentRecords
+                    .Include(p => p.Subscription)
+                        .ThenInclude(s => s!.Company)
+                    .Include(p => p.RecordedBySuperAdmin)
+                    .OrderByDescending(p => p.PaymentDate)
+                    .ThenByDescending(p => p.PaymentRecordId)
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                foreach (var r in records)
+                {
+                    list.Add(new PaymentRecordDto
+                    {
+                        PaymentRecordId = r.PaymentRecordId,
+                        SubscriptionId = r.SubscriptionId,
+                        CompanyId = r.Subscription?.CompanyId ?? 0,
+                        CompanyName = r.Subscription?.Company?.CompanyName ?? "Unknown Tenant",
+                        CompanyCode = r.Subscription?.Company?.CompanyCode ?? "—",
+                        AmountPaid = r.AmountPaid,
+                        PaymentMethod = r.PaymentMethod,
+                        PaymentReference = r.PaymentReference,
+                        PaymentDate = r.PaymentDate,
+                        RecordedByUserId = r.RecordedByUserId,
+                        RecordedByName = r.RecordedBySuperAdmin != null
+                            ? $"{r.RecordedBySuperAdmin.FirstName} {r.RecordedBySuperAdmin.LastName}".Trim()
+                            : "Platform Super Admin",
+                        Notes = r.Notes ?? $"Plan: {r.Subscription?.PlanName ?? "Subscription"}",
+                        CreatedAt = r.CreatedAt
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GetAllPaymentRecordsAsync] Error: {ex.Message}");
+                if (throwOnError) throw;
+            }
+
+            return list;
+        }
+
+        public async Task<string> GetMasterTermsAsync()
+        {
+            try
+            {
+                using var masterDb = CreateMasterDb();
+                var setting = await masterDb.GlobalSettings
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.SettingKey == "Platform.MasterTermsAndConditions");
+
+                if (setting != null && !string.IsNullOrWhiteSpace(setting.SettingValue))
+                {
+                    return setting.SettingValue;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GetMasterTermsAsync] Error: {ex.Message}");
+            }
+
+            return TenantTermsAndConditionsDialog.DefaultTermsText;
+        }
+
+        public async Task<(bool Success, string? Error)> SaveMasterTermsAsync(string termsContent, int superAdminId = 1)
+        {
+            try
+            {
+                using var masterDb = CreateMasterDb();
+                var setting = await masterDb.GlobalSettings
+                    .FirstOrDefaultAsync(s => s.SettingKey == "Platform.MasterTermsAndConditions");
+
+                if (setting == null)
+                {
+                    setting = new GlobalSetting
+                    {
+                        SettingKey = "Platform.MasterTermsAndConditions",
+                        SettingValue = termsContent,
+                        UpdatedBySuperAdminId = superAdminId > 0 ? superAdminId : 1,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    masterDb.GlobalSettings.Add(setting);
+                }
+                else
+                {
+                    setting.SettingValue = termsContent;
+                    setting.UpdatedBySuperAdminId = superAdminId > 0 ? superAdminId : 1;
+                    setting.UpdatedAt = DateTime.UtcNow;
+                }
+
+                await masterDb.SaveChangesAsync();
+                return (true, null);
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
+        public async Task<(bool Success, string Error)> CreateTenantAsync(CreateTenantRequest req)
+        {
+            var tenantController = new SuperAdminTenantController();
+            return await tenantController.CreateTenantAsync(req);
+        }
+
+        private static bool _entitlementsLoaded = false;
+        private static readonly object _entitlementsLock = new();
+
+        /// <summary>
+        /// Loads persisted tier entitlement overrides from MasterDb into FeatureGate if not already loaded.
+        /// </summary>
+        public async Task EnsureTierEntitlementsLoadedAsync()
+        {
+            if (_entitlementsLoaded) return;
+
+            try
+            {
+                using var masterDb = CreateMasterDb();
+                var setting = await masterDb.GlobalSettings
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.SettingKey == "Platform.TierEntitlementsMatrix");
+
+                if (setting != null && !string.IsNullOrWhiteSpace(setting.SettingValue))
+                {
+                    var matrix = JsonSerializer.Deserialize<Dictionary<string, bool>>(setting.SettingValue);
+                    if (matrix != null)
+                    {
+                        FeatureGate.SetOverrides(matrix);
+                    }
+                }
+
+                lock (_entitlementsLock)
+                {
+                    _entitlementsLoaded = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[EnsureTierEntitlementsLoadedAsync] Error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Retrieves the current tier entitlements matrix, incorporating database overrides and factory defaults.
+        /// </summary>
+        public async Task<Dictionary<string, bool>> GetTierEntitlementsMatrixAsync()
+        {
+            await EnsureTierEntitlementsLoadedAsync();
+            return FeatureGate.GetCurrentMatrix();
+        }
+
+        /// <summary>
+        /// Persists the Super Admin's tier entitlement matrix to MasterDb and immediately activates it in-memory.
+        /// </summary>
+        public async Task<(bool Success, string? Error)> SaveTierEntitlementsMatrixAsync(Dictionary<string, bool> matrix, int superAdminId = 1)
+        {
+            const string key = "Platform.TierEntitlementsMatrix";
+            try
+            {
+                using var masterDb = CreateMasterDb();
+                var setting = await masterDb.GlobalSettings
+                    .FirstOrDefaultAsync(s => s.SettingKey == key);
+
+                string json = JsonSerializer.Serialize(matrix, new JsonSerializerOptions { WriteIndented = true });
+
+                if (setting == null)
+                {
+                    setting = new GlobalSetting
+                    {
+                        SettingKey = key,
+                        SettingValue = json,
+                        UpdatedBySuperAdminId = superAdminId > 0 ? superAdminId : 1,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    masterDb.GlobalSettings.Add(setting);
+                }
+                else
+                {
+                    setting.SettingValue = json;
+                    setting.UpdatedBySuperAdminId = superAdminId > 0 ? superAdminId : 1;
+                    setting.UpdatedAt = DateTime.UtcNow;
+                }
+
+                // Immediately apply in-memory across the client
+                FeatureGate.SetOverrides(matrix);
+                lock (_entitlementsLock)
+                {
+                    _entitlementsLoaded = true;
+                }
+
+                await WriteAuditLogAsync(masterDb, "SystemSettingChanged", "Updated platform tier entitlements matrix");
+                await masterDb.SaveChangesAsync();
+                return (true, null);
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Resets the tier entitlements matrix to standard factory defaults and clears custom plan inclusions.
+        /// </summary>
+        public async Task<(bool Success, string? Error)> ResetTierEntitlementsMatrixAsync(int superAdminId = 1)
+        {
+            const string key = "Platform.TierEntitlementsMatrix";
+            try
+            {
+                using var masterDb = CreateMasterDb();
+                var setting = await masterDb.GlobalSettings
+                    .FirstOrDefaultAsync(s => s.SettingKey == key);
+
+                if (setting != null)
+                {
+                    masterDb.GlobalSettings.Remove(setting);
+                }
+
+                var textSettings = await masterDb.GlobalSettings
+                    .Where(s => s.SettingKey.StartsWith("PlanInclusions."))
+                    .ToListAsync();
+
+                if (textSettings.Count > 0)
+                {
+                    masterDb.GlobalSettings.RemoveRange(textSettings);
+                }
+
+                FeatureGate.ClearOverrides();
+                lock (_entitlementsLock)
+                {
+                    _entitlementsLoaded = true;
+                }
+
+                await WriteAuditLogAsync(masterDb, "SystemSettingChanged", "Reset platform tier entitlements matrix to defaults");
+                await masterDb.SaveChangesAsync();
+                return (true, null);
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
+        public static string[] GetDefaultPlanInclusions(TenantTier tier)
+        {
+            return FeatureGate.RegisteredFeatures
+                .Where(f => FeatureGate.IsFeatureEnabled(tier, f.Key))
+                .Select(f => f.DisplayName)
+                .ToArray();
+        }
+
+        public async Task<List<string>> GetPlanInclusionsAsync(TenantTier tier)
+        {
+            await EnsureTierEntitlementsLoadedAsync();
+
+            string key = $"PlanInclusions.{tier}";
+            try
+            {
+                using var masterDb = CreateMasterDb();
+                var setting = await masterDb.GlobalSettings
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.SettingKey == key);
+
+                if (setting != null && !string.IsNullOrWhiteSpace(setting.SettingValue))
+                {
+                    var lines = setting.SettingValue
+                        .Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(l => l.Trim())
+                        .Where(l => !string.IsNullOrWhiteSpace(l))
+                        .ToList();
+
+                    if (lines.Count > 0) return lines;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GetPlanInclusionsAsync] Error: {ex.Message}");
+            }
+
+            return GetDefaultPlanInclusions(tier).ToList();
+        }
+
+        public async Task<(bool Success, string? Error)> SavePlanInclusionsAsync(TenantTier tier, List<string> features, int superAdminId = 1)
+        {
+            string key = $"PlanInclusions.{tier}";
+            string content = string.Join("\r\n", features.Where(f => !string.IsNullOrWhiteSpace(f)).Select(f => f.Trim()));
+
+            try
+            {
+                using var masterDb = CreateMasterDb();
+                var setting = await masterDb.GlobalSettings
+                    .FirstOrDefaultAsync(s => s.SettingKey == key);
+
+                if (setting == null)
+                {
+                    setting = new GlobalSetting
+                    {
+                        SettingKey = key,
+                        SettingValue = content,
+                        UpdatedBySuperAdminId = superAdminId > 0 ? superAdminId : 1,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    masterDb.GlobalSettings.Add(setting);
+                }
+                else
+                {
+                    setting.SettingValue = content;
+                    setting.UpdatedBySuperAdminId = superAdminId > 0 ? superAdminId : 1;
+                    setting.UpdatedAt = DateTime.UtcNow;
+                }
+
+                await WriteAuditLogAsync(masterDb, "SystemSettingChanged", $"Updated plan inclusions for {tier}");
+                await masterDb.SaveChangesAsync();
+                return (true, null);
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
+        public async Task<(bool Success, string? Error)> ResetPlanInclusionsAsync(TenantTier tier, int superAdminId = 1)
+        {
+            string key = $"PlanInclusions.{tier}";
+            try
+            {
+                using var masterDb = CreateMasterDb();
+                var setting = await masterDb.GlobalSettings
+                    .FirstOrDefaultAsync(s => s.SettingKey == key);
+
+                if (setting != null)
+                {
+                    masterDb.GlobalSettings.Remove(setting);
+                    await WriteAuditLogAsync(masterDb, "SystemSettingChanged", $"Reset plan inclusions to default for {tier}");
+                    await masterDb.SaveChangesAsync();
+                }
+                return (true, null);
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
         }
     }
 }

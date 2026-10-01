@@ -57,7 +57,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
             _pagination.PageChanged += async (_, _) => await RefreshGridAsync(resetPage: false);
             _pagination.PageSizeChanged += async (_, _) => await RefreshGridAsync(resetPage: true);
             pnlCard.Controls.Add(_pagination);
-            _pagination.BringToFront();
+            _pagination.SendToBack();
         }
 
         private void InitEmptyState()
@@ -95,7 +95,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
             {
                 _btnExport = new Button
                 {
-                    Text = "Export CSV",
+                    Text = "📄 Export PDF",
                     BackColor = Color.White,
                     ForeColor = Theme.Primary,
                     Cursor = Cursors.Hand,
@@ -104,7 +104,7 @@ namespace CRMS_Peguit.winforms.Views.Properties
                     Size = new Size(120, 36)
                 };
                 _btnExport.FlatAppearance.BorderColor = Theme.Primary;
-                _btnExport.Click += (_, _) => ExportToCsv();
+                _btnExport.Click += (_, _) => ExportToPdf();
                 UiRadiusHelper.StyleButton(_btnExport, 8);
                 Controls.Add(_btnExport);
                 _btnExport.BringToFront();
@@ -477,8 +477,19 @@ namespace CRMS_Peguit.winforms.Views.Properties
 
             if (confirmation != DialogResult.Yes) return;
 
-            _controller.Delete(property);
-            RefreshGrid();
+            try
+            {
+                _controller.Delete(property);
+                RefreshGrid();
+            }
+            catch (InvalidOperationException ex)
+            {
+                MessageBox.Show(ex.Message, "Cannot Remove Property", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to remove property: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private void ApprovePropertyAssignment(Property property)
@@ -557,24 +568,45 @@ namespace CRMS_Peguit.winforms.Views.Properties
                 : "-";
         }
 
-        private void ExportToCsv()
+        private void ExportToPdf()
         {
             using var sfd = new SaveFileDialog
             {
-                Filter = "CSV File (*.csv)|*.csv",
-                FileName = $"Properties_Export_{DateTime.Now:yyyyMMdd_HHmm}.csv"
+                Filter = "PDF Document (*.pdf)|*.pdf",
+                FileName = $"Properties_Export_{DateTime.Now:yyyyMMdd_HHmm}.pdf"
             };
             if (sfd.ShowDialog() == DialogResult.OK)
             {
                 var properties = _controller.GetAll().ToList();
-                var sb = new System.Text.StringBuilder();
-                sb.AppendLine("PropertyId,Address,PropertyType,Price,Status,OwnerCustomerId,ListedByAgentId");
-                foreach (var p in properties)
+
+                string[] headers = new[] { "ID", "Address", "Type", "Price", "Status", "Owner Customer", "Listing Agent" };
+                var rows = properties.Select(p => new string[]
                 {
-                    sb.AppendLine($"\"{p.PropertyId}\",\"{p.Address}\",\"{p.PropertyType}\",\"{p.Price}\",\"{p.Status}\",\"{p.OwnerCustomerId}\",\"{p.ListedByAgentId}\"");
+                    p.PropertyId.ToString(),
+                    p.Address,
+                    p.PropertyType,
+                    $"₱ {p.Price:N2}",
+                    p.Status,
+                    _controller.GetOwnerName(p.OwnerCustomerId) ?? $"Customer #{p.OwnerCustomerId}",
+                    _controller.GetListedAgentName(p.ListedByAgentId) ?? "Unassigned"
+                }).ToList();
+
+                var kpis = new List<(string Title, string Value, string ColorHex)>
+                {
+                    ("Total Listings", properties.Count.ToString(), "#25679C"),
+                    ("Available", properties.Count(x => string.Equals(x.Status, "Available", StringComparison.OrdinalIgnoreCase)).ToString(), "#059669"),
+                    ("Pending", properties.Count(x => string.Equals(x.Status, "Pending", StringComparison.OrdinalIgnoreCase)).ToString(), "#D97706"),
+                    ("Inventory Value", $"₱ {properties.Sum(x => x.Price):N2}", "#8B5CF6")
+                };
+
+                if (CRMS_Peguit.winforms.Services.PdfExportHelper.TryExportTable("Property Inventory & Listing Roster", headers, rows, sfd.FileName, out string? error, activeFilter: _filterStatus, kpis: kpis))
+                {
+                    MessageBox.Show("Properties exported to PDF successfully.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
-                System.IO.File.WriteAllText(sfd.FileName, sb.ToString());
-                MessageBox.Show("Properties exported successfully.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                else
+                {
+                    MessageBox.Show(error ?? "Export failed.", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
         }
 
@@ -584,90 +616,10 @@ namespace CRMS_Peguit.winforms.Views.Properties
                    value.Contains(search, StringComparison.OrdinalIgnoreCase);
         }
 
-        private void LayoutToolbar()
+private void LayoutToolbar()
         {
-            if (this.IsDisposed) return;
-
-            int rightPadding = UiStyleConstants.PageMarginRight;
-            int leftMargin = UiStyleConstants.PageMarginLeft;
-            int totalWidth = ClientSize.Width;
-
-            // 1. Page Title & Subtitle
-            lblTitle.Location = new Point(leftMargin, UiStyleConstants.PageMarginTop);
-            lblSubtitle.Location = new Point(leftMargin + 2, lblTitle.Bottom + 4);
-
-            // 2. Toolbar Row (No KPI row on Properties screen; toolbar follows directly below header)
-            int y = lblSubtitle.Bottom + 16;
-
-            int rightEdge = totalWidth - rightPadding;
-            if (btnAdd.Visible)
-            {
-                btnAdd.Top = y;
-                btnAdd.Height = UiStyleConstants.ToolbarRowHeight;
-                btnAdd.Left = rightEdge - btnAdd.Width;
-                rightEdge = btnAdd.Left - 10;
-            }
-            if (_btnExport != null && _btnExport.Visible)
-            {
-                _btnExport.Top = y;
-                _btnExport.Height = UiStyleConstants.ToolbarRowHeight;
-                _btnExport.Left = rightEdge - _btnExport.Width;
-                rightEdge = _btnExport.Left - 10;
-            }
-
-            var pills = new[] { btnFilterSold, btnFilterPending, btnFilterAvailable, btnFilterAll };
-            int filterRight = rightEdge;
-            int totalFilterWidth = 0;
-            foreach (var p in pills) totalFilterWidth += p.Width + 6;
-
-            int availableForSearch = filterRight - leftMargin - totalFilterWidth - 16;
-
-            if (availableForSearch >= 180)
-            {
-                // Single row
-                foreach (var p in pills)
-                {
-                    p.Top = y;
-                    p.Height = UiStyleConstants.ToolbarRowHeight;
-                    p.Left = filterRight - p.Width;
-                    filterRight = p.Left - 6;
-                }
-
-                txtSearch.Top = y;
-                txtSearch.Left = leftMargin;
-                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
-                txtSearch.Width = Math.Min(UiStyleConstants.SearchBoxWidth, availableForSearch);
-
-                int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
-                pnlCard.Top = cardTop;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - UiStyleConstants.PageMarginBottom);
-            }
-            else
-            {
-                // Two rows: search on row 1, filter pills wrapped to row 2
-                txtSearch.Top = y;
-                txtSearch.Left = leftMargin;
-                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
-                txtSearch.Width = Math.Max(180, rightEdge - leftMargin);
-
-                int pillY = y + UiStyleConstants.ToolbarRowHeight + 10;
-                int filterX = leftMargin;
-                var forwardPills = new[] { btnFilterAll, btnFilterAvailable, btnFilterPending, btnFilterSold };
-                foreach (var p in forwardPills)
-                {
-                    p.Top = pillY;
-                    p.Height = UiStyleConstants.ToolbarRowHeight;
-                    p.Left = filterX;
-                    filterX += p.Width + 6;
-                }
-
-                int cardTop = pillY + UiStyleConstants.ToolbarRowHeight + 14;
-                pnlCard.Top = cardTop;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 20);
-            }
-
-            pnlCard.Left = leftMargin;
-            pnlCard.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
+            ResponsiveLayout.ListPage(this, lblTitle, lblSubtitle, null, txtSearch,
+                new Control[] { btnFilterAll, btnFilterAvailable, btnFilterPending, btnFilterSold }, new Control?[] { _btnExport, btnAdd }, pnlCard);
         }
     }
 }

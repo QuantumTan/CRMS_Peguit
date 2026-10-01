@@ -28,7 +28,9 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
         private DataGridView _grid = null!;
         private GridSkeletonOverlay? _gridSkeleton;
         private TextBox _txtSearch = null!;
-        private Button _btnEdit = null!;
+        private Button _btnMasterTerms = null!;
+        private Button _btnPlanInclusions = null!;
+        private Button _btnTierEntitlements = null!;
         private Label _lblCount = null!;
 
         public SystemSettingsView()
@@ -61,19 +63,22 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 Text = "System Configuration & Policies",
                 Font = UiStyleConstants.PageTitleFont,
                 ForeColor = Theme.TextPrimary,
+                UseMnemonic = false,
                 AutoSize = true,
-                Location = new Point(28, 18)
+                Location = new Point(28, 14)
             };
             var lblSub = new Label
             {
                 Text = "Global platform settings & security policies with immutable audit trail — Who changed what, when",
                 Font = UiStyleConstants.SubtitleFont,
                 ForeColor = Theme.TextSecondary,
+                UseMnemonic = false,
                 AutoSize = true,
                 Location = new Point(28, 56)
             };
             pnlPageHeader.Controls.Add(lblSub);
             pnlPageHeader.Controls.Add(lblTitle);
+            ResponsiveLayout.BindHeader(pnlPageHeader, lblTitle, lblSub);
 
             // 2. Toolbar (Height = 56)
             var pnlToolbar = new Panel
@@ -101,30 +106,80 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
                 ForeColor = Theme.TextSecondary,
                 AutoSize = true,
                 AutoEllipsis = true,
-                MaximumSize = new Size(Math.Max(100, pnlToolbar.Width - 520), 24),
+                MaximumSize = new Size(Math.Max(100, pnlToolbar.Width - 560), 24),
                 Location = new Point(356, 17)
             };
             pnlToolbar.Controls.Add(_lblCount);
 
-            _btnEdit = new Button
+            _btnMasterTerms = new Button
             {
-                Text = "✏  Edit Value",
-                Size = new Size(130, 34),
+                Text = "📜 Master Terms",
+                Size = new Size(140, 34),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                BackColor = Theme.Primary,
-                ForeColor = Color.White,
+                BackColor = Theme.Surface,
+                ForeColor = Theme.Primary,
                 Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                 Cursor = Cursors.Hand
             };
-            UiRadiusHelper.StyleButton(_btnEdit, 6);
-            _btnEdit.Click += BtnEdit_Click;
-            _btnEdit.Location = new Point(pnlToolbar.Width - 154, 10);
+            UiRadiusHelper.StyleSecondaryButton(_btnMasterTerms, 6);
+            _btnMasterTerms.Click += (_, _) =>
+            {
+                using var dlg = new EditMasterTermsDialog();
+                dlg.ShowDialog(this);
+            };
+            _btnMasterTerms.Location = new Point(pnlToolbar.Width - 310, 10);
+            pnlToolbar.Controls.Add(_btnMasterTerms);
+
+            _btnPlanInclusions = new Button
+            {
+                Text = "📋 Plan Inclusions",
+                Size = new Size(150, 34),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                BackColor = Theme.Surface,
+                ForeColor = Theme.Primary,
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            UiRadiusHelper.StyleSecondaryButton(_btnPlanInclusions, 6);
+            _btnPlanInclusions.Click += (_, _) =>
+            {
+                using var dlg = new EditPlanInclusionsDialog();
+                dlg.ShowDialog(this);
+            };
+            _btnPlanInclusions.Location = new Point(pnlToolbar.Width - 160, 10);
+            pnlToolbar.Controls.Add(_btnPlanInclusions);
+
+            _btnTierEntitlements = new Button
+            {
+                Text = "⚙ Tier Entitlements",
+                Size = new Size(160, 34),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                BackColor = Theme.Surface,
+                ForeColor = Theme.Primary,
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            UiRadiusHelper.StyleSecondaryButton(_btnTierEntitlements, 6);
+            _btnTierEntitlements.Click += (_, _) =>
+            {
+                using var dlg = new ManageTierEntitlementsDialog();
+                if (dlg.ShowDialog(this) == DialogResult.OK)
+                {
+                    _ = LoadDataAsync();
+                }
+            };
+            _btnTierEntitlements.Location = new Point(pnlToolbar.Width - 480, 10);
+            pnlToolbar.Controls.Add(_btnTierEntitlements);
+
             pnlToolbar.SizeChanged += (_, _) =>
             {
-                _btnEdit.Location = new Point(pnlToolbar.Width - 154, 10);
-                _lblCount.MaximumSize = new Size(Math.Max(100, pnlToolbar.Width - 520), 24);
+                _btnPlanInclusions.Location = new Point(pnlToolbar.Width - 160, 10);
+                _btnMasterTerms.Location = new Point(pnlToolbar.Width - 310, 10);
+                _btnTierEntitlements.Location = new Point(pnlToolbar.Width - 480, 10);
+                _lblCount.MaximumSize = new Size(Math.Max(100, pnlToolbar.Width - 830), 24);
             };
-            pnlToolbar.Controls.Add(_btnEdit);
+            _lblCount.MaximumSize = Size.Empty;
+            ResponsiveLayout.BindToolbar(pnlToolbar, 12, _txtSearch, _lblCount, _btnMasterTerms, _btnPlanInclusions, _btnTierEntitlements);
 
             // 3. Audit trail notice callout (Height = 42)
             var pnlNotice = new Panel
@@ -313,8 +368,15 @@ namespace CRMS_Peguit.winforms.Views.SuperAdmin
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to load settings: {ex.Message}",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (!CRMS_Peguit.winforms.Audit.ScreenAuditor.IsAuditing)
+                {
+                    MessageBox.Show($"Failed to load settings: {ex.Message}",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                else
+                {
+                    Console.WriteLine($"[AUDITOR WARNING] Failed to load settings: {ex.Message}");
+                }
             }
             finally
             {

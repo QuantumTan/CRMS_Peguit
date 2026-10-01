@@ -45,19 +45,6 @@ namespace CRMS_Peguit.winforms.Controllers
                     .OrderBy(b => b.BranchCode)
                     .ToListAsync();
 
-                // If no branches exist yet for this tenant, seed default sample branches
-                if (branches.Count == 0)
-                {
-                    branches = new List<Branch>
-                    {
-                        new Branch { TenantId = tid, BranchCode = "HQ-MNL", BranchName = "Metro Manila Head Office", Address = "Ayala Ave, Makati City", Phone = "(02) 8888-0100", IsActive = true, CreatedAt = DateTime.UtcNow.AddMonths(-12) },
-                        new Branch { TenantId = tid, BranchCode = "BR-CEB", BranchName = "Cebu Regional Branch", Address = "Cebu Business Park, Cebu City", Phone = "(032) 234-5678", IsActive = true, CreatedAt = DateTime.UtcNow.AddMonths(-8) },
-                        new Branch { TenantId = tid, BranchCode = "BR-DVO", BranchName = "Davao Commercial Branch", Address = "J.P. Laurel Ave, Davao City", Phone = "(082) 299-8877", IsActive = true, CreatedAt = DateTime.UtcNow.AddMonths(-5) }
-                    };
-                    db.Branches.AddRange(branches);
-                    await db.SaveChangesAsync();
-                }
-
                 foreach (var b in branches)
                 {
                     int agents = await db.Users.CountAsync(u => u.BranchId == b.BranchId);
@@ -87,39 +74,6 @@ namespace CRMS_Peguit.winforms.Controllers
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[BranchController.GetAllBranchesAsync] Error: {ex.Message}");
-                // Return fallback mock branches
-                list.Add(new BranchItemDto
-                {
-                    BranchId = 1,
-                    TenantId = tid,
-                    BranchCode = "HQ-MNL",
-                    BranchName = "Metro Manila Head Office",
-                    Address = "Ayala Ave, Makati City",
-                    Phone = "(02) 8888-0100",
-                    IsActive = true,
-                    CreatedAt = DateTime.UtcNow.AddMonths(-12),
-                    AssignedAgentsCount = 5,
-                    PropertiesCount = 28,
-                    LeadsCount = 42,
-                    DealsCount = 19,
-                    TotalDealVolume = 48500000m
-                });
-                list.Add(new BranchItemDto
-                {
-                    BranchId = 2,
-                    TenantId = tid,
-                    BranchCode = "BR-CEB",
-                    BranchName = "Cebu Regional Branch",
-                    Address = "Cebu Business Park, Cebu City",
-                    Phone = "(032) 234-5678",
-                    IsActive = true,
-                    CreatedAt = DateTime.UtcNow.AddMonths(-8),
-                    AssignedAgentsCount = 3,
-                    PropertiesCount = 14,
-                    LeadsCount = 20,
-                    DealsCount = 8,
-                    TotalDealVolume = 21000000m
-                });
             }
 
             return list;
@@ -127,11 +81,22 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public async Task<bool> SaveBranchAsync(Branch branch)
         {
+            if (!RbacService.IsAdmin)
+            {
+                System.Diagnostics.Debug.WriteLine("[BranchController.SaveBranchAsync] Permission denied: Only administrators can modify branches.");
+                return false;
+            }
+
             try
             {
                 using var db = LocalDb.CreateContext(TenantId);
                 if (branch.BranchId <= 0)
                 {
+                    if (await db.Branches.AnyAsync(b => b.BranchCode == branch.BranchCode))
+                    {
+                        throw new InvalidOperationException("Branch code must be unique within the tenant.");
+                    }
+
                     branch.TenantId = TenantId;
                     branch.CreatedAt = DateTime.UtcNow;
                     db.Branches.Add(branch);
@@ -140,6 +105,19 @@ namespace CRMS_Peguit.winforms.Controllers
                 {
                     var existing = await db.Branches.FirstOrDefaultAsync(b => b.BranchId == branch.BranchId);
                     if (existing == null) return false;
+
+                    if (existing.IsActive && !branch.IsActive &&
+                        await db.Users.AnyAsync(u => u.BranchId == existing.BranchId && u.Status == "active"))
+                    {
+                        throw new InvalidOperationException("Reassign or deactivate the branch's active user accounts before deactivating this branch.");
+                    }
+
+                    bool duplicateCode = await db.Branches.AnyAsync(b =>
+                        b.BranchId != existing.BranchId && b.BranchCode == branch.BranchCode);
+                    if (duplicateCode)
+                    {
+                        throw new InvalidOperationException("Branch code must be unique within the tenant.");
+                    }
 
                     existing.BranchCode = branch.BranchCode;
                     existing.BranchName = branch.BranchName;
@@ -160,12 +138,24 @@ namespace CRMS_Peguit.winforms.Controllers
 
         public async Task<bool> ToggleBranchStatusAsync(int branchId)
         {
+            if (!RbacService.IsAdmin)
+            {
+                System.Diagnostics.Debug.WriteLine("[BranchController.ToggleBranchStatusAsync] Permission denied: Only administrators can modify branches.");
+                return false;
+            }
+
             try
             {
                 using var db = LocalDb.CreateContext(TenantId);
                 var branch = await db.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId);
                 if (branch != null)
                 {
+                    if (branch.IsActive &&
+                        await db.Users.AnyAsync(u => u.BranchId == branchId && u.Status == "active"))
+                    {
+                        return false;
+                    }
+
                     branch.IsActive = !branch.IsActive;
                     await db.SaveChangesAsync();
                     return true;

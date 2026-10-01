@@ -24,6 +24,8 @@ namespace CRMS_Peguit.winforms.Views.Properties
             _existingProperty = property;
 
             InitializeComponent();
+            CRMS_Peguit.winforms.Services.ResponsiveLayout.BindInputPanel(pnlContent);
+            CRMS_Peguit.winforms.Services.ResponsiveLayout.BindToolbar(pnlFooter, 12, btnCancel, btnSave);
             UiRadiusHelper.StyleButton(btnSave, 8);
             UiRadiusHelper.StyleButton(btnCancel, 8);
             UiRadiusHelper.AttachHoverFeedback(btnCancel, Color.White, Color.FromArgb(241, 245, 249));

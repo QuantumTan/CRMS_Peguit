@@ -126,7 +126,7 @@ namespace CRMS_Peguit.winforms.Views.Analytics
             this.btnExport.Location = new System.Drawing.Point(690, 23);
             this.btnExport.Width = 130;
             this.btnExport.Height = 34;
-            this.btnExport.Text = "📥 Export CSV";
+            this.btnExport.Text = "📥 Export PDF";
             this.btnExport.Anchor = System.Windows.Forms.AnchorStyles.None;
 
             // pnlKpi

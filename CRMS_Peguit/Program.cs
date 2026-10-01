@@ -32,6 +32,13 @@ namespace CRMS_Peguit.winforms
                 Environment.SetEnvironmentVariable("CRMS_CLOUD_CONNECTION", cloudConnection);
             }
 
+
+            if (args.Contains("--audit-all") || args.Contains("--audit-ui"))
+            {
+                CRMS_Peguit.winforms.Audit.ScreenAuditor.RunAudit(args);
+                return;
+            }
+
             if (args.Contains("--verify-assets"))
             {
                 var logo = AppBrand.Logo;
@@ -448,30 +455,11 @@ namespace CRMS_Peguit.winforms
             }
 
             // ==================================================
-            // ONE-TIME SCHEMA INITIALIZATION
-            // ==================================================
-            try
-            {
-                using var startupDb = LocalDb.CreateContext();
-                startupDb.Database.EnsureCreated();
-                SchemaRepairService.EnsureCrmPolishColumns(startupDb);
-                if (!startupDb.Users.Any() || !startupDb.Customers.Any())
-                {
-                    DbSeeder.SeedTestUsersAsync(startupDb, 1).GetAwaiter().GetResult();
-                }
-            }
-            catch (Exception ex)
-            {
-                // Non-critical startup schema check
-                System.Diagnostics.Debug.WriteLine($"Startup DB init error: {ex.Message}");
-            }
-
-            // ==================================================
             // START BACKGROUND SYNC SERVICE (IF CLOUD CONFIGURED)
             // ==================================================
             if (!string.IsNullOrWhiteSpace(cloudConnection))
             {
-                SyncService.Instance.Start(30);
+                SyncService.Instance.Start(60);
             }
 
             // ==================================================
@@ -479,6 +467,20 @@ namespace CRMS_Peguit.winforms
             // ==================================================
 
             using var loginForm = new LoginForm();
+
+            // Schema repair/seeding is maintenance work, not part of rendering the
+            // login screen or validating credentials. Warm it after the window is
+            // visible so first paint and sign-in are not blocked by dozens of DDL checks.
+            loginForm.Shown += (_, _) =>
+            {
+                _ = Task.Run(async () =>
+                {
+                    // Let the user interact with the sign-in screen before background
+                    // maintenance begins, avoiding LocalDB lock/CPU contention.
+                    await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                    LocalDb.WarmAuthenticationDatabases();
+                });
+            };
 
             Application.Run(loginForm);
 

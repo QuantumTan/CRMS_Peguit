@@ -642,7 +642,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
 
             _pnlAdminContainer = new Panel
             {
-                AutoScroll = true,
+                AutoScroll = false,
                 BackColor = Color.Transparent,
                 Visible = false
             };
@@ -653,11 +653,13 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
 
             var lblRosterTitle = new Label
             {
+                Name = "lblRosterTitle",
                 Text = "Team Roster Snapshot",
                 Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
                 ForeColor = Theme.TextPrimary,
                 Location = new Point(16, 14),
-                AutoSize = true
+                AutoSize = false,
+                AutoEllipsis = true
             };
             var lblRosterSub = new Label
             {
@@ -785,11 +787,13 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
 
             var lblAttnTitle = new Label
             {
+                Name = "lblAttnTitle",
                 Text = "Tickets Needing Attention",
                 Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
                 ForeColor = Theme.TextPrimary,
                 Location = new Point(16, 14),
-                AutoSize = true
+                AutoSize = false,
+                AutoEllipsis = true
             };
             var lblAttnSub = new Label
             {
@@ -874,14 +878,12 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             _pnlAdminContainer.SuspendLayout();
             try
             {
-                int scrollY = -_pnlAdminContainer.AutoScrollPosition.Y;
-                _pnlAdminContainer.AutoScrollPosition = Point.Empty;
-
                 int totalWidth = _pnlAdminContainer.ClientSize.Width;
                 if (totalWidth <= 0) return;
 
                 int gap = 16;
-                int colWidth = Math.Max(280, (totalWidth - gap) / 2);
+                int colWidth = Math.Max(120, (totalWidth - gap) / 2);
+                int col2Width = Math.Max(120, totalWidth - (colWidth + gap));
 
                 int y = 0;
 
@@ -895,6 +897,10 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                     if (_cardTeamRoster.Controls["btnRosterViewAll"] is Label btnViewAll)
                     {
                         btnViewAll.Location = new Point(_cardTeamRoster.Width - btnViewAll.Width - 16, 16);
+                        if (_cardTeamRoster.Controls["lblRosterTitle"] is Label lblTitle)
+                        {
+                            lblTitle.Size = new Size(Math.Max(60, _cardTeamRoster.Width - btnViewAll.Width - 40), 22);
+                        }
                     }
                     if (_pnlTeamRosterList != null)
                     {
@@ -905,7 +911,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                 if (_cardTicketBreakdown != null)
                 {
                     _cardTicketBreakdown.Location = new Point(colWidth + gap, y);
-                    _cardTicketBreakdown.Size = new Size(colWidth, row1Height);
+                    _cardTicketBreakdown.Size = new Size(col2Width, row1Height);
 
                     if (_plotAdminTicketBreakdown != null)
                     {
@@ -939,11 +945,15 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                 if (_cardTicketsAttention != null)
                 {
                     _cardTicketsAttention.Location = new Point(colWidth + gap, y);
-                    _cardTicketsAttention.Size = new Size(colWidth, row2Height);
+                    _cardTicketsAttention.Size = new Size(col2Width, row2Height);
 
                     if (_cardTicketsAttention.Controls["btnAttnViewAll"] is Label btnAttnViewAll)
                     {
                         btnAttnViewAll.Location = new Point(_cardTicketsAttention.Width - btnAttnViewAll.Width - 16, 16);
+                        if (_cardTicketsAttention.Controls["lblAttnTitle"] is Label lblTitle)
+                        {
+                            lblTitle.Size = new Size(Math.Max(60, _cardTicketsAttention.Width - btnAttnViewAll.Width - 40), 22);
+                        }
                     }
                     if (_pnlTicketsAttentionList != null)
                     {
@@ -968,10 +978,7 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                     y += row3Height + gap;
                 }
 
-                if (scrollY > 0)
-                {
-                    _pnlAdminContainer.AutoScrollPosition = new Point(0, scrollY);
-                }
+                _pnlAdminContainer.Height = y;
             }
             finally
             {
@@ -1677,15 +1684,20 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             int rightMargin = 30;
             int totalWidth = ClientSize.Width;
 
-            lblTitle.Location = new Point(leftMargin, 20);
-            lblSubtitle.Location = new Point(leftMargin + 2, lblTitle.Bottom + 4);
+            int headingWidth = Math.Max(1, totalWidth - leftMargin - rightMargin - SystemInformation.VerticalScrollBarWidth);
+            ResponsiveLayout.LabelBlock(lblTitle, leftMargin, 20, headingWidth);
+            ResponsiveLayout.LabelBlock(lblSubtitle, leftMargin, lblTitle.Bottom + 4, headingWidth);
             lblLoading.Location = lblSubtitle.Location;
 
-            pnlQuickActions.Location = new Point(totalWidth - rightMargin - pnlQuickActions.Width, 22);
+            pnlQuickActions.Width = Math.Min(pnlQuickActions.Width, headingWidth);
+            pnlQuickActions.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            pnlQuickActions.MaximumSize = new Size(headingWidth, 0);
+            pnlQuickActions.WrapContents = true;
+            pnlQuickActions.Location = new Point(leftMargin, lblSubtitle.Bottom + 12);
 
-            int kpiTop = Math.Max(84, lblSubtitle.Bottom + 16);
+            int kpiTop = Math.Max(84, pnlQuickActions.Visible ? pnlQuickActions.Bottom + 12 : lblSubtitle.Bottom + 16);
             pnlKpiContainer.Location = new Point(leftMargin, kpiTop);
-            pnlKpiContainer.Size = new Size(totalWidth - leftMargin - rightMargin, 104);
+            ResponsiveLayout.KpiGrid(pnlKpiContainer, headingWidth);
 
             int splitTop = pnlKpiContainer.Bottom + 16;
             int minContentHeight = _currentRole == UserRole.Admin ? 300 : 460;
@@ -1698,9 +1710,10 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
                 {
                     _pnlAdminContainer.Visible = true;
                     _pnlAdminContainer.Location = new Point(leftMargin, splitTop);
-                    _pnlAdminContainer.Size = new Size(totalWidth - leftMargin - rightMargin, splitHeight);
+                    _pnlAdminContainer.Width = totalWidth - leftMargin - rightMargin;
                     LayoutAdminControls();
                 }
+                AutoScrollMinSize = new Size(0, splitTop + (_pnlAdminContainer?.Height ?? splitHeight) + 24);
             }
             else
             {
@@ -1714,9 +1727,9 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
 
                 ResizeListItems(pnlLeftList);
                 ResizeListItems(pnlRightList);
-            }
 
-            AutoScrollMinSize = new Size(0, splitTop + splitHeight + 20);
+                AutoScrollMinSize = new Size(0, splitTop + splitHeight + 20);
+            }
         }
 
         private void RequestNavigation(string module)
@@ -1733,4 +1746,4 @@ namespace CRMS_Peguit.winforms.Views.Dashboard
             }
         }
     }
-}
+}

@@ -2,10 +2,13 @@ using System;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using CRMS_Peguit.infrastructure.Security;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Auth
 {
@@ -37,117 +40,183 @@ namespace CRMS_Peguit.winforms.Auth
             _httpClient = new HttpClient(handler)
             {
                 BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/"),
-                Timeout = TimeSpan.FromSeconds(6) // fail fast so offline fallback doesn't hang the UI
+                Timeout = TimeSpan.FromSeconds(3)
             };
             _localCache = new LocalAuthCache();
         }
 
         public async Task<AuthResult> LoginAsync(string email, string password)
         {
-            try
+            return await Task.Run(async () =>
             {
-                // User emails are globally unique; tenant is discovered automatically
-                // on the server and returned inside the JWT claims.
-                var response = await _httpClient.PostAsJsonAsync("api/auth/login", new
+                var timer = Stopwatch.StartNew();
+                // Architecture: Local -> Cloud then Sync.
+                // 1. Fast path: Authenticate against Local DB first (~150ms) to ensure instant responsiveness.
+                var localAttempt = TryLocalDbLogin(email, password);
+                if (localAttempt.Success && !localAttempt.WasOffline)
                 {
-                    email = email.Trim(),
-                    password
-                });
+                    Debug.WriteLine($"[Auth.Performance] Local sign-in completed in {timer.ElapsedMilliseconds} ms.");
+                    // Asynchronously acquire JWT token in background if API is reachable (non-blocking)
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                            var resp = await _httpClient.PostAsJsonAsync("api/auth/login", new
+                            {
+                                email = email.Trim(),
+                                password
+                            }, cts.Token).ConfigureAwait(false);
 
-                if (response.IsSuccessStatusCode)
-                {
-                    var result = await response.Content.ReadFromJsonAsync<LoginApiResponse>();
-                    if (result is null)
-                        return new AuthResult { Success = false, ErrorMessage = "Unexpected response from server." };
+                            if (resp.IsSuccessStatusCode)
+                            {
+                                var apiRes = await resp.Content.ReadFromJsonAsync<LoginApiResponse>(cancellationToken: cts.Token).ConfigureAwait(false);
+                                if (apiRes != null && !string.IsNullOrWhiteSpace(apiRes.Token))
+                                {
+                                    CurrentSession.SetJwtToken(apiRes.Token);
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // Background API probe failed; local session continues normally
+                        }
+                    });
 
-                    // Cache this success for offline use later. We hash the
-                    // password ourselves right here (never send the server's
-                    // hash back to the client) so offline login can verify
-                    // against it next time.
-                    var localHash = PasswordHasher.Hash(password);
-                    _localCache.SaveSuccessfulLogin(result.TenantId, result.UserId, result.FullName, result.Email, localHash, result.RoleName);
-
-                    int effectiveUserId = EnsureLocalUser(result.UserId, result.TenantId, result.FullName, result.Email, localHash, result.RoleName);
-
-                    var (tier, companyName) = ResolveTenantSubscription(result.TenantId, result.RoleName);
-
-                    CurrentSession.Start(
-                        effectiveUserId,
-                        result.TenantId,
-                        result.FullName,
-                        result.Email,
-                        result.RoleName,
-                        result.Token,
-                        isOffline: false,
-                        tier: tier,
-                        tenantName: companyName);
-                    return new AuthResult { Success = true };
+                    return localAttempt;
                 }
 
-                // Architecture: Local -> Cloud then Sync.
-                // If cloud returns 401 or server error, check local DB/aliases before failing.
-                var localAttempt = TryLocalDbLogin(email, password);
-                if (localAttempt.Success)
+                // If local attempt encountered an active account restriction (suspended/inactive), return immediately.
+                if (!string.IsNullOrWhiteSpace(localAttempt.ErrorMessage) &&
+                    (localAttempt.ErrorMessage.StartsWith("Access Suspended", StringComparison.OrdinalIgnoreCase) ||
+                     localAttempt.ErrorMessage.Contains("currently", StringComparison.OrdinalIgnoreCase)))
+                {
                     return localAttempt;
+                }
 
-                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                    return new AuthResult { Success = false, ErrorMessage = "Invalid email or password." };
+                // 2. Fallback path: If user was not in local DB (or password may have been updated on cloud),
+                // check the API with a strict 2.5s cancellation timeout so the UI never hangs.
+                try
+                {
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2.5));
+                    var response = await _httpClient.PostAsJsonAsync("api/auth/login", new
+                    {
+                        email = email.Trim(),
+                        password
+                    }, cts.Token).ConfigureAwait(false);
 
-                return new AuthResult { Success = false, ErrorMessage = $"Server error ({(int)response.StatusCode})." };
-            }
-            catch (Exception) // network unreachable, monsterASP down, timeout, etc.
-            {
-                return TryLocalDbLogin(email, password);
-            }
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var result = await response.Content.ReadFromJsonAsync<LoginApiResponse>(cancellationToken: cts.Token).ConfigureAwait(false);
+                        if (result is null)
+                            return new AuthResult { Success = false, ErrorMessage = "Unexpected response from server." };
+
+                        var localHash = PasswordHasher.Hash(password);
+                        _localCache.SaveSuccessfulLogin(result.TenantId, result.UserId, result.FullName, result.Email, localHash, result.RoleName, result.BranchId, result.BranchName);
+
+                        int effectiveUserId = EnsureLocalUser(result.UserId, result.TenantId, result.FullName, result.Email, localHash, result.RoleName);
+
+                        var (tier, companyName) = ResolveTenantSubscription(result.TenantId, result.RoleName);
+
+                        CurrentSession.Start(
+                            effectiveUserId,
+                            result.TenantId,
+                            result.FullName,
+                            result.Email,
+                            result.RoleName,
+                            result.Token,
+                            isOffline: false,
+                            tier: tier,
+                            tenantName: companyName,
+                            assignedBranchId: result.BranchId,
+                            assignedBranchName: result.BranchName);
+                        BrandingService.InitializeForTenant(result.TenantId, companyName);
+                        Debug.WriteLine($"[Auth.Performance] API sign-in completed in {timer.ElapsedMilliseconds} ms.");
+                        return new AuthResult { Success = true, WasOffline = false };
+                    }
+                    else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    {
+                        return new AuthResult { Success = false, ErrorMessage = "Invalid email or password." };
+                    }
+                }
+                catch (Exception)
+                {
+                    // Network unreachable, monsterASP down, API offline, or timeout
+                }
+
+                // If localAttempt had a successful cached login, return it
+                if (localAttempt.Success)
+                {
+                    return localAttempt;
+                }
+
+                // If local attempt produced an error message (like "Invalid email or password."), return it
+                if (!string.IsNullOrWhiteSpace(localAttempt.ErrorMessage))
+                {
+                    return localAttempt;
+                }
+
+                return TryOfflineLogin(email, password);
+            }).ConfigureAwait(false);
         }
 
         public AuthResult TryLocalDbLogin(string email, string password)
         {
             var lowerEmail = email.Trim().ToLowerInvariant();
+            var cachedLogin = _localCache.TryGetCachedLogin(lowerEmail);
 
             // Check Master database for real SuperAdmin user
-            try
+            bool mayBeSuperAdmin = cachedLogin?.TenantId == 0 ||
+                lowerEmail.Contains("superadmin", StringComparison.OrdinalIgnoreCase) ||
+                lowerEmail.Contains("super.admin", StringComparison.OrdinalIgnoreCase);
+            if (mayBeSuperAdmin)
             {
-                using var masterDb = LocalDb.CreateMasterContext();
-                var sa = masterDb.SuperAdmins
-                    .AsNoTracking()
-                    .FirstOrDefault(s => s.Email != null && s.Email.ToLower() == lowerEmail && s.IsActive);
-
-                if (sa != null)
+                try
                 {
-                    if (!string.IsNullOrWhiteSpace(sa.PasswordHash) && PasswordHasher.Verify(password, sa.PasswordHash))
-                    {
-                        string fullName = $"{sa.FirstName} {sa.LastName}".Trim();
-                        if (string.IsNullOrWhiteSpace(fullName)) fullName = "Super Admin";
+                    using var masterDb = LocalDb.CreateMasterContext(initializeDatabase: false);
+                    var sa = masterDb.SuperAdmins
+                        .AsNoTracking()
+                        .FirstOrDefault(s => s.Email == lowerEmail && s.IsActive);
 
-                        _localCache.SaveSuccessfulLogin(0, sa.SuperAdminId, fullName, sa.Email, sa.PasswordHash, "SuperAdmin");
-
-                        CurrentSession.Start(
-                            sa.SuperAdminId,
-                            0,
-                            fullName,
-                            sa.Email,
-                            "SuperAdmin",
-                            jwtToken: null,
-                            isOffline: false,
-                            tier: domain.entities.TenantTier.Master,
-                            tenantName: "Master Platform Administration");
-                        return new AuthResult { Success = true, WasOffline = false };
-                    }
-                    else
+                    if (sa != null)
                     {
+                        if (!string.IsNullOrWhiteSpace(sa.PasswordHash) && PasswordHasher.Verify(password, sa.PasswordHash))
+                        {
+                            string fullName = $"{sa.FirstName} {sa.LastName}".Trim();
+                            if (string.IsNullOrWhiteSpace(fullName)) fullName = "Super Admin";
+
+                            _localCache.SaveSuccessfulLogin(0, sa.SuperAdminId, fullName, sa.Email, sa.PasswordHash, "SuperAdmin");
+
+                            CurrentSession.Start(
+                                sa.SuperAdminId,
+                                0,
+                                fullName,
+                                sa.Email,
+                                "SuperAdmin",
+                                jwtToken: null,
+                                isOffline: false,
+                                tier: domain.entities.TenantTier.Master,
+                                tenantName: "Master Platform Administration");
+                            BrandingService.Clear();
+                            return new AuthResult { Success = true, WasOffline = false };
+                        }
+
                         return new AuthResult { Success = false, ErrorMessage = "Invalid email or password." };
                     }
                 }
-            }
-            catch
-            {
-                // Fallback to tenant DB search
+                catch
+                {
+                    // Fallback to cached credentials or API.
+                }
             }
 
             // Determine prioritized tenant search order based on email domain or prefixes
             int[] tenantIds;
-            if (lowerEmail.Contains("tenantc") || lowerEmail.Contains(".c@") || lowerEmail.EndsWith("@tenantc.com") ||
+            if (cachedLogin?.TenantId > 0)
+            {
+                tenantIds = new[] { cachedLogin.TenantId };
+            }
+            else if (lowerEmail.Contains("tenantc") || lowerEmail.Contains(".c@") || lowerEmail.EndsWith("@tenantc.com") ||
                 lowerEmail == "carlos.mendoza@test.com" || lowerEmail == "beatrice.ong@test.com" || lowerEmail == "gabriel.santos@test.com" ||
                 lowerEmail == "althea.garcia@test.com" || lowerEmail == "mateo.lim@test.com" || lowerEmail == "patricia.alvarez@test.com" || lowerEmail == "dominic.suarez@test.com")
             {
@@ -175,34 +244,26 @@ namespace CRMS_Peguit.winforms.Auth
             {
                 foreach (var tid in tenantIds)
                 {
-                    using var db = LocalDb.CreateContext(tid);
+                    using var db = LocalDb.CreateContext(tid, initializeDatabase: false);
                     var user = db.Users
                         .Include(u => u.Role)
+                        .Include(u => u.Branch)
                         .AsNoTracking()
-                        .FirstOrDefault(u => u.Email != null && u.Email.ToLower() == lowerEmail);
+                        .FirstOrDefault(u => u.Email == lowerEmail);
 
                     if (user != null)
                     {
                         bool verify = PasswordHasher.Verify(password, user.PasswordHash);
                         if (verify)
                         {
-                            // Enforce tenant organization suspension check
-                            try
+                            var tenantAccess = ResolveTenantAccess(tid);
+                            if (tenantAccess.Suspended)
                             {
-                                using var masterDb = LocalDb.CreateMasterContext();
-                                var company = masterDb.Companies.AsNoTracking().FirstOrDefault(c => c.CompanyId == tid);
-                                if (company != null && !company.IsActive)
+                                return new AuthResult
                                 {
-                                    return new AuthResult
-                                    {
-                                        Success = false,
-                                        ErrorMessage = $"Access Suspended: '{company.CompanyName}' has been suspended by platform administration."
-                                    };
-                                }
-                            }
-                            catch
-                            {
-                                // Master DB access fallback
+                                    Success = false,
+                                    ErrorMessage = $"Access Suspended: '{tenantAccess.CompanyName}' has been suspended by platform administration."
+                                };
                             }
 
                             // Enforce individual user status check
@@ -221,9 +282,14 @@ namespace CRMS_Peguit.winforms.Auth
                             int tenantId = tid;
                             string displayName = string.IsNullOrWhiteSpace(user.FullName) ? user.Email : user.FullName;
 
-                            _localCache.SaveSuccessfulLogin(tenantId, user.UserId, displayName, user.Email, user.PasswordHash, roleName);
+                            int? userBranchId = (user.BranchId.HasValue && user.BranchId.Value > 0) ? user.BranchId : null;
+                            string? userBranchName = user.Branch?.BranchName;
+                            if (userBranchId.HasValue && string.IsNullOrWhiteSpace(userBranchName))
+                            {
+                                userBranchName = db.Branches.AsNoTracking().FirstOrDefault(b => b.BranchId == userBranchId.Value)?.BranchName;
+                            }
 
-                            var (tier, companyName) = ResolveTenantSubscription(tenantId, roleName);
+                            _localCache.SaveSuccessfulLogin(tenantId, user.UserId, displayName, user.Email, user.PasswordHash, roleName, userBranchId, userBranchName);
 
                             CurrentSession.Start(
                                 user.UserId,
@@ -233,8 +299,12 @@ namespace CRMS_Peguit.winforms.Auth
                                 roleName,
                                 jwtToken: null,
                                 isOffline: false,
-                                tier: tier,
-                                tenantName: companyName);
+                                tier: tenantAccess.Tier,
+                                tenantName: tenantAccess.CompanyName,
+                                assignedBranchId: userBranchId,
+                                assignedBranchName: userBranchName);
+
+                            BrandingService.InitializeForTenant(tenantId, tenantAccess.CompanyName);
 
                             return new AuthResult { Success = true, WasOffline = false };
                         }
@@ -281,14 +351,13 @@ namespace CRMS_Peguit.winforms.Auth
                 };
             }
 
-            int tenantId = cached.TenantId > 0 ? cached.TenantId : 1;
-
-            int effectiveUserId = EnsureLocalUser(cached.UserId, tenantId, cached.FullName, cached.Email, cached.PasswordHash, cached.RoleName);
-
-            var (tier, companyName) = ResolveTenantSubscription(tenantId, cached.RoleName);
+            bool isSuperAdmin = cached.RoleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) ||
+                                cached.RoleName.Equals("Super Admin", StringComparison.OrdinalIgnoreCase);
+            int tenantId = isSuperAdmin ? 0 : (cached.TenantId > 0 ? cached.TenantId : 1);
+            var (tier, companyName) = GetFallbackTenantIdentity(tenantId, cached.RoleName);
 
             CurrentSession.Start(
-                effectiveUserId,
+                cached.UserId,
                 tenantId,
                 cached.FullName,
                 cached.Email,
@@ -296,7 +365,11 @@ namespace CRMS_Peguit.winforms.Auth
                 jwtToken: null,
                 isOffline: true,
                 tier: tier,
-                tenantName: companyName);
+                tenantName: companyName,
+                assignedBranchId: cached.BranchId,
+                assignedBranchName: cached.BranchName);
+
+            BrandingService.InitializeForTenant(tenantId, companyName);
 
             return new AuthResult
             {
@@ -307,15 +380,21 @@ namespace CRMS_Peguit.winforms.Auth
 
         private (domain.entities.TenantTier Tier, string CompanyName) ResolveTenantSubscription(int tenantId, string roleName)
         {
+            var access = ResolveTenantAccess(tenantId, roleName);
+            return (access.Tier, access.CompanyName);
+        }
+
+        private (domain.entities.TenantTier Tier, string CompanyName, bool Suspended) ResolveTenantAccess(int tenantId, string roleName = "")
+        {
             if (roleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) ||
                 roleName.Equals("Super Admin", StringComparison.OrdinalIgnoreCase))
             {
-                return (domain.entities.TenantTier.Master, "Master Platform Administration");
+                return (domain.entities.TenantTier.Master, "Master Platform Administration", false);
             }
 
             try
             {
-                using var masterDb = LocalDb.CreateMasterContext();
+                using var masterDb = LocalDb.CreateMasterContext(initializeDatabase: false);
 
                 var company = masterDb.Companies
                     .Include(c => c.Subscriptions)
@@ -330,14 +409,26 @@ namespace CRMS_Peguit.winforms.Auth
 
                     if (activeSub != null)
                     {
-                        return (activeSub.Tier, company.CompanyName);
+                        return (activeSub.Tier, company.CompanyName, !company.IsActive);
                     }
-                    return (domain.entities.TenantTier.TenantA, company.CompanyName);
+                    return (domain.entities.TenantTier.TenantA, company.CompanyName, !company.IsActive);
                 }
             }
             catch
             {
                 // Fallback gracefully if Master DB is not populated yet
+            }
+
+            var fallback = GetFallbackTenantIdentity(tenantId, roleName);
+            return (fallback.Tier, fallback.CompanyName, false);
+        }
+
+        private (domain.entities.TenantTier Tier, string CompanyName) GetFallbackTenantIdentity(int tenantId, string roleName)
+        {
+            if (roleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) ||
+                roleName.Equals("Super Admin", StringComparison.OrdinalIgnoreCase))
+            {
+                return (domain.entities.TenantTier.Master, "Master Platform Administration");
             }
 
             var defaultTier = tenantId switch
@@ -354,7 +445,7 @@ namespace CRMS_Peguit.winforms.Auth
             try
             {
                 if (tenantId <= 0) tenantId = 1;
-                using var db = LocalDb.CreateContext(tenantId);
+                using var db = LocalDb.CreateContext(tenantId, initializeDatabase: false);
 
                 // 1. Ensure Role exists
                 var role = db.Roles.FirstOrDefault(r => r.RoleName.ToLower() == roleName.Trim().ToLower());
@@ -372,19 +463,22 @@ namespace CRMS_Peguit.winforms.Auth
                     if (!string.IsNullOrWhiteSpace(passwordHash))
                         userById.PasswordHash = passwordHash;
                     userById.RoleId = role.RoleId;
-                    userById.Status = "active";
+                    if (string.IsNullOrWhiteSpace(userById.Status))
+                        userById.Status = "active";
                     db.SaveChanges();
                     return userId;
                 }
 
                 // 3. Check if user exists by Email
-                var userByEmail = db.Users.FirstOrDefault(u => u.Email != null && u.Email.ToLower() == email.Trim().ToLower());
+                var cleanEmail = email.Trim();
+                var userByEmail = db.Users.FirstOrDefault(u => u.Email == cleanEmail);
                 if (userByEmail != null)
                 {
                     if (!string.IsNullOrWhiteSpace(passwordHash))
                         userByEmail.PasswordHash = passwordHash;
                     userByEmail.RoleId = role.RoleId;
-                    userByEmail.Status = "active";
+                    if (string.IsNullOrWhiteSpace(userByEmail.Status))
+                        userByEmail.Status = "active";
                     db.SaveChanges();
                     return userByEmail.UserId;
                 }
@@ -413,6 +507,6 @@ namespace CRMS_Peguit.winforms.Auth
             }
         }
 
-        private record LoginApiResponse(string Token, int UserId, int TenantId, string FullName, string Email, string RoleName);
+        private record LoginApiResponse(string Token, int UserId, int TenantId, string FullName, string Email, string RoleName, int? BranchId = null, string? BranchName = null);
     }
 }

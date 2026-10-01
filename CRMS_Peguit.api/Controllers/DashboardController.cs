@@ -25,20 +25,33 @@ namespace CRMS_Peguit.api.Controllers
         public async Task<ActionResult<AgentDashboardDto>> GetAgentSnapshot([FromQuery] int? userId = null)
         {
             int callerId = ApiSecurityHelper.GetUserId(User);
+            int callerTenantId = ApiSecurityHelper.GetTenantId(User);
+            bool isSuperAdmin = ApiSecurityHelper.IsSuperAdmin(User);
+
             int targetUserId = (userId.HasValue && userId.Value > 0 && ApiSecurityHelper.HasFullOversight(User))
                 ? userId.Value
                 : callerId;
 
-            var userEntity = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == targetUserId);
+            var userEntity = await _db.Users.AsNoTracking().Include(u => u.Role).FirstOrDefaultAsync(u => u.UserId == targetUserId);
+            if (userId.HasValue && userEntity == null)
+            {
+                return NotFound(new { message = "Agent not found." });
+            }
+
+            if (!isSuperAdmin && userEntity != null && userEntity.Role != null && callerTenantId > 0 && userEntity.Role.TenantId != callerTenantId)
+            {
+                return Forbid();
+            }
+
             string fullName = userEntity?.FullName ?? "Agent";
             string firstName = GetFirstName(fullName);
             string todayText = DateTime.Now.ToString("dddd, MMMM d, yyyy");
 
             int activeLeads = await _db.Leads.AsNoTracking()
-                .CountAsync(l => l.AssignedAgentId == targetUserId && l.Stage.ToLower() != "converted" && l.Stage.ToLower() != "lost");
+                .CountAsync(l => (l.AssignedAgentId == targetUserId || (l.AssignedAgentId == null && l.CreatedByUserId == targetUserId)) && l.Stage.ToLower() != "converted" && l.Stage.ToLower() != "lost");
 
             int openDeals = await _db.Deals.AsNoTracking()
-                .CountAsync(d => d.AgentId == targetUserId && d.Stage.ToLower() != "closed" && d.Stage.ToLower() != "closed-won" && d.Stage.ToLower() != "won" && d.Stage.ToLower() != "lost" && d.Stage.ToLower() != "closed-lost");
+                .CountAsync(d => (d.AgentId == targetUserId || (d.AgentId == null && d.CreatedByUserId == targetUserId)) && d.Stage.ToLower() != "closed" && d.Stage.ToLower() != "closed-won" && d.Stage.ToLower() != "won" && d.Stage.ToLower() != "lost" && d.Stage.ToLower() != "closed-lost");
 
             var today = DateTime.UtcNow.Date;
             var tomorrow = today.AddDays(1);
@@ -46,7 +59,7 @@ namespace CRMS_Peguit.api.Controllers
                 .CountAsync(r => r.AssignedToUserId == targetUserId && r.Status != "Completed" && r.DueDate >= today && r.DueDate < tomorrow);
 
             int openTickets = await _db.SupportTickets.AsNoTracking()
-                .CountAsync(t => t.AssignedToUserId == targetUserId && t.Status.ToLower() != "resolved" && t.Status.ToLower() != "closed");
+                .CountAsync(t => (t.AssignedToUserId == targetUserId || t.RaisedByUserId == targetUserId) && t.Status.ToLower() != "resolved" && t.Status.ToLower() != "closed");
 
             var sparkline = new List<double>();
             var thirtyDaysAgo = DateTime.UtcNow.Date.AddDays(-29);
@@ -259,7 +272,7 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("admin")]
         public async Task<ActionResult<AdminDashboardDto>> GetAdminSnapshot()
         {
-            if (!ApiSecurityHelper.IsAdmin(User))
+            if (!ApiSecurityHelper.IsAdmin(User) && !ApiSecurityHelper.IsSuperAdmin(User))
                 return Forbid();
 
             int callerId = ApiSecurityHelper.GetUserId(User);
@@ -396,6 +409,9 @@ namespace CRMS_Peguit.api.Controllers
         [HttpGet("superadmin")]
         public async Task<ActionResult<SuperAdminDashboardDto>> GetSuperAdminSnapshot()
         {
+            if (!ApiSecurityHelper.IsSuperAdmin(User))
+                return Forbid();
+
             string firstName = "Super Admin";
             string todayText = DateTime.Now.ToString("dddd, MMMM d, yyyy");
 

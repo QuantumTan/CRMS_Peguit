@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using CRMS_Peguit.winforms.Models.Services;
+using CRMS_Peguit.winforms.Services;
 
 namespace CRMS_Peguit.winforms.Controls
 {
@@ -15,6 +16,7 @@ namespace CRMS_Peguit.winforms.Controls
         private int _pageSize = 25;
         private int _totalPages = 1;
         private string _itemLabel = "records";
+        private bool _layoutBusy;
 
         private readonly Label _lblInfo;
         private readonly Label _lblPageSize;
@@ -198,33 +200,20 @@ namespace CRMS_Peguit.winforms.Controls
             LayoutControls();
         }
 
-        private void LayoutControls()
+private void LayoutControls()
         {
-            int y = (this.Height - 28) / 2;
-            _lblInfo.Location = new Point(16, (this.Height - _lblInfo.Height) / 2);
-
-            int rightX = this.ClientSize.Width - 16;
-
-            rightX -= _btnLast.Width;
-            _btnLast.Location = new Point(rightX, y);
-
-            rightX -= _btnNext.Width + 4;
-            _btnNext.Location = new Point(rightX, y);
-
-            rightX -= _lblPageIndicator.Width + 4;
-            _lblPageIndicator.Location = new Point(rightX, (this.Height - _lblPageIndicator.Height) / 2);
-
-            rightX -= _btnPrev.Width + 4;
-            _btnPrev.Location = new Point(rightX, y);
-
-            rightX -= _btnFirst.Width + 4;
-            _btnFirst.Location = new Point(rightX, y);
-
-            rightX -= _cboPageSize.Width + 16;
-            _cboPageSize.Location = new Point(rightX, (this.Height - _cboPageSize.Height) / 2);
-
-            rightX -= _lblPageSize.Width + 6;
-            _lblPageSize.Location = new Point(rightX, (this.Height - _lblPageSize.Height) / 2);
+            if (_layoutBusy || IsDisposed) return;
+            _layoutBusy = true;
+            try
+            {
+                var controls = new Control[] { _lblInfo, _lblPageSize, _cboPageSize, _btnFirst, _btnPrev, _lblPageIndicator, _btnNext, _btnLast };
+                int margin = ResponsiveLayout.Scale(this, 12), gap = ResponsiveLayout.Scale(this, 8);
+                var bounds = ResponsiveLayout.Wrap(ClientSize.Width - margin * 2, controls.Select(c => c.Size), gap);
+                Height = bounds.Max(r => r.Bottom) + margin * 2;
+                for (int i = 0; i < controls.Length; i++)
+                    controls[i].Location = new Point(margin + bounds[i].X, margin + bounds[i].Y);
+            }
+            finally { _layoutBusy = false; }
         }
 
         protected override void OnPaint(PaintEventArgs e)

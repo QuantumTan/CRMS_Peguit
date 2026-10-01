@@ -537,7 +537,7 @@ namespace CRMS_Peguit.winforms.Controls
 
             var pie = _plot.Plot.Add.Pie(pieSlices);
             pie.DonutFraction = 0.65;
-            pie.SliceLabelDistance = 1.35;
+            pie.SliceLabelDistance = 1.25;
 
             _plot.Plot.Axes.Frameless();
             _plot.Plot.HideGrid();
@@ -546,7 +546,7 @@ namespace CRMS_Peguit.winforms.Controls
             if (_plot.ClientSize.Width > 20 && _plot.ClientSize.Height > 20)
                 aspect = (double)_plot.ClientSize.Width / _plot.ClientSize.Height;
 
-            double yLim = 1.45;
+            double yLim = 1.65;
             double xLim = yLim * Math.Max(1.0, aspect);
             _plot.Plot.Axes.SetLimits(-xLim, xLim, -yLim, yLim);
 
@@ -699,7 +699,7 @@ namespace CRMS_Peguit.winforms.Controls
             _plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = effRotation;
             _plot.Plot.Axes.Bottom.TickLabelStyle.Alignment = effRotation != 0 ? Alignment.MiddleRight : Alignment.UpperCenter;
             _plot.Plot.Axes.Bottom.MinimumSize = effRotation != 0 ? 55 : 40;
-            _plot.Plot.Axes.Left.MinimumSize = 50;
+            _plot.Plot.Axes.Left.MinimumSize = 68;
 
             double topHeadroom = maxY > 0 ? maxY * 1.20 : 10;
             _plot.Plot.Axes.SetLimits(-0.6, list.Count - 0.4, 0, topHeadroom);
@@ -1127,10 +1127,19 @@ namespace CRMS_Peguit.winforms.Controls
 
         private void PositionActionHint()
         {
-            if (_lblActionHint.Visible && Width > 0)
+            if (_pnlHeader == null || _pnlHeader.ClientSize.Width <= 0) return;
+            int width = _pnlHeader.ClientSize.Width;
+            int hintWidth = _lblActionHint.Visible ? _lblActionHint.PreferredWidth + 8 : 0;
+            bool inline = width - hintWidth >= 180;
+            int textWidth = Math.Max(1, inline ? width - hintWidth : width);
+            int bottom = ResponsiveLayout.LabelBlock(_lblTitle, 0, 2, textWidth);
+            bottom = ResponsiveLayout.LabelBlock(_lblSubtitle, 0, bottom + 4, textWidth);
+            if (_lblActionHint.Visible)
             {
-                _lblActionHint.Location = new Point(Width - Padding.Right - _lblActionHint.PreferredWidth - 2, 6);
+                _lblActionHint.Location = inline ? new Point(width - _lblActionHint.PreferredWidth, 4) : new Point(0, bottom + 6);
+                bottom = Math.Max(bottom, _lblActionHint.Bottom);
             }
+            _pnlHeader.Height = Math.Max(HeaderHeight, bottom + 8);
         }
 
         // =========================================================================

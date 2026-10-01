@@ -33,6 +33,7 @@ namespace CRMS_Peguit.winforms.Views.Sync
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
+            this.MinimumSize = new Size(800, 560);
             this.BackColor = Color.FromArgb(248, 250, 252);
             this.Font = new Font("Segoe UI", 9.5F, FontStyle.Regular);
 
@@ -87,6 +88,7 @@ namespace CRMS_Peguit.winforms.Views.Sync
             };
             btnCancel.FlatAppearance.BorderSize = 0;
             btnCancel.Click += (_, _) => this.Close();
+            this.CancelButton = btnCancel;
 
             var btnKeepServer = new Button
             {

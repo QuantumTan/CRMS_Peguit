@@ -63,7 +63,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
             _pagination.PageChanged += async (_, _) => await RefreshGridAsync(resetPage: false);
             _pagination.PageSizeChanged += async (_, _) => await RefreshGridAsync(resetPage: true);
             pnlCard.Controls.Add(_pagination);
-            _pagination.BringToFront();
+            _pagination.SendToBack();
         }
 
         private void InitEmptyState()
@@ -134,7 +134,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
             {
                 _btnExport = new Button
                 {
-                    Text = "Export CSV",
+                    Text = "📄 Export PDF",
                     BackColor = Color.White,
                     ForeColor = Theme.Primary,
                     Cursor = Cursors.Hand,
@@ -143,7 +143,7 @@ namespace CRMS_Peguit.winforms.Views.Deals
                     Size = new Size(120, 36)
                 };
                 _btnExport.FlatAppearance.BorderColor = Theme.Primary;
-                _btnExport.Click += (_, _) => ExportToCsv();
+                _btnExport.Click += (_, _) => ExportToPdf();
                 UiRadiusHelper.StyleButton(_btnExport, 8);
                 Controls.Add(_btnExport);
                 _btnExport.BringToFront();
@@ -474,8 +474,15 @@ namespace CRMS_Peguit.winforms.Views.Deals
                 {
                     if (MessageBox.Show($"Are you sure you want to remove Deal #{deal.DealId}?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                     {
-                        _controller.Delete(deal);
-                        RefreshGrid();
+                        try
+                        {
+                            _controller.Delete(deal);
+                            RefreshGrid();
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show($"Failed to remove deal: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
                     }
                 };
                 menu.Items.Add(deleteItem);
@@ -533,12 +540,12 @@ namespace CRMS_Peguit.winforms.Views.Deals
                    value.Contains(search, StringComparison.OrdinalIgnoreCase);
         }
 
-        private void ExportToCsv()
+        private void ExportToPdf()
         {
             using var sfd = new SaveFileDialog
             {
-                Filter = "CSV File (*.csv)|*.csv",
-                FileName = $"Deals_Export_{DateTime.Now:yyyyMMdd_HHmm}.csv"
+                Filter = "PDF Document (*.pdf)|*.pdf",
+                FileName = $"Deals_Export_{DateTime.Now:yyyyMMdd_HHmm}.pdf"
             };
             if (sfd.ShowDialog() == DialogResult.OK)
             {
@@ -547,106 +554,46 @@ namespace CRMS_Peguit.winforms.Views.Deals
                 var properties = _controller.GetPropertyAddresses();
                 var agents = _controller.GetAgentNames();
 
-                var sb = new System.Text.StringBuilder();
-                sb.AppendLine("DealId,Customer,Property,Agent,Value,CommissionRate,Stage,ExpectedCloseDate");
-                foreach (var d in deals)
+                string[] headers = new[] { "Deal Ref", "Customer", "Property", "Agent", "Value", "Commission", "Stage", "Expected Close" };
+                var rows = deals.Select(d =>
                 {
-                    sb.AppendLine($"\"{d.DealId}\",\"{GetName(customers, d.CustomerId)}\",\"{GetName(properties, d.PropertyId)}\",\"{GetName(agents, d.AgentId)}\",\"{d.Value}\",\"{d.CommissionRate:P1}\",\"{d.Stage}\",\"{d.ExpectedCloseDate:yyyy-MM-dd}\"");
+                    decimal comm = d.Value * (d.CommissionRate > 1m ? d.CommissionRate / 100m : d.CommissionRate);
+                    return new string[]
+                    {
+                        $"DEAL-{d.DealId:D4}",
+                        GetName(customers, d.CustomerId),
+                        GetName(properties, d.PropertyId),
+                        GetName(agents, d.AgentId),
+                        $"₱ {d.Value:N2}",
+                        $"₱ {comm:N2}",
+                        d.Stage,
+                        d.ExpectedCloseDate?.ToString("yyyy-MM-dd") ?? "N/A"
+                    };
+                }).ToList();
+
+                var kpis = new List<(string Title, string Value, string ColorHex)>
+                {
+                    ("Total Deals", deals.Count.ToString(), "#25679C"),
+                    ("Pipeline Volume", $"₱ {deals.Sum(x => x.Value):N2}", "#059669"),
+                    ("Closed / Won", deals.Count(x => string.Equals(x.Stage, "Closed", StringComparison.OrdinalIgnoreCase)).ToString(), "#8B5CF6"),
+                    ("Under Contract", deals.Count(x => string.Equals(x.Stage, "Contract", StringComparison.OrdinalIgnoreCase) || string.Equals(x.Stage, "Under Contract", StringComparison.OrdinalIgnoreCase)).ToString(), "#D97706")
+                };
+
+                if (CRMS_Peguit.winforms.Services.PdfExportHelper.TryExportTable("Deals Pipeline & Transaction Register", headers, rows, sfd.FileName, out string? error, activeFilter: _filterStage, kpis: kpis))
+                {
+                    MessageBox.Show("Deals exported to PDF successfully.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
-                System.IO.File.WriteAllText(sfd.FileName, sb.ToString());
-                MessageBox.Show("Deals exported successfully.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                else
+                {
+                    MessageBox.Show(error ?? "Export failed.", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
         }
 
-        private void LayoutToolbar()
+private void LayoutToolbar()
         {
-            if (this.IsDisposed) return;
-
-            int rightPadding = UiStyleConstants.PageMarginRight;
-            int leftMargin = UiStyleConstants.PageMarginLeft;
-            int totalWidth = ClientSize.Width;
-
-            // 1. Page Title & Subtitle
-            lblTitle.Location = new Point(leftMargin, UiStyleConstants.PageMarginTop);
-            lblSubtitle.Location = new Point(leftMargin + 2, lblTitle.Bottom + 4);
-
-            // 2. KPI Row
-            pnlKpiContainer.Location = new Point(leftMargin, lblSubtitle.Bottom + 12);
-            pnlKpiContainer.Size = new Size(Math.Max(100, totalWidth - leftMargin - rightPadding), UiStyleConstants.KpiRowHeight);
-
-            // 3. Toolbar Row (All controls aligned at y)
-            int y = pnlKpiContainer.Bottom + 14;
-
-            int rightEdge = totalWidth - rightPadding;
-            if (_btnAdd is not null && _btnAdd.Visible)
-            {
-                _btnAdd.Top = y;
-                _btnAdd.Height = UiStyleConstants.ToolbarRowHeight;
-                _btnAdd.Left = rightEdge - _btnAdd.Width;
-                rightEdge = _btnAdd.Left - 10;
-            }
-
-            if (_btnExport is not null && _btnExport.Visible)
-            {
-                _btnExport.Top = y;
-                _btnExport.Height = UiStyleConstants.ToolbarRowHeight;
-                _btnExport.Left = rightEdge - _btnExport.Width;
-                rightEdge = _btnExport.Left - 10;
-            }
-
-            var pills = new[] { btnFilterLost, btnFilterClosed, btnFilterContract, btnFilterOffer, btnFilterAll };
-            int filterRight = rightEdge;
-            int totalFilterWidth = 0;
-            foreach (var p in pills) totalFilterWidth += p.Width + 6;
-
-            int availableForSearch = filterRight - leftMargin - totalFilterWidth - 16;
-
-            if (availableForSearch >= 180)
-            {
-                // Single row
-                foreach (var p in pills)
-                {
-                    p.Top = y;
-                    p.Height = UiStyleConstants.ToolbarRowHeight;
-                    p.Left = filterRight - p.Width;
-                    filterRight = p.Left - 6;
-                }
-
-                txtSearch.Top = y;
-                txtSearch.Left = leftMargin;
-                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
-                txtSearch.Width = Math.Min(UiStyleConstants.SearchBoxWidth, availableForSearch);
-
-                int cardTop = y + UiStyleConstants.ToolbarRowHeight + 14;
-                pnlCard.Top = cardTop;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - UiStyleConstants.PageMarginBottom);
-            }
-            else
-            {
-                // Two rows: search on row 1, filter pills wrapped to row 2
-                txtSearch.Top = y;
-                txtSearch.Left = leftMargin;
-                txtSearch.Height = UiStyleConstants.ToolbarRowHeight;
-                txtSearch.Width = Math.Max(180, rightEdge - leftMargin);
-
-                int pillY = y + UiStyleConstants.ToolbarRowHeight + 10;
-                int filterX = leftMargin;
-                var forwardPills = new[] { btnFilterAll, btnFilterOffer, btnFilterContract, btnFilterClosed, btnFilterLost };
-                foreach (var p in forwardPills)
-                {
-                    p.Top = pillY;
-                    p.Height = UiStyleConstants.ToolbarRowHeight;
-                    p.Left = filterX;
-                    filterX += p.Width + 6;
-                }
-
-                int cardTop = pillY + UiStyleConstants.ToolbarRowHeight + 14;
-                pnlCard.Top = cardTop;
-                pnlCard.Height = Math.Max(100, ClientSize.Height - cardTop - 20);
-            }
-
-            pnlCard.Left = leftMargin;
-            pnlCard.Width = Math.Max(100, totalWidth - leftMargin - rightPadding);
+            ResponsiveLayout.ListPage(this, lblTitle, lblSubtitle, pnlKpiContainer, txtSearch,
+                new Control[] { btnFilterAll, btnFilterOffer, btnFilterContract, btnFilterClosed, btnFilterLost }, new Control?[] { _btnExport, _btnAdd }, pnlCard);
         }
     }
 }

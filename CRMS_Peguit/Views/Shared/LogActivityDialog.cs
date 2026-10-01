@@ -50,8 +50,8 @@ namespace CRMS_Peguit.winforms.Views.Shared
 
             // Load records assigned to current agent
             using var fuController = new FollowUpController();
-            _assignedCustomers = fuController.GetAssignedCustomers();
-            _assignedLeads = fuController.GetAssignedLeads();
+            _assignedCustomers = fuController.GetAssignedCustomers(_preselectedCustomerId);
+            _assignedLeads = fuController.GetAssignedLeads(_preselectedLeadId);
 
             // Header panel
             var pnlHeader = new Panel
@@ -203,7 +203,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
 
             _lblDateTime = new Label
             {
-                Text = "DATE & TIME (EDITABLE FOR BACKDATING)",
+                Text = "DATE & TIME",
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(100, 116, 139),
                 Location = new Point(164, 136),
@@ -216,6 +216,7 @@ namespace CRMS_Peguit.winforms.Views.Shared
                 Font = new Font("Segoe UI", 9.5f),
                 Location = new Point(164, 156),
                 Size = new Size(170, 28),
+                MinDate = DateTime.Today,
                 Value = DateTime.Now.Date
             };
 
@@ -288,34 +289,36 @@ namespace CRMS_Peguit.winforms.Views.Shared
             {
                 Text = "Cancel",
                 DialogResult = DialogResult.Cancel,
-                Location = new Point(280, 12),
                 Size = new Size(100, 36),
                 Font = new Font("Segoe UI", 9.5f),
                 BackColor = Color.White,
                 ForeColor = Color.FromArgb(71, 85, 105),
                 FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
+                Cursor = Cursors.Hand
             };
             _btnCancel.FlatAppearance.BorderColor = Color.FromArgb(203, 213, 225);
 
             _btnSave = new Button
             {
                 Text = "Save Activity",
-                Location = new Point(390, 12),
-                Size = new Size(100, 36),
+                Size = new Size(110, 36),
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 BackColor = Color.FromArgb(15, 91, 158),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
+                Cursor = Cursors.Hand
             };
             _btnSave.FlatAppearance.BorderSize = 0;
             _btnSave.Click += BtnSaveClick;
 
             UiRadiusHelper.StyleButton(_btnSave, 8);
             UiRadiusHelper.StyleButton(_btnCancel, 8);
+
+            pnlFooter.Resize += (_, _) =>
+            {
+                _btnSave.Location = new Point(pnlFooter.Width - _btnSave.Width - 24, 12);
+                _btnCancel.Location = new Point(_btnSave.Left - _btnCancel.Width - 12, 12);
+            };
 
             pnlFooter.Controls.Add(_btnCancel);
             pnlFooter.Controls.Add(_btnSave);
@@ -434,6 +437,14 @@ namespace CRMS_Peguit.winforms.Views.Shared
             // Combine selected date and time
             DateTime localCombined = _dtpDate.Value.Date + _dtpTime.Value.TimeOfDay;
             DateTime utcTimestamp = localCombined.ToUniversalTime();
+
+            // Disallow past date
+            if (_dtpDate.Value.Date < DateTime.Today)
+            {
+                _lblError.Text = "Activity date cannot be in the past. Please select today's date.";
+                _lblError.Visible = true;
+                return;
+            }
 
             // Disallow future logging beyond 5 min
             if (utcTimestamp > DateTime.UtcNow.AddMinutes(5))
